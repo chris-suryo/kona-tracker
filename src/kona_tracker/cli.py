@@ -1,4 +1,4 @@
-"""`kona` command line. Slice 1 ships only `kona probe`."""
+"""`kona` command line: `probe` (Fi API discovery), `serve` (web app), `cameras`."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ from typing import Annotated
 
 import typer
 
+from kona_tracker.cli_env import read_env_file
 from kona_tracker.fi.client import FiClient, FiLoginError
 from kona_tracker.probe.run import run_probe
 
@@ -19,24 +20,6 @@ app = typer.Typer(help="kona-tracker tools.", no_args_is_help=True)
 def _root() -> None:
     """kona-tracker tools. Typer collapses a single command into the root command;
     this callback keeps `kona probe` as a real subcommand so more can follow."""
-
-
-def read_env_file(path: Path) -> dict[str, str]:
-    """Minimal KEY=VALUE parser: no dotenv dependency for two variables.
-    Ignores blank lines and '#' comments; strips one layer of matching quotes."""
-    values: dict[str, str] = {}
-    if not path.exists():
-        return values
-    for raw in path.read_text(encoding="utf-8-sig").splitlines():
-        line = raw.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, _, val = line.partition("=")
-        val = val.strip()
-        if len(val) >= 2 and val[0] == val[-1] and val[0] in "\"'":
-            val = val[1:-1]
-        values[key.strip()] = val
-    return values
 
 
 def load_credentials(env_file: Path) -> tuple[str, str]:
@@ -78,6 +61,46 @@ def probe(
     for step, msg in report.errors.items():
         typer.echo(f"  ! {step}: {msg}")
     typer.echo(f"Wrote {len(report.files)} file(s) to {out}/ -- open summary.md first.")
+
+
+@app.command()
+def serve(
+    host: Annotated[
+        str, typer.Option(help="Bind address; 0.0.0.0 = reachable on Wi-Fi.")
+    ] = "0.0.0.0",
+    port: Annotated[int, typer.Option()] = 8000,
+    env_file: Annotated[Path, typer.Option(help="KEY=VALUE file with KONA_* settings.")] = Path(
+        ".env"
+    ),
+    fake_camera: Annotated[bool, typer.Option(help="Test pattern instead of a webcam.")] = False,
+) -> None:
+    """Run the web app (passcode gate + live camera) on the local network."""
+    import uvicorn
+
+    from kona_tracker.web.app import create_app
+    from kona_tracker.web.settings import SettingsError, load_settings
+
+    try:
+        settings = load_settings(env_file, fake_camera=fake_camera)
+    except SettingsError as e:
+        typer.echo(str(e), err=True)
+        raise typer.Exit(code=2) from None
+    cam = "fake" if fake_camera else f"index {settings.camera_index}"
+    typer.echo(f"kona-tracker on http://{host}:{port}  (camera: {cam})")
+    uvicorn.run(create_app(settings), host=host, port=port, log_level="info")
+
+
+@app.command()
+def cameras() -> None:
+    """List camera indexes that open (so KONA_CAMERA_INDEX is not a guess)."""
+    from kona_tracker.camera.source import probe_camera_indexes
+
+    found = probe_camera_indexes()
+    if not found:
+        typer.echo("No camera opened at indexes 0-4. Is it plugged in / not in use by another app?")
+        raise typer.Exit(code=1)
+    typer.echo("Cameras that open: " + ", ".join(str(i) for i in found))
+    typer.echo(f"Set KONA_CAMERA_INDEX={found[0]} in .env (or another index from the list).")
 
 
 def main() -> None:  # pragma: no cover - console entry

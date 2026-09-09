@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Kona · camera{% endblock %}
+{% block body %}
+<header class="bar"><span class="label">Live</span><span class="dot" id="dot"></span></header>
+<figure class="cam">
+  <img id="cam" src="/stream.mjpg" alt="Live view of Kona">
+  <figcaption id="cap" class="label"></figcaption>
+</figure>
+<script>
+  // MJPEG in Safari sometimes stalls after sleep/wake or a network blip;
+  // a cache-busted reload of the <img> is the whole recovery story.
+  (function () {
+    var img = document.getElementById('cam'), cap = document.getElementById('cap'),
+        dot = document.getElementById('dot'), tries = 0;
+    function reload() {
+      tries += 1; cap.textContent = tries > 1 ? 'Reconnecting…' : '';
+      dot.className = 'dot';
+      img.src = '/stream.mjpg?t=' + Date.now();
+    }
+    img.addEventListener('load', function () { cap.textContent = ''; dot.className = 'dot on'; tries = 0; });
+    img.addEventListener('error', function () { setTimeout(reload, Math.min(1000 * tries, 5000)); });
+    document.addEventListener('visibilitychange', function () { if (!document.hidden) reload(); });
+  })();
+</script>
+{% endblock %}
