@@ -1,0 +1,18 @@
+{"data": {"__schema": {"queryType": {"name": "Query"}, "types": [
+  {"name": "Query", "kind": "OBJECT", "fields": [
+    {"name": "pet", "args": [{"name": "id", "type": {"name": null, "kind": "NON_NULL", "ofType": {"name": "ID", "kind": "SCALAR"}}}],
+     "type": {"name": "Pet", "kind": "OBJECT", "ofType": null}}]},
+  {"name": "Pet", "kind": "OBJECT", "fields": [
+    {"name": "id", "args": [], "type": {"name": null, "kind": "NON_NULL", "ofType": {"name": "ID", "kind": "SCALAR", "ofType": null}}},
+    {"name": "name", "args": [], "type": {"name": "String", "kind": "SCALAR", "ofType": null}},
+    {"name": "restSummaryFeed", "args": [{"name": "period", "type": {"name": "RestPeriod", "kind": "ENUM", "ofType": null}}, {"name": "limit", "type": {"name": "Int", "kind": "SCALAR", "ofType": null}}],
+     "type": {"name": "RestSummaryFeed", "kind": "OBJECT", "ofType": null}},
+    {"name": "currentActivitySummary", "args": [{"name": "period", "type": {"name": "ActivityPeriod", "kind": "ENUM", "ofType": null}}],
+     "type": {"name": "ActivitySummary", "kind": "OBJECT", "ofType": null}},
+    {"name": "sleepScore", "args": [], "type": {"name": "Int", "kind": "SCALAR", "ofType": null}},
+    {"name": "homeCityState", "args": [], "type": {"name": "String", "kind": "SCALAR", "ofType": null}}]},
+  {"name": "BehaviorSummary", "kind": "OBJECT", "fields": [
+    {"name": "barkingSeconds", "args": [], "type": {"name": "Int", "kind": "SCALAR", "ofType": null}}]},
+  {"name": "SleepAmountType", "kind": "ENUM", "fields": null, "enumValues": [{"name": "SLEEP"}, {"name": "NAP"}]},
+  {"name": "__Type", "kind": "OBJECT", "fields": [{"name": "name", "args": [], "type": {"name": "String", "kind": "SCALAR", "ofType": null}}]}
+]}}}

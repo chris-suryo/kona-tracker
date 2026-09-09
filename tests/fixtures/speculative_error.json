@@ -1,0 +1,4 @@
+{"errors": [
+  {"message": "Cannot query field \"sleepQuality\" on type \"Pet\". Did you mean \"sleepScore\"?"},
+  {"message": "Cannot query field \"behaviorSummary\" on type \"Pet\"."}
+], "data": null}
