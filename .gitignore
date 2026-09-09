@@ -4,3 +4,14 @@ __MACOSX/
 .DS_Store
 Thumbs.db
 .env
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+dist/
+
+# Fi probe output: contains account data (redacted, but still private).
+probe-out/
