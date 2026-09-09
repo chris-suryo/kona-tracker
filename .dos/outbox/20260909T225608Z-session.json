@@ -1,0 +1,57 @@
+{
+  "goal": "Fresh kona-tracker: /grill the v0 approach, /plan slice 1, fill PROJECT.md, build the first slice.",
+  "completed": [
+    "Researched the Fi API from pytryfi source: login POST /auth/login (email+password form, cookie session, userId/sessionId), GraphQL POST /graphql, restSummaryFeed(period, limit) -> sleepAmounts{type SLEEP|NAP, duration}, currentActivitySummary(period) -> totalSteps/stepGoal/totalDistance.",
+    "Grilled 3 direction-changing decisions (hosting, stack, slice size); the rest taken as named defaults.",
+    "Built slice 1: Python scaffold (uv/typer/httpx, pytest/ruff, ubuntu+windows CI), FiClient, GraphQL documents, `kona probe` CLI with key-name redaction and schema keyword scan, 9 tests on httpx.MockTransport fixtures.",
+    "Wrote docs/slice-1-probe-plan.md and filled PROJECT.md (stack, PowerShell commands, Locations, constraints, next).",
+    "4 commits pushed to claude/nice-bohr-6tnfn0; CI green on ubuntu + windows; /security-review found no reportable issues."
+  ],
+  "discovered": [
+    "api.tryfi.com is BLOCKED by the claude.ai/code egress proxy (CONNECT 403). Nothing touching the real Fi API can be verified from a cloud session; Chris must run it in PowerShell.",
+    "pytryfi and hass-tryfi expose sleep/nap DURATION only: no sleep-quality score and no behavior fields (scratching/licking/barking/eating/drinking). Fi's app shows 'restfulness' and 'nighttime interruptions', so richer fields may exist server-side but are unconfirmed.",
+    "pytryfi last shipped 0.0.21 in Dec 2023, sends GraphQL via GET query strings, and depends on requests: not worth depending on.",
+    "Fi support pages and the Tidbyt forum thread on the Fi GraphQL API are also blocked from the sandbox.",
+    "Behavior Tracking requires a Series 3+ or Fi Mini collar (from search snippets); Kona's model is unconfirmed."
+  ],
+  "decisions": [
+    "Stack: Python. FastAPI + Jinja + htmx for the web layer (slice 2+); uv/typer/httpx; pytest with MockTransport; ruff; ubuntu+windows CI.",
+    "Direct httpx GraphQL client, NOT pytryfi.",
+    "Hosting deferred: run on the Windows PC now, Raspberry Pi + Tailscale when hardware arrives; app stays env-var-configured so cloud remains possible. Chris was unsure here and has no local-hosting experience; revisit when the Pi is bought.",
+    "Slice 1 = probe only (no passcode gate, no dashboard) per the trust ladder: confirm the API surface before designing the hero.",
+    "Hero fallback if no quality field exists: last night's SLEEP duration (to be decided in slice 2).",
+    "probe-out/ and .env are gitignored; probe output is meant to be reviewed then committed as docs/fi-api-fields.md."
+  ],
+  "lessons": [
+    "Check sandbox egress to third-party APIs FIRST in a cloud session (curl the host); it decides what can be verified vs. handed to the user.",
+    "typer collapses a single @app.command() into the root command; add an @app.callback() to keep `tool subcommand` working before a second command exists.",
+    "http.cookiejar scopes a Set-Cookie without Path to the request's parent path; a fake login at /auth/login must send Path=/ or later /graphql calls go out unauthenticated.",
+    "ruff B008 rejects typer.Option() defaults; use the Annotated[...] form.",
+    "raw.githubusercontent.com URLs 404 when the default branch is master, not main; fetch the repo page first."
+  ],
+  "files_changed": [
+    "pyproject.toml", "uv.lock", ".gitignore", ".env.example", ".github/workflows/ci.yml",
+    "src/kona_tracker/__init__.py", "src/kona_tracker/cli.py",
+    "src/kona_tracker/fi/__init__.py", "src/kona_tracker/fi/client.py", "src/kona_tracker/fi/queries.py",
+    "src/kona_tracker/probe/__init__.py", "src/kona_tracker/probe/run.py", "src/kona_tracker/probe/redact.py", "src/kona_tracker/probe/scan.py",
+    "tests/conftest.py", "tests/fixtures/*.json", "tests/test_cli.py", "tests/test_client.py", "tests/test_probe.py", "tests/test_redact.py", "tests/test_scan.py",
+    "docs/slice-1-probe-plan.md", "PROJECT.md"
+  ],
+  "open_questions": [
+    "Does Fi's GraphQL expose a sleep-quality / restfulness score or behavior fields at all? Only the probe run can answer.",
+    "Does Fi leave introspection enabled? If not, the probe falls back to speculative-field error hints and known queries.",
+    "Does login need extra headers pytryfi sets (its HEADER constant was not readable)? The probe prints status + body on failure so the next session can adjust.",
+    "Which collar model does Kona wear (Series 3 vs 3+ decides Behavior Tracking availability)?",
+    "Long-term hosting: Pi + Tailscale vs cloud. Chris is undecided and inexperienced with local hosting."
+  ],
+  "intent": "Stopped at the trust-ladder boundary: the code is built and tested against fixtures, but the real Fi API is unreachable from the cloud, so the next step is a manual run on Chris's PC. Building the dashboard before that would design the hero around a field that may not exist.",
+  "next_task": "PowerShell, repo root, on branch claude/nice-bohr-6tnfn0: Copy-Item .env.example .env; fill FI_EMAIL/FI_PASSWORD; uv sync; uv run kona probe; read probe-out\\summary.md (eyeball the 'Step errors' and 'Speculative field hints' sections, the only text not passed through redaction) and commit it as docs/fi-api-fields.md.",
+  "blockers": "The Fi API cannot be reached from cloud sessions (egress 403), so slice 1 is unverified against reality until Chris runs `uv run kona probe` locally. If login fails, paste the printed status + body into the next session.",
+  "resume_minutes": 10,
+  "dont_retry": [
+    "Do not try to reach api.tryfi.com, support.tryfi.com, or discuss.tidbyt.com from a claude.ai/code session: all blocked by the egress proxy.",
+    "Do not adopt pytryfi as a dependency (stale, GET-based GraphQL, requests dependency).",
+    "Do not fetch raw.githubusercontent.com/.../main/... for sbabcock23/pytryfi; its default branch is master."
+  ],
+  "session_id": "session_01NMZqcnk7yb11RWeh9hJvRa"
+}
