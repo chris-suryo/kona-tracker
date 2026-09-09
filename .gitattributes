@@ -1,0 +1,10 @@
+# Treat binary assets as binary so autocrlf never text-corrupts them.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ogg binary
+*.wav binary
+*.mp3 binary
+*.ttf binary
+*.otf binary

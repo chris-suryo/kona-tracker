@@ -1,0 +1,6 @@
+# OS / editor junk (asset zips, esp. Mac-made, drag these in).
+__MACOSX/
+._*
+.DS_Store
+Thumbs.db
+.env
