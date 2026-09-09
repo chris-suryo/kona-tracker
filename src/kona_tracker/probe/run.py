@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -28,6 +29,7 @@ class ProbeReport:
     errors: dict[str, str] = field(default_factory=dict)  # step -> message
     speculative_hints: list[str] = field(default_factory=list)
     files: list[Path] = field(default_factory=list)
+    metrics: list[str] = field(default_factory=list)
 
 
 def _write_json(path: Path, obj: Any) -> None:
@@ -83,12 +85,18 @@ def run_probe(client: FiClient, out_dir: Path) -> ProbeReport:
         ):
             data = _try(report, f"{label}:{slug}", lambda q=q: client.graphql(q))
             if data is not None:
+                report.metrics.extend(_metric_lines(label, data, slug))
                 path = out_dir / f"pet-{slug}-{label}.json"
                 _write_json(path, data)
                 report.files.append(path)
         try:
-            client.graphql(queries.pet_speculative(pet["id"]))
-            report.speculative_hints.append("all speculative fields ACCEPTED (unexpected)")
+            data = client.graphql(queries.pet_speculative(pet["id"]))
+            path = out_dir / f"pet-{slug}-speculative.json"
+            _write_json(path, data)
+            report.files.append(path)
+            report.speculative_hints.append(
+                "Speculative query accepted; inspect saved values before claiming availability."
+            )
         except FiGraphQLError as e:
             report.speculative_hints.extend(str(x.get("message", x)) for x in e.errors)
         except FiError as e:
@@ -104,12 +112,66 @@ def _bullets(lines: list[str], items: list[str], empty: str = "none") -> None:
     lines.extend(f"- {i}" for i in items) if items else lines.append(f"- {empty}")
 
 
+def _number(value: Any) -> str:
+    return str(value) if type(value) in (int, float) else "unavailable"
+
+
+def _date(value: Any) -> str:
+    try:
+        return datetime.fromisoformat(value).isoformat()
+    except (ValueError, TypeError):
+        return "unavailable"
+
+
+def _metric_lines(label: str, data: dict, pet: str) -> list[str]:
+    """Summarize known values only; missing/null is not a measured zero."""
+    result = []
+    pet_data = data.get("pet") or {}
+    if label == "activity":
+        for period in ("dailyStat", "weeklyStat"):
+            stats = pet_data.get(period) or {}
+            result.append(
+                f"{pet} {period}: totalSteps={_number(stats.get('totalSteps'))}, "
+                f"stepGoal={_number(stats.get('stepGoal'))}, "
+                f"totalDistance={_number(stats.get('totalDistance'))} (raw API units)."
+            )
+    else:
+        summaries = (pet_data.get("restSummaryFeed") or {}).get("restSummaries") or []
+        for summary in summaries:
+            amounts = (summary.get("data") or {}).get("sleepAmounts") or []
+            for kind in ("SLEEP", "NAP"):
+                amount = next((a.get("duration") for a in amounts if a.get("type") == kind), None)
+                result.append(
+                    f"{pet} {_date(summary.get('start'))} to {_date(summary.get('end'))}: "
+                    f"{kind} duration={_number(amount)} (raw API units)."
+                )
+        if not summaries:
+            result.append(f"{pet}: rest summaries unavailable or empty; no sleep value confirmed.")
+    return result
+
+
 def render_summary(r: ProbeReport) -> str:
     lines: list[str] = ["# Fi API probe summary", ""]
     lines.append("Redacted: emails, session ids, locations, addresses, chip/module ids.")
     lines.append("")
     lines.append("## Pets")
     _bullets(lines, [f"{p['name'] or '(unnamed)'} (id {p['id']})" for p in r.pets], "none found")
+    lines.append("")
+    lines.append("## Returned metrics")
+    lines.append("")
+    _bullets(lines, r.metrics, "No metric values returned.")
+    lines.append("")
+    lines.append(
+        "Durations and distances are raw API values; units have not been verified on the collar. "
+        "Daily rest windows are not necessarily last night's sleep. "
+        "Unavailable values are not zero."
+    )
+    lines.append("")
+    lines.append(
+        "Schema fields and validation hints show possible API shapes, not measured data. "
+        "Sleep quality and scratching, licking, barking, eating, and drinking "
+        "remain unconfirmed until queried successfully for this collar."
+    )
     lines.append("")
     lines.append("## Introspection")
     if r.scan:

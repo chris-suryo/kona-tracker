@@ -9,7 +9,7 @@ from typing import Annotated
 
 import typer
 
-from kona_tracker.fi.client import FiClient, FiLoginError
+from kona_tracker.fi.client import FiClient, FiError
 from kona_tracker.probe.run import run_probe
 
 app = typer.Typer(help="kona-tracker tools.", no_args_is_help=True)
@@ -67,7 +67,7 @@ def probe(
     with FiClient() as client:
         try:
             client.login(email, password)
-        except FiLoginError as e:
+        except FiError as e:
             typer.echo(f"Login failed: {e}", err=True)
             raise typer.Exit(code=1) from None
         typer.echo("Logged in.")

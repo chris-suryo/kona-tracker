@@ -18,7 +18,7 @@ def test_login_failure_raises_without_password(fake_client):
         fake_client.login("chris@example.com", "wrong")
     assert exc.value.status == 401
     assert "wrong" not in str(exc.value)
-    assert "Invalid email" in str(exc.value)
+    assert "body omitted" in str(exc.value)
 
 
 def test_graphql_errors_keep_hints(fake_client):
