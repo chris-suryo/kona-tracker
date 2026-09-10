@@ -27,6 +27,17 @@ SLEEP = "SLEEP"
 NAP = "NAP"
 
 
+def _dict(value: Any) -> dict[str, Any]:
+    """`value` if it is a dict, else `{}`.
+
+    Every nested lookup goes through this. Fi changing a field from an object
+    to a string must read as "absent", not raise inside `fetch_snapshot` and
+    take the already-fetched sleep and steps down with it. That is the
+    difference between a "Collar:" partial and a blank page.
+    """
+    return value if isinstance(value, dict) else {}
+
+
 def _num(value: Any) -> int | float | None:
     """A real number, or None. `bool` is excluded: `True` is not a step count."""
     if type(value) in (int, float):
@@ -195,7 +206,7 @@ def activity_from(data: Any, period: str = "dailyStat") -> ActivityStats:
 
 def profile_from(data: Any) -> PetProfile:
     """Name, breed, birthday and photo URL. Absent parts stay None."""
-    pet: Any = (data.get("pet") or {}) if isinstance(data, dict) else {}
+    pet = _dict(_dict(data).get("pet"))
     birthday: date | None = None
     y, m, d = (pet.get("yearOfBirth"), pet.get("monthOfBirth"), pet.get("dayOfBirth"))
     if all(type(v) is int for v in (y, m, d)):
@@ -203,11 +214,12 @@ def profile_from(data: Any) -> PetProfile:
             birthday = date(y, m, d)
         except ValueError:
             birthday = None
-    photo = ((pet.get("photos") or {}).get("first") or {}).get("image") or {}
+    photo = _dict(_dict(_dict(pet.get("photos")).get("first")).get("image"))
     url = photo.get("fullSize")
+    breed = _dict(pet.get("breed")).get("name")
     return PetProfile(
         name=str(pet.get("name") or ""),
-        breed=((pet.get("breed") or {}).get("name")) or None,
+        breed=breed if isinstance(breed, str) and breed else None,
         birthday=birthday,
         photo_url=url if isinstance(url, str) and url.startswith("https://") else None,
     )
@@ -215,25 +227,27 @@ def profile_from(data: Any) -> PetProfile:
 
 def status_from(data: Any) -> CollarStatus:
     """The collar and what she is doing, from `pet_status`."""
-    pet: Any = (data.get("pet") or {}) if isinstance(data, dict) else {}
-    device = pet.get("device") or {}
-    info = device.get("info") if isinstance(device.get("info"), dict) else {}
-    conn = device.get("lastConnectionState") or {}
+    pet = _dict(_dict(data).get("pet"))
+    device = _dict(pet.get("device"))
+    info = _dict(device.get("info"))
+    conn = _dict(device.get("lastConnectionState"))
     kind = conn.get("__typename")
-    params = device.get("operationParams") or {}
-    led = device.get("ledColor") or {}
-    ongoing = pet.get("ongoingActivity") or {}
+    params = _dict(device.get("operationParams"))
+    led = _dict(device.get("ledColor"))
+    ongoing = _dict(pet.get("ongoingActivity"))
     activity_kind = {"OngoingRest": "rest", "OngoingWalk": "walk"}.get(ongoing.get("__typename"))
+    led_name = led.get("name")
+    mode = params.get("mode")
     return CollarStatus(
         battery_percent=_num(info.get("batteryPercent")),
-        time_to_empty_s=_num((info.get("max77658Info") or {}).get("timeToEmptyS")),
+        time_to_empty_s=_num(_dict(info.get("max77658Info")).get("timeToEmptyS")),
         on_base=(
             True if kind == "ConnectedToBase" else False if kind == "ConnectedToCellular" else None
         ),
         signal_percent=_num(conn.get("signalStrengthPercent")),
         led_on=params.get("ledEnabled") if isinstance(params.get("ledEnabled"), bool) else None,
-        led_color=led.get("name") or None,
-        mode=params.get("mode") or None,
+        led_color=led_name if isinstance(led_name, str) and led_name else None,
+        mode=mode if isinstance(mode, str) and mode else None,
         activity=activity_kind,
         activity_since=_moment(ongoing.get("start")),
         last_report=_moment(ongoing.get("lastReportTimestamp")),

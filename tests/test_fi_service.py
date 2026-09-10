@@ -515,7 +515,12 @@ def test_avatar_404s_when_there_is_no_photo_or_the_link_is_dead():
     unconfigured.state.hub.stop()
 
 
-def test_default_avatar_fetch_refuses_non_images_and_plain_http(monkeypatch):
+def test_default_avatar_fetch_refuses_non_raster_plain_http_and_downgrade_redirects(
+    monkeypatch,
+):
+    """Review finding: httpx follows a redirect from https to http without
+    complaint, so the scheme has to be checked on the final hop. And SVG is
+    an image type that can carry script, served from our own origin."""
     import httpx as _httpx
 
     from kona_tracker.web.app import fetch_avatar
@@ -523,10 +528,60 @@ def test_default_avatar_fetch_refuses_non_images_and_plain_http(monkeypatch):
     assert fetch_avatar("http://cdn/kona.jpg") is None
 
     def fake_get(url, **kw):
+        final = url
+        ctype, body = "image/jpeg", b"jpg"
         if "html" in url:
-            return _httpx.Response(200, headers={"content-type": "text/html"}, content=b"<h1>")
-        return _httpx.Response(200, headers={"content-type": "image/jpeg"}, content=b"jpg")
+            ctype, body = "text/html", b"<h1>"
+        elif "svg" in url:
+            ctype, body = "image/svg+xml", b"<svg onload=alert(1)/>"
+        elif "downgrade" in url:
+            final = "http://10.0.0.1/kona.jpg"  # https -> http redirect, followed
+        resp = _httpx.Response(200, headers={"content-type": ctype}, content=body)
+        resp.request = _httpx.Request("GET", final)
+        return resp
 
     monkeypatch.setattr(_httpx, "get", fake_get)
     assert fetch_avatar("https://cdn/page.html") is None
+    assert fetch_avatar("https://cdn/kona.svg") is None
+    assert fetch_avatar("https://cdn/downgrade.jpg") is None, "final hop must still be https"
     assert fetch_avatar("https://cdn/kona.jpg") == (b"jpg", "image/jpeg")
+
+
+def test_a_shape_change_in_the_collar_blob_is_a_partial_not_a_blank_page():
+    """Review finding: `device.info` is an arbitrary blob, and a non-dict
+    where a dict was expected used to raise AttributeError out of the whole
+    fetch, discarding the sleep and steps that had already arrived."""
+    from kona_tracker.fi.parse import profile_from, status_from
+
+    hostile = {
+        "pet": {
+            "device": "gone",
+            "photos": 7,
+            "breed": ["Lab"],
+            "ongoingActivity": None,
+        }
+    }
+    assert status_from(hostile).battery_percent is None
+    assert profile_from(hostile).photo_url is None and profile_from(hostile).breed is None
+    nested = {
+        "pet": {
+            "device": {
+                "info": {"max77658Info": "x"},
+                "lastConnectionState": 3,
+                "operationParams": [],
+                "ledColor": "White",
+            }
+        }
+    }
+    st = status_from(nested)
+    assert st.time_to_empty_s is None and st.on_base is None and st.led_color is None
+
+    def blob_goes_weird(request):
+        if request.url.path == "/graphql" and "KonaStatus" in json.loads(request.content)["query"]:
+            return httpx.Response(200, json={"data": {"pet": {"device": "nope"}}})
+        return fake_fi_handler(request)
+
+    snap = service(blob_goes_weird).snapshot()
+    assert snap.sleep_hours == 8.5, "sleep survived the collar blob changing shape"
+    assert snap.status is not None and snap.status.battery_percent is None
+    assert snap.problem is None

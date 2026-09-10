@@ -29,6 +29,9 @@ PUBLIC_PATHS = {"/login", "/healthz"}
 
 #: Kona's photo is a few hundred KB; anything bigger is not a photo.
 AVATAR_MAX_BYTES = 5 * 1024 * 1024
+#: Raster only. SVG is an image type that can carry script, and this is
+#: served from our own origin.
+AVATAR_TYPES = frozenset({"image/jpeg", "image/png", "image/webp", "image/gif"})
 
 AvatarFetch = Callable[[str], tuple[bytes, str] | None]
 
@@ -37,8 +40,9 @@ def fetch_avatar(url: str) -> tuple[bytes, str] | None:
     """Fetch the profile photo from Fi's CDN, or None if it is not an image.
 
     The URL comes from Fi's own response, never from a request, and it is
-    still held to https and an image content type. A dead or expiring link
-    returns None and the page shows the initial instead.
+    still held to https -- on the *final* hop too, since httpx follows a
+    redirect to plain http without complaint -- and to a raster image type.
+    A dead or expiring link returns None and the page shows the initial.
     """
     import httpx
 
@@ -48,8 +52,10 @@ def fetch_avatar(url: str) -> tuple[bytes, str] | None:
         resp = httpx.get(url, timeout=10.0, follow_redirects=True)
     except httpx.HTTPError:
         return None
+    if resp.url.scheme != "https":
+        return None
     ctype = resp.headers.get("content-type", "").split(";")[0].strip().lower()
-    if not resp.is_success or not ctype.startswith("image/"):
+    if not resp.is_success or ctype not in AVATAR_TYPES:
         return None
     if len(resp.content) > AVATAR_MAX_BYTES:
         return None
@@ -219,7 +225,9 @@ def create_app(
             avatar_cache[url] = fetched
         body, ctype = avatar_cache[url]
         return Response(
-            content=body, media_type=ctype, headers={"Cache-Control": "private, max-age=3600"}
+            content=body,
+            media_type=ctype,
+            headers={"Cache-Control": "private, max-age=3600", "X-Content-Type-Options": "nosniff"},
         )
 
     @app.get("/activity.json")
