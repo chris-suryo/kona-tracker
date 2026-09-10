@@ -1,0 +1,2 @@
+{"data": {"currentUser": {"id": "user-123", "email": "chris@example.com",
+  "userHouseholds": [{"household": {"pets": [{"id": "pet-1", "name": "Kona"}]}}]}}}

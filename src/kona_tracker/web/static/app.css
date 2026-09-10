@@ -1,0 +1,107 @@
+/* Meadow (Claude Design, round 3): bone light ground + moss ramp, Bricolage
+   Grotesque, top pill toggle, dial hero, hairlines not cards. Dark "Depth"
+   variant follows the phone. Tokens are the design file's v2 / v2d sets. */
+:root {
+  --bg:#F3F1EA; --bg2:#E7E4D8; --ink:#171A15; --ink2:#5C6356; --ink3:#9AA094;
+  --line:rgba(23,26,21,.13);
+  --t1:#DCE5D0; --t2:#B4C79B; --t3:#7C9E5E; --t4:#4B7A3A; --t5:#27512A; --on:#F3F1EA;
+  --warn:#C9862B; --bad:#B8472E;
+  --body:"Bricolage Grotesque",system-ui,-apple-system,sans-serif;
+  --disp:"Bricolage Grotesque",system-ui,-apple-system,sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg:#121611; --bg2:#1B211A; --ink:#EEF0E6; --ink2:#9BA394; --ink3:#5E665A;
+    --line:rgba(238,240,230,.12);
+    --t1:#1F3320; --t2:#35562E; --t3:#5F8A48; --t4:#8FBF6A; --t5:#CDE9B4; --on:#0B1208;
+    --warn:#E0A33A; --bad:#FF6B57;
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--body); }
+body { min-height: 100dvh; display: flex; flex-direction: column; -webkit-font-smoothing: antialiased; }
+.page { flex: 1; display: flex; flex-direction: column; padding: 0 24px 24px; }
+
+/* display numerals */
+.d { font-family: var(--disp); font-weight: 700; letter-spacing: -.05em; font-variant-numeric: tabular-nums; line-height: .9; }
+.empty { color: var(--ink3) !important; font-weight: 400 !important; }
+.cap { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink3); font-weight: 600; }
+.hr { height: 1px; background: var(--line); }
+
+/* header: photo · segmented toggle · collar battery */
+.hdr { display: flex; justify-content: space-between; align-items: center;
+       padding-top: max(16px, env(safe-area-inset-top)); }
+.avatar { width: 44px; height: 44px; border-radius: 50%; overflow: hidden; flex: none;
+          background: var(--t1); color: var(--t5); display: grid; place-items: center;
+          font-weight: 700; font-size: 18px; position: relative; }
+.avatar img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.seg { display: flex; padding: 3px; border-radius: 999px; background: var(--bg2); }
+.seg a { padding: 8px 18px; border-radius: 999px; font-size: 13px; font-weight: 600; color: var(--ink2); text-decoration: none; }
+.seg a.on { background: var(--ink); color: var(--bg); font-weight: 700; }
+.hdr .right { width: 44px; text-align: right; font-size: 12px; font-weight: 600; color: var(--ink2); }
+
+/* section line under the header */
+.lead { padding-top: 22px; display: flex; justify-content: space-between; align-items: baseline; }
+.lead b { font-size: 15px; font-weight: 600; }
+.lead span { font-size: 12px; color: var(--ink2); }
+
+/* dial hero */
+.dial { position: relative; margin: 8px auto 0; width: 250px; height: 230px; }
+.dial svg { width: 250px; height: 250px; position: absolute; top: 0; left: 0; }
+.dial .mid { position: absolute; inset: 0 0 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.dial .score { display: flex; align-items: baseline; }
+.dial .score .d { font-size: 88px; }
+.dial .score .u { font-size: 26px; color: var(--ink2); }
+.dial .sub { font-size: 13px; font-weight: 600; margin-top: 4px; color: var(--t4); white-space: nowrap; }
+.dial .end { position: absolute; bottom: 0; font-size: 12px; color: var(--ink2); text-align: center; }
+.dial .end.l { left: 6px; } .dial .end.r { right: 6px; }
+.dial .end .cap { font-size: 10px; }
+.dial .end b { color: var(--ink); }
+
+/* three-up stats */
+.stats { margin-top: 22px; padding: 16px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+         display: grid; grid-template-columns: 1fr 1fr 1fr; }
+.stat { display: flex; flex-direction: column; gap: 2px; }
+.stat + .stat { padding-left: 14px; border-left: 1px solid var(--line); }
+.stat .l { font-size: 11px; color: var(--ink2); font-weight: 600; letter-spacing: .04em; }
+.stat .v { font-family: var(--disp); font-weight: 700; letter-spacing: -.04em; font-size: 30px; line-height: 1; font-variant-numeric: tabular-nums; }
+.stat .v small { font-size: 13px; color: var(--ink2); font-weight: 500; letter-spacing: 0; margin-left: 2px; }
+.stat .n { font-size: 11px; color: var(--ink2); font-weight: 500; }
+.note { font-size: 13px; color: var(--ink2); line-height: 1.45; margin-top: 18px; }
+
+/* camera */
+.cam-page { padding: 0; }
+.cam-page .hdr { padding-left: 24px; padding-right: 24px; }
+.cam { position: relative; margin: 18px 0 0; background: #0b0e0c; }
+.cam img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; }
+.cam .top { position: absolute; left: 16px; right: 16px; top: 14px; display: flex; justify-content: space-between; align-items: center; color: #fff; }
+.cam .name { font-family: var(--disp); font-weight: 700; letter-spacing: -.03em; font-size: 22px; text-shadow: 0 1px 6px rgba(0,0,0,.5); }
+.live { display: flex; align-items: center; gap: 8px; font-size: 11px; letter-spacing: .14em; font-weight: 700;
+        padding: 6px 12px; border-radius: 999px; background: rgba(0,0,0,.45); border: 1px solid rgba(255,255,255,.15); }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: rgba(255,255,255,.35); }
+.dot.on { background: var(--t3); animation: pulse 1.6s infinite; }
+.dot.stale { background: var(--warn); }
+.dot.off { background: var(--bad); }
+@keyframes pulse { 0%,100% { opacity: .35; } 50% { opacity: 1; } }
+.cam-meta { padding: 18px 24px 0; display: flex; justify-content: space-between; align-items: center; }
+.cam-meta .d { font-size: 34px; letter-spacing: -.04em; }
+.cam-meta .s { font-size: 12px; color: var(--ink2); margin-top: 4px; min-height: 1.2em; }
+.pill { height: 40px; padding: 0 16px; border-radius: 999px; border: 1px solid var(--line); color: var(--ink);
+        font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; text-decoration: none; }
+
+/* login */
+.login { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; gap: 22px; padding: 0 4px 12px; }
+.login .avatar { width: 96px; height: 96px; font-size: 40px; }
+.login h1 { font-family: var(--disp); font-weight: 700; letter-spacing: -.05em; font-size: 52px; line-height: .95; margin: 0; }
+.login p { font-size: 16px; color: var(--ink2); line-height: 1.45; margin: 0; }
+.login form { display: flex; flex-direction: column; gap: 12px; padding-top: 10px; }
+.login input { font: inherit; font-size: 28px; letter-spacing: .35em; padding: 12px 0; color: var(--ink);
+               background: transparent; border: 0; border-bottom: 1px solid var(--t3); outline: 0; border-radius: 0; }
+.login input:focus { border-bottom-color: var(--t4); }
+.login button { font: inherit; height: 54px; border-radius: 14px; border: 0; background: var(--ink); color: var(--bg);
+                font-size: 16px; font-weight: 600; }
+.login .fine { font-size: 12px; color: var(--ink3); text-align: center; }
+.error { color: var(--bad); margin: 0; font-size: 14px; }
+.logout { font-size: 12px; color: var(--ink3); background: none; border: 0; padding: 20px 0 0; font: inherit; text-align: center; }

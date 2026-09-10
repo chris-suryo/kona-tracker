@@ -1,0 +1,58 @@
+{
+  "goal": "Continue kona-tracker: review Astro's PR #1, then build slice 2 (passcode gate + live webcam on the LAN) so Chris can see Kona on an iPhone tonight.",
+  "completed": [
+    "Reviewed PR #1 (Astro's probe fixes) and posted the review on GitHub: merge after widening the GraphQL-hint allowlist regex (it accepts one suggestion; graphql-js emits comma lists), plus a non-blocking note that login failures now discard the body entirely.",
+    "Grilled the camera slice with Chris: hardware = USB webcam (PC tonight) + Raspberry Pi 5 kit (tomorrow); stack stays Python; stream tech = OpenCV -> MJPEG over FastAPI (go2rtc/WebRTC deferred to the remote-access slice).",
+    "Built slice 2: src/kona_tracker/camera/ (OpenCVSource with DirectShow-first on Windows, FakeSource with an embedded real JPEG, one-capture-thread CameraHub with idle stop), src/kona_tracker/web/ (FastAPI app, passcode auth with signed cookie + per-IP lockout, settings from env/.env, Jinja templates + Field-token CSS), `kona serve` and `kona cameras` CLI commands.",
+    "21 tests green (fake camera, no hardware); ruff clean; verified end to end against a live uvicorn with curl: gate, login, lockout, snapshot, 20 MJPEG frames in 2 s.",
+    "Docs: docs/slice-2-camera-plan.md; PROJECT.md now carries status, an ownership table (Claude Code / Astro / Claude Design / Chris), PowerShell commands, Locations.",
+    "4 commits pushed to claude/nice-bohr-6tnfn0."
+  ],
+  "discovered": [
+    "Starlette's TestClient runs the ASGI app to completion, so an endless streaming response hangs the test forever; /stream.mjpg?frames=N exists to cap it (also handy for curl).",
+    "GitHub refuses REQUEST_CHANGES on a PR authored by the same account; Astro's PR is under Chris's account, so reviews from this session must be COMMENT.",
+    "PR #1 targets claude/nice-bohr-6tnfn0 (not main); it touches cli.py at the import and the login except only, so slice 2's appended commands do not conflict.",
+    "Chris told Astro 'Vercel + Supabase' for hosting; the camera stream can only originate at home, so the camera server is home-hosted regardless of where the rest lives."
+  ],
+  "decisions": [
+    "Stream tech for v0: OpenCV capture -> multipart MJPEG served by FastAPI, shown by a plain <img>. Pure Python, works on Windows and the Pi, plays in iPhone Safari. go2rtc/WebRTC is the recorded upgrade path when remote viewing or audio matters.",
+    "One capture thread per camera (CameraHub); viewers read the latest frame; capture stops after 5 s idle so the webcam LED goes off.",
+    "Passcode gate: KONA_PASSCODE constant-time compare; itsdangerous TimestampSigner cookie, 30 days, HttpOnly, SameSite=Lax; 5 failures per IP -> 30 s cooldown; stream/snapshot return 401 rather than redirect.",
+    "Tonight is LAN-only over plain HTTP; accepted and documented. HTTPS/Tailscale is the remote-access slice.",
+    "Ownership: Claude Code = web/camera/tests/docs; Astro = probe fixes + running on real hardware; Claude Design = templates/CSS; Chris = hardware, .env, merges. Separate branches, share via GitHub.",
+    "New dependencies approved via the plan: fastapi, uvicorn[standard], jinja2, python-multipart, itsdangerous, opencv-python-headless."
+  ],
+  "lessons": [
+    "When a subprocess/test hangs with no output, `pytest -o faulthandler_timeout=N` dumps every thread's stack; it found the TestClient-vs-infinite-stream hang in one run.",
+    "Don't hand-roll binary fixtures (my first fake JPEG was hex guesswork); generate one with the real encoder once, verify it decodes, embed the bytes.",
+    "A 'wait for any frame' sequence check needs the initial counter chosen so the first wait actually blocks; the off-by-one made snapshot() return None immediately.",
+    "pkill from inside a Bash tool call kills the shell's own group (exit 144); background the server in a subshell and kill by PID instead."
+  ],
+  "files_changed": [
+    "pyproject.toml", "uv.lock", ".env.example", "PROJECT.md",
+    "src/kona_tracker/cli.py", "src/kona_tracker/cli_env.py",
+    "src/kona_tracker/camera/__init__.py", "src/kona_tracker/camera/source.py", "src/kona_tracker/camera/hub.py",
+    "src/kona_tracker/web/__init__.py", "src/kona_tracker/web/app.py", "src/kona_tracker/web/auth.py", "src/kona_tracker/web/settings.py",
+    "src/kona_tracker/web/templates/base.html", "src/kona_tracker/web/templates/login.html", "src/kona_tracker/web/templates/camera.html", "src/kona_tracker/web/templates/activity.html",
+    "src/kona_tracker/web/static/app.css",
+    "tests/test_camera_hub.py", "tests/test_web.py", "tests/test_settings.py",
+    "docs/slice-2-camera-plan.md"
+  ],
+  "open_questions": [
+    "Does the real webcam open and stream on Chris's Windows PC (DirectShow index, resolution, fps)? Unverified from the cloud.",
+    "Which webcam did Chris buy, and does it need any driver beyond UVC?",
+    "Long-term hosting: camera server at home for sure; Vercel+Supabase for the rest, or everything on the Pi with Tailscale?",
+    "PR #1: has Astro widened the regex and does Chris merge it into this branch before or after slice 2 lands?",
+    "Does Fi's API expose a sleep-quality field? Still waits on the collar (tomorrow)."
+  ],
+  "intent": "Stopped where the cloud cannot go further: everything is proven with a fake camera and a live server, but only a run on Chris's PC with the real webcam can close the loop. Slice 3 (Activity hero) is blocked on the collar anyway.",
+  "next_task": "PowerShell, repo root, branch claude/nice-bohr-6tnfn0: git pull; uv sync; add KONA_PASSCODE (and KONA_SECRET) to .env; uv run kona cameras; uv run kona serve; allow the firewall prompt; on the iPhone open http://<PC-IPv4>:8000 and tap Camera. Report what happens (works / camera index / error text).",
+  "blockers": "Real-webcam behaviour on Windows is unverified (cloud sessions have no hardware). If `kona cameras` finds nothing or `kona serve` shows a camera error, paste the exact message into the next session. Fi remains blocked on the collar arriving.",
+  "resume_minutes": 10,
+  "dont_retry": [
+    "Do not test an uncapped /stream.mjpg through Starlette's TestClient; it never returns. Use ?frames=N or a real uvicorn + curl.",
+    "Do not submit a REQUEST_CHANGES review on PRs authored by chris-suryo from this session; GitHub rejects self-review. Use a COMMENT review.",
+    "Do not reach for go2rtc/ffmpeg for the LAN case; the pure-Python MJPEG path already works and adds no binaries."
+  ],
+  "session_id": "session_01NMZqcnk7yb11RWeh9hJvRa"
+}

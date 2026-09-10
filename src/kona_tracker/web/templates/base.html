@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="theme-color" content="#F3F1EA" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#121611" media="(prefers-color-scheme: dark)">
+  <title>{% block title %}Kona{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <main class="page {% block pageclass %}{% endblock %}">
+  {% if tab %}
+  <header class="hdr">
+    <div class="avatar" aria-label="Kona">K<img src="/static/kona.jpg" alt="" onerror="this.remove()"></div>
+    <nav class="seg" aria-label="Sections">
+      <a href="/activity" class="{{ 'on' if tab == 'activity' else '' }}">Activity</a>
+      <a href="/camera" class="{{ 'on' if tab == 'camera' else '' }}">Camera</a>
+    </nav>
+    <div class="right">{% block hdrright %}{% endblock %}</div>
+  </header>
+  {% endif %}
+  {% block body %}{% endblock %}
+  </main>
+</body>
+</html>

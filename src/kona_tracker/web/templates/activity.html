@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Kona · activity{% endblock %}
+{% block body %}
+<div class="lead"><b>Last night</b><span>Collar arrives soon</span></div>
+<!-- Dial hero (Meadow 3a). Track only until real Fi data exists; the arc,
+     score, and end labels are filled in slice 3 from confirmed fields. -->
+<div class="dial" aria-label="Rest last night: no data yet">
+  <svg viewBox="0 0 300 300" aria-hidden="true">
+    <circle cx="150" cy="150" r="128" fill="none" stroke="var(--t1)" stroke-width="18"
+            stroke-dasharray="603 830" stroke-linecap="round" transform="rotate(135 150 150)"/>
+  </svg>
+  <div class="mid">
+    <div class="score"><div class="d empty">&ndash;</div><div class="u d">h</div></div>
+    <div class="sub">waiting for the collar</div>
+  </div>
+  <div class="end l"><div class="cap">Asleep</div><b class="empty">&ndash;</b></div>
+  <div class="end r"><div class="cap">Awake</div><b class="empty">&ndash;</b></div>
+</div>
+<div class="stats">
+  <div class="stat"><span class="l">Steps</span><span class="v empty">&ndash;</span><span class="n">today</span></div>
+  <div class="stat"><span class="l">Active</span><span class="v empty">&ndash;<small>min</small></span><span class="n">today</span></div>
+  <div class="stat"><span class="l">Sleep</span><span class="v empty">&ndash;<small>h</small></span><span class="n">last night</span></div>
+</div>
+<p class="note">Kona's Fi collar arrives tomorrow. Once it's paired, this page shows her rest and steps from the collar. The Camera tab works now.</p>
+<form method="post" action="/logout"><button class="logout" type="submit">Sign out on this phone</button></form>
+{% endblock %}

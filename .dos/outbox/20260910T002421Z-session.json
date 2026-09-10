@@ -1,0 +1,73 @@
+{
+  "goal": "Slice 2b: add a configurable RTSP network-camera source (Tapo TC73 is the leading option) with reconnect handling and a stale/disconnected indicator so frozen video never looks live; credentials kept out of logs; tested with simulated streams.",
+  "completed": [
+    "RtspSource (camera/source.py): any URL OpenCV/FFmpeg can open, TCP transport + socket timeout via OPENCV_FFMPEG_CAPTURE_OPTIONS set before the first import, FFmpeg logging silenced; no new dependency.",
+    "camera/redact.py: redact_url(), split_credentials(), with_credentials() with URL-encoding round trip; applied to every error string, repr, status field, and CLI line. Settings.__repr__ masks secrets.",
+    "camera/placeholder.py: embedded 480x270 'NO SIGNAL / reconnecting' JPEG rendered once with OpenCV.",
+    "Hub rewrite (camera/hub.py): supervisor thread over disposable reader threads (one per connection generation); hang detection abandons a stuck reader and starts the next after backoff (1 s doubling to 30 s, reset on first good frame); reconnecting stops when nobody watches; mjpeg() streams the placeholder once per second while stale/disconnected with X-Kona-State part headers; snapshot() returns (jpeg, state); status() reports state/age/generation/opens/reconnects/last_error.",
+    "Web: KONA_CAMERA_SOURCE usb|rtsp|fake, KONA_RTSP_URL/USER/PASSWORD (embedded credentials split out), KONA_STALE_SECONDS, KONA_HANG_SECONDS; gated /status.json; snapshot always 200 with X-Kona-State; camera.html polls status into the existing #dot/#cap; two CSS classes (.dot.stale, .dot.off).",
+    "CLI: `kona camera-test` (opens the configured camera once, prints size/fps/bytes, redacted URL, exact error); `kona serve` prints the redacted camera label.",
+    "39 tests green incl. scripted-source hub tests (dropped reads, mid-stream exception, hung read abandoned+replaced, stale->live, status transitions, backoff, stop) and a real OpenCV+FFmpeg network read against an in-process HTTP MJPEG server.",
+    "Live check: uvicorn with a source that dies after 3 s and is refused for 4 s showed live -> disconnected -> stale -> live on /stream.mjpg; 3 reconnects reported; the password appeared nowhere in the stream or log.",
+    "docs/slice-2b-rtsp-plan.md with Tapo setup steps; PROJECT.md updated; 4 commits pushed to claude/nice-bohr-6tnfn0.",
+    "/security-review found one MEDIUM: a scheme-less KONA_RTSP_URL (e.g. 192.168.1.10:554/stream1) or a raw '/' in an embedded password slipped past the redactor and put the password in /status.json and camera-test output. Fixed at three layers (errors built from the bare URL only; shape-agnostic redactor; settings refuse scheme-less URLs) with tests for each reproduced input. 45 tests green after the fix.",
+    "Windows CI caught a race in the snapshot-on-dead-camera test; root cause was real (a viewer waited its full timeout on a dead camera). _wait_frame now wakes on reader death; suite stable 3/3 locally, CI green on ubuntu + windows at 5dad045."
+  ],
+  "discovered": [
+    "OpenCV 5.0 wheel's FFmpeg opens HTTP MJPEG URLs fine in the sandbox, which gives a hardware-free test of the network capture path; RTSP itself still needs a real server/camera.",
+    "A hub that reconnects only while viewers exist makes 'reconnects after failure' tests wrong unless the test holds a viewer; the idle stop is a feature, not a bug.",
+    "With a reconnect backoff shorter than the stale window the recovery is seamless and no placeholder is ever shown; tests that want to see the gap must set backoff > stale_after.",
+    "PR #1 (Astro's probe fixes) is still open and unmerged; branch unchanged otherwise.",
+    "urllib.parse.urlsplit stops the netloc at the first '/', so a raw '/' inside an embedded password silently moves the credentials into the path; and hostname/port round-tripping strips IPv6 brackets."
+  ],
+  "decisions": [
+    "Frozen-never-looks-live is enforced server-side (placeholder frames in the stream itself), with the status label as a second, optional layer.",
+    "Hung reads are handled by abandoning the reader thread and starting a new generation; a thread stuck in a C call cannot be killed, so this is the only in-process recovery. Known limit: lingering threads during hours of flapping, bounded by the backoff cap.",
+    "RTSP credentials: separate .env keys are canonical; an embedded-credential URL is tolerated but split and redacted.",
+    "Defaults: stale after 3 s, hang after 10 s, backoff 1 s to 30 s, TCP transport.",
+    "Template/CSS touch limited to the status script and two .dot classes; Claude Design owns the look of the states."
+  ],
+  "lessons": [
+    "When applying multi-file edits via a script, run ruff format first or anchor on post-format text; one reformatted line silently aborted half the edits.",
+    "Assert on behaviour the design promises (reconnected, resumed, redacted) rather than on timing-dependent intermediate states unless the timing is pinned in the test.",
+    "Generate binary fixtures with the real encoder and embed the bytes; never hand-write JPEG hex.",
+    "A credential redactor keyed on URL shape fails exactly on the malformed inputs users type; build messages from a string that never held the secret, and make the matcher shape-agnostic. Have the security review try the typo cases, not just the happy path.",
+    "Windows runners are slower and expose timing assumptions in thread tests; assert on 'not live' rather than on which non-live state, and make waits wake on state changes instead of relying on timeouts."
+  ],
+  "files_changed": [
+    ".env.example",
+    "PROJECT.md",
+    "docs/slice-2b-rtsp-plan.md",
+    "src/kona_tracker/camera/hub.py",
+    "src/kona_tracker/camera/placeholder.py",
+    "src/kona_tracker/camera/redact.py",
+    "src/kona_tracker/camera/source.py",
+    "src/kona_tracker/cli.py",
+    "src/kona_tracker/web/app.py",
+    "src/kona_tracker/web/settings.py",
+    "src/kona_tracker/web/static/app.css",
+    "src/kona_tracker/web/templates/camera.html",
+    "tests/test_camera_hub.py",
+    "tests/test_network_source.py",
+    "tests/test_redact.py",
+    "tests/test_settings.py",
+    "tests/test_web.py"
+  ],
+  "open_questions": [
+    "Does the Tapo TC73 actually get bought, and does its RTSP work with the camera-account credentials on first try (some firmware needs RTSP enabled)?",
+    "Real H.264 decode fps and CPU on the Windows PC and later the Pi 5 with the HD stream (/stream1) vs SD (/stream2).",
+    "Does FFmpeg's `timeout` option fire on the bundled build, or does hang detection (10 s) do all the work?",
+    "PR #1 merge timing and whether Astro widened the regex.",
+    "Fi sleep-quality field: still waits on the collar."
+  ],
+  "intent": "Stopped at the hardware boundary again: everything provable with simulated streams and a live server is proven; the RTSP handshake against the real Tapo is Astro's step on the Windows PC.",
+  "next_task": "Astro, PowerShell, repo root, branch claude/nice-bohr-6tnfn0: git pull; uv sync; in .env set KONA_CAMERA_SOURCE=rtsp, KONA_RTSP_URL=rtsp://<camera-ip>:554/stream1, KONA_RTSP_USER, KONA_RTSP_PASSWORD (Tapo camera account); uv run kona camera-test; then uv run kona serve, iPhone -> Camera, unplug the camera 20 s and replug: expect Disconnected then Live. Report the camera-test line and any error text (already redacted).",
+  "blockers": "Real RTSP auth/decode is unverified until a camera exists on the Wi-Fi. Fi remains blocked on the collar.",
+  "resume_minutes": 10,
+  "dont_retry": [
+    "Do not look for an RTSP server in the cloud sandbox; use the in-process HTTP MJPEG server test for the FFmpeg network path.",
+    "Do not test uncapped /stream.mjpg through Starlette's TestClient (hangs); use ?frames=N or real uvicorn + curl.",
+    "Do not hand-write JPEG bytes for fixtures."
+  ],
+  "session_id": "session_01NMZqcnk7yb11RWeh9hJvRa"
+}
