@@ -39,6 +39,9 @@ class ProbeReport:
     speculative_hints: list[str] = field(default_factory=list)
     files: list[Path] = field(default_factory=list)
     metrics: list[str] = field(default_factory=list)
+    #: Redacted bodies of the responses the metric lines do not summarise,
+    #: inlined into summary.md so one pasted file carries everything.
+    extras: dict[str, Any] = field(default_factory=dict)
 
 
 def _write_json(path: Path, obj: Any) -> None:
@@ -108,19 +111,26 @@ def run_probe(client: FiClient, out_dir: Path) -> ProbeReport:
                 path = out_dir / f"pet-{slug}-{label}.json"
                 _write_json(path, data)
                 report.files.append(path)
+                report.extras[f"{label}:{slug}"] = redact(data)
 
-        try:
-            data = client.graphql(queries.pet_speculative(pet["id"]))
-            path = out_dir / f"pet-{slug}-speculative.json"
-            _write_json(path, data)
-            report.files.append(path)
-            report.speculative_hints.append(
-                "Speculative query accepted; inspect saved values before claiming availability."
-            )
-        except FiGraphQLError as e:
-            report.speculative_hints.extend(str(x.get("message", x)) for x in e.errors)
-        except FiError as e:
-            report.errors[f"speculative:{slug}"] = str(e)
+        # Speculative: the errors are the data. One query per known type, so
+        # each rejection names the type it was checked against.
+        for label, q in queries.speculative_queries(pet["id"]):
+            try:
+                data = client.graphql(q)
+                path = out_dir / f"pet-{slug}-speculative-{label}.json"
+                _write_json(path, data)
+                report.files.append(path)
+                report.speculative_hints.append(
+                    f"[{label}] query accepted; inspect the saved file before claiming "
+                    "availability."
+                )
+            except FiGraphQLError as e:
+                report.speculative_hints.extend(
+                    f"[{label}] {x.get('message', x)}" for x in e.errors
+                )
+            except FiError as e:
+                report.errors[f"speculative-{label}:{slug}"] = str(e)
 
     summary = out_dir / "summary.md"
     summary.write_text(render_summary(report), encoding="utf-8")
@@ -192,9 +202,9 @@ def render_summary(r: ProbeReport) -> str:
     _bullets(lines, r.metrics, "No metric values returned.")
     lines.append("")
     lines.append(
-        "Durations and distances are raw API values; units have not been verified on the collar. "
-        "Daily rest windows are not necessarily last night's sleep. "
-        "Unavailable values are not zero."
+        "Durations are seconds (verified 2026-09-10: weekly SLEEP 27202 = 7.6 h). "
+        "Distance units are still unverified. The newest daily rest window is today, in "
+        "progress; last night is the window before it. Unavailable values are not zero."
     )
     lines.append("")
     lines.append(
@@ -231,4 +241,19 @@ def render_summary(r: ProbeReport) -> str:
     lines.append("")
     lines.extend(f"- {p.name}" for p in r.files)
     lines.append("")
+    if r.extras:
+        lines.append("## Other responses (redacted, verbatim)")
+        lines.append("")
+        lines.append(
+            "Profile, device and location as Fi returned them, with private values "
+            "blanked. Field names and shapes are the point."
+        )
+        for label, body in r.extras.items():
+            lines.append("")
+            lines.append(f"### {label}")
+            lines.append("")
+            lines.append("```json")
+            lines.append(json.dumps(body, indent=2, ensure_ascii=True, sort_keys=True))
+            lines.append("```")
+        lines.append("")
     return "\n".join(lines)

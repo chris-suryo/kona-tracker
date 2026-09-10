@@ -62,7 +62,7 @@ def test_summary_includes_returned_values_without_guessing_units(fake_client, tm
         "totalSteps=4210",
         "stepGoal=9000",
         "totalDistance=3120.5",
-        "2026-09-08",
+        "2026-09-09",
         "raw API units",
         "remain unconfirmed",
     ):

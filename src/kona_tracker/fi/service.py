@@ -14,6 +14,7 @@ day pays the round trip.
 from __future__ import annotations
 
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 
@@ -25,6 +26,7 @@ from kona_tracker.fi.parse import (
     hours_from_duration,
     pets_from,
     rest_from,
+    split_windows,
 )
 from kona_tracker.fi.queries import CURRENT_USER_PETS, pet_activity, pet_rest
 
@@ -50,8 +52,12 @@ class FiSnapshot:
     fetched_at: datetime
     pet_name: str = ""
     pet_id: str = ""
+    #: The most recent *completed* day: the hero. Last night lives here.
     window: RestWindow | None = None
+    #: The day in progress. Its SLEEP is 0 until tonight; its NAP is live.
+    today: RestWindow | None = None
     activity: ActivityStats | None = None
+    week: ActivityStats | None = None
     problem: str | None = None
     stale: bool = False
 
@@ -61,11 +67,12 @@ class FiSnapshot:
 
     @property
     def nap_hours(self) -> float | None:
-        return hours_from_duration(self.window.nap) if self.window else None
+        """Naps so far today, not last night's."""
+        return hours_from_duration(self.today.nap) if self.today else None
 
     @property
     def has_data(self) -> bool:
-        return self.window is not None or self.activity is not None
+        return any(x is not None for x in (self.window, self.today, self.activity))
 
     @property
     def partial(self) -> bool:
@@ -79,12 +86,10 @@ class FiSnapshot:
         Loud on purpose: it means Fi changed units under us, and the page
         shows the raw number rather than a confident wrong one.
         """
-        if not self.window:
-            return False
-        return any(
-            raw is not None and hours_from_duration(raw) is None
-            for raw in (self.window.sleep, self.window.nap)
-        )
+        raws = [w.sleep for w in (self.window, self.today) if w] + [
+            w.nap for w in (self.window, self.today) if w
+        ]
+        return any(raw is not None and hours_from_duration(raw) is None for raw in raws)
 
 
 def _now() -> datetime:
@@ -120,13 +125,17 @@ def _explain(error: FiError) -> str:
     return str(error)
 
 
-def fetch_snapshot(client: FiClient, email: str, password: str) -> FiSnapshot:
+def fetch_snapshot(
+    client: FiClient, email: str, password: str, now: datetime | None = None
+) -> FiSnapshot:
     """One full round trip: log in, find the pet, read rest and activity.
 
     Raises `FiError` on login failure — without a session there is nothing to
     show. Once logged in, rest and activity are independent: losing one must
-    not blank the other.
+    not blank the other. `now` decides which rest window counts as "last
+    night"; tests pin it so fixtures do not age.
     """
+    now = now or _now()
     client.login(email, password)
     pets = pets_from(client.graphql(CURRENT_USER_PETS))
     if not pets:
@@ -134,26 +143,32 @@ def fetch_snapshot(client: FiClient, email: str, password: str) -> FiSnapshot:
     pet = pets[0]
 
     window: RestWindow | None = None
+    today: RestWindow | None = None
     activity: ActivityStats | None = None
+    week: ActivityStats | None = None
     problems: list[str] = []
     try:
-        windows = rest_from(client.graphql(pet_rest(pet.id, limit=1)), "dailyStat")
-        window = windows[0] if windows else None
-        if window is None:
+        windows = rest_from(client.graphql(pet_rest(pet.id, limit=2)), "dailyStat")
+        window, today = split_windows(windows, now)
+        if window is None and today is None:
             problems.append("Fi returned no rest windows yet.")
     except FiError as e:
         problems.append(f"Sleep: {_explain(e)}")
     try:
-        activity = activity_from(client.graphql(pet_activity(pet.id)))
+        data = client.graphql(pet_activity(pet.id))
+        activity = activity_from(data, "dailyStat")
+        week = activity_from(data, "weeklyStat")
     except FiError as e:
         problems.append(f"Steps: {_explain(e)}")
 
     return FiSnapshot(
-        fetched_at=_now(),
+        fetched_at=now,
         pet_name=pet.name,
         pet_id=pet.id,
         window=window,
+        today=today,
         activity=activity,
+        week=week,
         problem=" ".join(problems) or None,
     )
 
@@ -167,11 +182,13 @@ class FiService:
         password: str,
         refresh_seconds: float = DEFAULT_REFRESH_SECONDS,
         client_factory=FiClient,
+        clock: Callable[[], datetime] = _now,
     ):
         self._email = email
         self._password = password
         self._ttl = max(refresh_seconds, 1.0)
         self._client_factory = client_factory
+        self._clock = clock
         self._lock = threading.Lock()
         self._snapshot: FiSnapshot | None = None
         self._refreshing = False
@@ -183,7 +200,7 @@ class FiService:
     def _fetch(self) -> FiSnapshot:
         client = self._client_factory()
         try:
-            return fetch_snapshot(client, self._email, self._password)
+            return fetch_snapshot(client, self._email, self._password, now=self._clock())
         finally:
             client.close()
 
@@ -197,7 +214,7 @@ class FiService:
         except Exception as e:  # a bug here must not kill the page
             fresh, problem = None, f"Unexpected error talking to Fi: {type(e).__name__}: {e}"
         with self._lock:
-            self._attempted_at = _now()
+            self._attempted_at = self._clock()
             if fresh is not None:
                 self._snapshot = fresh
             elif self._snapshot is not None:
@@ -207,13 +224,13 @@ class FiService:
                 # and only here.
                 self._snapshot = replace(self._snapshot, problem=problem, stale=True)
             else:
-                self._snapshot = FiSnapshot(fetched_at=_now(), problem=problem)
+                self._snapshot = FiSnapshot(fetched_at=self._clock(), problem=problem)
             self._refreshing = False
 
     def _stale(self) -> bool:
         if self._attempted_at is None:
             return True
-        return (_now() - self._attempted_at).total_seconds() >= self._ttl
+        return (self._clock() - self._attempted_at).total_seconds() >= self._ttl
 
     def snapshot(self) -> FiSnapshot:
         """The best answer available now.

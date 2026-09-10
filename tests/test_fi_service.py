@@ -29,13 +29,19 @@ from kona_tracker.web.views import TRACK, activity_context, dial_offset
 
 EMAIL, PASSWORD = "chris@example.com", "correct"
 
+# Mid-afternoon on the fixture's "today": inside the in-progress window and
+# after last night's window closed. Pinned so the fixtures never age.
+NOW = datetime(2026, 9, 10, 15, 0, tzinfo=UTC)
+
 
 def make_client(handler=fake_fi_handler) -> FiClient:
     return FiClient(transport=httpx.MockTransport(handler))
 
 
-def service(handler=fake_fi_handler, refresh_seconds=300.0) -> FiService:
-    return FiService(EMAIL, PASSWORD, refresh_seconds, client_factory=lambda: make_client(handler))
+def service(handler=fake_fi_handler, refresh_seconds=300.0, clock=lambda: NOW) -> FiService:
+    return FiService(
+        EMAIL, PASSWORD, refresh_seconds, client_factory=lambda: make_client(handler), clock=clock
+    )
 
 
 # --------------------------------------------------------------------------
@@ -48,8 +54,8 @@ def test_parsers_read_the_shapes_the_probe_already_proved():
     assert [(p.id, p.name) for p in pets] == [("pet-1", "Kona")]
 
     windows = rest_from(fixture("rest")["data"])
-    assert len(windows) == 1
-    assert windows[0].sleep == 30600 and windows[0].nap == 5400
+    assert len(windows) == 2, "today in progress, plus last night"
+    assert windows[1].sleep == 30600 and windows[1].nap == 5400
     assert windows[0].start.year == 2026
 
     stats = activity_from(fixture("activity")["data"])
@@ -88,13 +94,56 @@ def test_an_impossible_duration_returns_none_rather_than_a_confident_number():
 # --------------------------------------------------------------------------
 
 
-def test_fetch_snapshot_reads_last_night():
+def test_fetch_snapshot_reads_last_night_not_today():
+    """The bug the real collar exposed.
+
+    Fi's newest daily window is today, in progress, SLEEP=0. A "Last night"
+    dial that read it would show 0 h. The hero is the last *completed* day;
+    naps come from today.
+    """
     with make_client() as client:
-        snap = fetch_snapshot(client, EMAIL, PASSWORD)
+        snap = fetch_snapshot(client, EMAIL, PASSWORD, now=NOW)
     assert snap.pet_name == "Kona"
-    assert snap.sleep_hours == 8.5 and snap.nap_hours == 1.5
-    assert snap.activity.steps == 4210
+    assert snap.sleep_hours == 8.5, "last night, not today's 0"
+    assert snap.window.end < NOW <= snap.today.end
+    assert snap.nap_hours == pytest.approx(1290 / 3600), "naps so far today"
+    assert snap.activity.steps == 4210 and snap.week.steps == 31000
     assert snap.problem is None and snap.has_data and not snap.unit_suspect
+
+
+def test_a_collar_paired_today_has_no_night_yet():
+    """Only an in-progress window: say the night is still to come, not 0 h."""
+    from kona_tracker.fi.parse import split_windows
+
+    windows = rest_from(fixture("rest")["data"])
+    last, today = split_windows(windows[:1], NOW)  # drop yesterday
+    assert last is None and today is not None
+    ctx = activity_context(FiSnapshot(fetched_at=NOW, today=today, activity=None), configured=True)
+    assert ctx["night_pending"] and ctx["sleep_hours"] is None
+    assert ctx["nap_hours"] == "0.4"
+
+
+def test_split_windows_handles_naive_and_missing_timestamps():
+    from kona_tracker.fi.parse import RestWindow, split_windows
+
+    naive = rest_from(
+        {
+            "pet": {
+                "dailyStat": {
+                    "restSummaries": [
+                        {
+                            "start": "2026-09-09T04:00:00",
+                            "end": "2026-09-10T04:00:00",
+                            "data": {"sleepAmounts": [{"type": "SLEEP", "duration": 100}]},
+                        }
+                    ]
+                }
+            }
+        }
+    )
+    last, today = split_windows(naive, NOW)
+    assert last is not None and last.sleep == 100, "a bare stamp is read as UTC, not a crash"
+    assert split_windows([RestWindow(None, None, 1, 1)], NOW) == (None, None)
 
 
 def test_bad_password_is_a_problem_not_a_crash():
@@ -215,7 +264,7 @@ def test_dial_offset_maps_hours_onto_the_track_in_the_stylesheet():
 
 def test_context_shows_raw_seconds_when_the_unit_is_not_credible():
     with make_client() as client:
-        snap = fetch_snapshot(client, EMAIL, PASSWORD)
+        snap = fetch_snapshot(client, EMAIL, PASSWORD, now=NOW)
     broken = FiSnapshot(
         fetched_at=snap.fetched_at,
         pet_name=snap.pet_name,
@@ -250,12 +299,16 @@ def web_client(fi_service=None, **kw) -> TestClient:
 def test_activity_page_renders_real_numbers():
     with web_client(service()) as c:
         body = c.get("/activity").text
-        assert "8.5" in body and "4,210" in body and "1.5" in body
-        assert "9,000" in body  # step goal
+        assert "8.5" in body and "4,210" in body and "9,000" in body
+        assert "0.4" in body and "so far today" in body  # today's naps, not last night's
+        assert "31,000" in body and "This week" in body  # replaced the distance tile
+        assert "raw units" not in body
         assert PASSWORD not in body and EMAIL not in body
 
         data = c.get("/activity.json").json()
         assert data["sleep_seconds"] == 30600 and data["sleep_hours"] == 8.5
+        assert data["today_nap_seconds"] == 1290 and data["week_steps"] == 31000
+        assert data["distance_raw"] == 3120.5, "still in the JSON, just not on the page"
         assert data["steps"] == 4210 and data["problem"] is None
         assert "password" not in json.dumps(data).lower()
 

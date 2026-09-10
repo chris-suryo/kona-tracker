@@ -65,8 +65,11 @@ REST_PERIODS: tuple[tuple[str, str], ...] = (
 )
 
 
-def pet_rest(pet_id: str, limit: int = 1) -> str:
+def pet_rest(pet_id: str, limit: int = 2) -> str:
     """Sleep and nap totals at all three periods.
+
+    `limit=2` on purpose: the newest daily window is today, in progress, and
+    last night lives in the one before it. See `parse.split_windows`.
 
     The inline fragment on `ConcreteRestSummaryData` is load-bearing, not
     decoration. `RestSummary.data` is an abstract type and `sleepAmounts`
@@ -84,16 +87,26 @@ def pet_rest(pet_id: str, limit: int = 1) -> str:
 
 
 def pet_activity(pet_id: str) -> str:
-    return (
-        f'query KonaActivity {{ pet(id: "{pet_id}") {{ '
-        "dailyStat: currentActivitySummary(period: DAILY) { totalSteps stepGoal totalDistance } "
-        "weeklyStat: currentActivitySummary(period: WEEKLY) { totalSteps stepGoal totalDistance } "
-        "} }"
+    """Steps, goal and distance at all three periods, like pytryfi."""
+    stats = " ".join(
+        f"{alias}: currentActivitySummary(period: {period}) {{ totalSteps stepGoal totalDistance }}"
+        for alias, period in REST_PERIODS
     )
+    return f'query KonaActivity {{ pet(id: "{pet_id}") {{ {stats} }} }}'
 
 
-# Field names we HOPE exist. Any that don't will come back as validation
-# errors, usually with a "Did you mean" hint naming the real field.
+# --------------------------------------------------------------------------
+# Speculative queries: field names we HOPE exist.
+#
+# Introspection is disabled, so this is how the vocabulary gets learned. Any
+# name that does not exist comes back as a validation error, and when Fi has
+# something close it says so: `currentBehaviorSummary` -> "Did you mean
+# currentActivitySummary?". A rejection with NO suggestion is evidence of
+# absence. Each run's hints feed the next run's guesses until they saturate.
+#
+# The first eight are kept as they were: their rejections are the recorded
+# proof that no sleep score or behaviour count exists on `Pet`.
+# --------------------------------------------------------------------------
 SPECULATIVE_PET_FIELDS = [
     "sleepQuality",
     "restQuality",
@@ -103,12 +116,80 @@ SPECULATIVE_PET_FIELDS = [
     "behaviorFeed",
     "currentBehaviorSummary",
     "interruptions",
+    # Round 2: things we would want, phrased several ways each.
+    "battery",
+    "batteryLevel",
+    "batteryPercent",
+    "health",
+    "healthSummary",
+    "healthScore",
+    "heartRate",
+    "walks",
+    "walkFeed",
+    "activityFeed",
+    "restFeed",
+    "restSummary",
+    "currentRestSummary",
+    "sleepSummary",
+    "locationHistory",
+    "currentLocation",
+    "lastLocation",
+    "lastSeen",
+    "safeZones",
+    "geofences",
+    "places",
+    "baseStation",
+    "bases",
+    "goals",
+    "activityGoal",
+    "insights",
+    "age",
 ]
 
 
 def pet_speculative(pet_id: str) -> str:
     fields = " ".join(SPECULATIVE_PET_FIELDS)
     return f'query KonaSpeculative {{ pet(id: "{pet_id}") {{ {fields} }} }}'
+
+
+def speculative_queries(pet_id: str) -> list[tuple[str, str]]:
+    """Every speculative query, labelled. One per type we know exists.
+
+    The operation names all start with `KonaSpeculative` so a mock can route
+    them together. Each errors independently, and every error names the type
+    it was checked against, which is itself a fact worth recording.
+    """
+    return [
+        ("pet", pet_speculative(pet_id)),
+        (
+            "device",
+            f'query KonaSpeculativeDevice {{ pet(id: "{pet_id}") {{ device {{ '
+            "battery batteryPercent batteryLevel charging isCharging firmware "
+            "firmwareVersion signalStrength lastSeen temperature serialNumber "
+            "} } }",
+        ),
+        (
+            "activity",
+            f'query KonaSpeculativeActivity {{ pet(id: "{pet_id}") {{ '
+            "currentActivitySummary(period: DAILY) { "
+            "activeMinutes activeTime calories restMinutes walks walkCount "
+            "distanceMeters distanceMiles activityGoal "
+            "} } }",
+        ),
+        (
+            "rest",
+            f'query KonaSpeculativeRest {{ pet(id: "{pet_id}") {{ '
+            "restSummaryFeed(cursor: null, period: DAILY, limit: 1) { restSummaries { "
+            "quality score restfulness interruptions wakeUps "
+            "} } } }",
+        ),
+        (
+            "ongoing",
+            f'query KonaSpeculativeOngoing {{ pet(id: "{pet_id}") {{ ongoingActivity {{ '
+            "type kind name place uncertainty totalSteps duration "
+            "} } }",
+        ),
+    ]
 
 
 # --------------------------------------------------------------------------

@@ -5,8 +5,26 @@
         "restSummaries": [
           {
             "__typename": "RestSummary",
-            "start": "2026-09-08T00:00:00Z",
-            "end": "2026-09-09T00:00:00Z",
+            "start": "2026-09-10T04:00:00+00:00",
+            "end": "2026-09-11T03:59:59.999000+00:00",
+            "data": {
+              "__typename": "ConcreteRestSummaryData",
+              "sleepAmounts": [
+                {
+                  "type": "SLEEP",
+                  "duration": 0
+                },
+                {
+                  "type": "NAP",
+                  "duration": 1290
+                }
+              ]
+            }
+          },
+          {
+            "__typename": "RestSummary",
+            "start": "2026-09-09T04:00:00+00:00",
+            "end": "2026-09-10T03:59:59.999000+00:00",
             "data": {
               "__typename": "ConcreteRestSummaryData",
               "sleepAmounts": [
@@ -27,8 +45,30 @@
         "restSummaries": [
           {
             "__typename": "RestSummary",
-            "start": "2026-09-08T00:00:00Z",
-            "end": "2026-09-09T00:00:00Z",
+            "start": "2026-09-07T04:00:00+00:00",
+            "end": "2026-09-14T03:59:59.999000+00:00",
+            "data": {
+              "__typename": "ConcreteRestSummaryData",
+              "sleepAmounts": [
+                {
+                  "type": "SLEEP",
+                  "duration": 208800
+                },
+                {
+                  "type": "NAP",
+                  "duration": 39600
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "monthlyStat": {
+        "restSummaries": [
+          {
+            "__typename": "RestSummary",
+            "start": "2026-09-01T04:00:00+00:00",
+            "end": "2026-10-01T03:59:59.999000+00:00",
             "data": {
               "__typename": "ConcreteRestSummaryData",
               "sleepAmounts": [

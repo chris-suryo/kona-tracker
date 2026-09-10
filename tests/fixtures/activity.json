@@ -1,2 +1,21 @@
-{"data": {"pet": {"dailyStat": {"totalSteps": 4210, "stepGoal": 9000, "totalDistance": 3120.5},
-  "weeklyStat": {"totalSteps": 31000, "stepGoal": 63000, "totalDistance": 22000.0}}}}
+{
+  "data": {
+    "pet": {
+      "dailyStat": {
+        "totalSteps": 4210,
+        "stepGoal": 9000,
+        "totalDistance": 3120.5
+      },
+      "weeklyStat": {
+        "totalSteps": 31000,
+        "stepGoal": 63000,
+        "totalDistance": 22000.0
+      },
+      "monthlyStat": {
+        "totalSteps": 90000,
+        "stepGoal": 270000,
+        "totalDistance": 61000.0
+      }
+    }
+  }
+}

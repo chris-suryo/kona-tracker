@@ -79,7 +79,21 @@ unverified.
 |---|---|
 | Steps today, and step goal | **Working.** 3,383 of 28,000 on the first run |
 | Steps this week / month | **Working** (`currentActivitySummary`, three periods) |
-| Sleep and nap duration | Query **fixed**, not yet re-run against the collar |
+| Sleep and nap duration | **Working**, daily / weekly / monthly. **Units are seconds**: weekly SLEEP 27,202 = 7.6 h, NAP 38,382 = 10.7 h |
+| Profile, photo, device, location | **Returned** (`pet-kona-{profile,device,location}.json` written); contents not yet read |
+
+### How Fi's days work — measured, and it changed the design
+
+The daily rest window runs **midnight to midnight in the owner's timezone**
+(`04:00Z` boundaries = Eastern). The newest window is **today, in progress**,
+and its SLEEP is 0 until tonight. Last night's sleep lives in the window that
+ended this morning.
+
+The first implementation fetched one window and would have shown **0 h** under
+"Last night" — formatted honestly, and wrong. `pet_rest` now fetches two and
+`parse.split_windows` picks the most recent *completed* day for the hero and
+the in-progress one for naps-so-far-today. A collar paired today, with no
+completed night yet, says "first full night still to come" rather than 0.
 
 ### Confirmed ABSENT — do not design for these
 
@@ -101,9 +115,10 @@ Nothing in the UI may assume a 0-100 score or a behaviour count.
 ### Not trustworthy yet
 
 `totalDistance` returned **0 for the day against 3,383 steps**, and 93 for
-the week. Whatever the unit is, that is not consistent with the step count.
-It is shown raw and labelled raw, and it is not a headline number until
-somebody explains it.
+the week — and did not move on the second run while steps rose to 3,538.
+Whatever the unit is, it is not tracking steps. Working hypothesis: it only
+accrues on GPS-tracked walks. It is **off the page** (weekly steps took its
+tile) and stays in `/activity.json` marked raw until somebody knows.
 
 Introspection is **disabled** on the production API, so the schema cannot be
 dumped. Field names come from asking and reading the errors.

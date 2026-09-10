@@ -54,7 +54,9 @@ def dial_offset(hours: float | None) -> float:
 def activity_context(snapshot: FiSnapshot | None, configured: bool) -> dict[str, Any]:
     """Everything `activity.html` needs, with no data invented on the way."""
     window = snapshot.window if snapshot else None
+    today = snapshot.today if snapshot else None
     activity = snapshot.activity if snapshot else None
+    week = snapshot.week if snapshot else None
     sleep_hours = snapshot.sleep_hours if snapshot else None
 
     return {
@@ -64,9 +66,12 @@ def activity_context(snapshot: FiSnapshot | None, configured: bool) -> dict[str,
         "pet_name": (snapshot.pet_name if snapshot else "") or "Kona",
         "sleep_hours": _hours(sleep_hours),
         "nap_hours": _hours(snapshot.nap_hours if snapshot else None),
+        # The collar was paired today: there is a day in progress but no
+        # completed night yet. Say so, rather than "no data".
+        "night_pending": window is None and today is not None,
         # Kept so a unit change shows the real figure instead of nothing.
         "sleep_raw": window.sleep if window else None,
-        "nap_raw": window.nap if window else None,
+        "nap_raw": today.nap if today else None,
         "unit_suspect": bool(snapshot and snapshot.unit_suspect),
         # Two different failures that must not share a sentence: "stale"
         # means these numbers are old, "partial" means they are current
@@ -77,7 +82,9 @@ def activity_context(snapshot: FiSnapshot | None, configured: bool) -> dict[str,
         "window_to": _day(window.end if window else None),
         "steps": _count(activity.steps if activity else None),
         "step_goal": _count(activity.step_goal if activity else None),
-        "distance": _count(activity.distance if activity else None),
+        # Distance is deliberately not here: it came back 0 for a day with
+        # 3,383 steps, so until it is understood it lives in the JSON only.
+        "week_steps": _count(week.steps if week else None),
         "dial_offset": dial_offset(sleep_hours),
         "dial_scale": f"{DIAL_SCALE_HOURS:.0f}",
         # Only stamped when there is something for it to date. "As of 18:48"
@@ -94,20 +101,26 @@ def activity_context(snapshot: FiSnapshot | None, configured: bool) -> dict[str,
 def activity_json(snapshot: FiSnapshot | None, configured: bool) -> dict[str, Any]:
     """The same data as the page, for polling later. Never the credentials."""
     window = snapshot.window if snapshot else None
+    today = snapshot.today if snapshot else None
     activity = snapshot.activity if snapshot else None
+    week = snapshot.week if snapshot else None
     return {
         "configured": configured,
         "fetched_at": snapshot.fetched_at.isoformat() if snapshot else None,
         "pet_name": snapshot.pet_name if snapshot else None,
         "sleep_seconds": window.sleep if window else None,
-        "nap_seconds": window.nap if window else None,
         "sleep_hours": snapshot.sleep_hours if snapshot else None,
-        "nap_hours": snapshot.nap_hours if snapshot else None,
         "window_start": window.start.isoformat() if window and window.start else None,
         "window_end": window.end.isoformat() if window and window.end else None,
+        "today_nap_seconds": today.nap if today else None,
+        "today_nap_hours": snapshot.nap_hours if snapshot else None,
         "steps": activity.steps if activity else None,
         "step_goal": activity.step_goal if activity else None,
+        "week_steps": week.steps if week else None,
+        # Raw and unexplained: 0 on a day with thousands of steps. Not on the
+        # page until somebody knows what it measures.
         "distance_raw": activity.distance if activity else None,
+        "week_distance_raw": week.distance if week else None,
         "problem": snapshot.problem if snapshot else None,
         "stale": bool(snapshot and snapshot.stale),
     }

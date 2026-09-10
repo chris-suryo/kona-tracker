@@ -12,7 +12,7 @@ returns `None` for absent data and the caller decides how to say so.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 # Fi documents no units. The fixture's 30600 is 8.5 hours if it is seconds,
@@ -79,9 +79,12 @@ def hours_from_duration(value: Any) -> float | None:
 
 def _moment(value: Any) -> datetime | None:
     try:
-        return datetime.fromisoformat(str(value))
+        moment = datetime.fromisoformat(str(value))
     except (ValueError, TypeError):
         return None
+    # Fi sends offsets. If one ever arrives bare, treat it as UTC rather than
+    # letting a naive/aware comparison blow up inside `split_windows`.
+    return moment if moment.tzinfo else moment.replace(tzinfo=UTC)
 
 
 def pets_from(data: Any) -> list[Pet]:
@@ -118,6 +121,25 @@ def rest_from(data: Any, period: str = "dailyStat") -> list[RestWindow]:
             )
         )
     return windows
+
+
+def split_windows(
+    windows: list[RestWindow], now: datetime
+) -> tuple[RestWindow | None, RestWindow | None]:
+    """(the most recent *completed* day, the day containing `now`).
+
+    Measured on Kona's collar: Fi's daily window runs midnight to midnight in
+    the owner's timezone and the newest one is **today, still in progress**,
+    with SLEEP=0 because tonight has not happened. Last night's sleep sits in
+    the window that ended this morning. A page headed "Last night" that read
+    the newest window would show 0 h, formatted honestly, and be wrong.
+    """
+    completed = [w for w in windows if w.end is not None and w.end <= now]
+    current = [
+        w for w in windows if w.start is not None and w.end is not None and w.start <= now < w.end
+    ]
+    last = max(completed, key=lambda w: w.end) if completed else None  # type: ignore[arg-type,return-value]
+    return last, (current[0] if current else None)
 
 
 def activity_from(data: Any, period: str = "dailyStat") -> ActivityStats:

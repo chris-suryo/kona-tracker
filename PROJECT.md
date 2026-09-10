@@ -45,13 +45,14 @@ kit: 3e06b156508b881bef26345c0bb7a63c90db4824 · stamped by dos new
 **next:**
 
 *Anywhere, any machine with internet:*
-1. `git pull`, restart `kona serve`, re-run `uv run kona probe` and share
-   `probe-out/summary.md`. Success = sleep durations under "Returned metrics"
-   for the first time, plus whichever of profile/device/location come back.
-2. Then slice 4b wires what returned: sleep into the dial, Kona's own photo
-   into the avatar, `areaName` and collar signal if real; and the Distance
-   tile is replaced by weekly steps, since daily distance came back 0 against
-   3,383 steps.
+1. `git pull`, restart `kona serve`. The dial shows last night; naps are
+   today's; the third tile is weekly steps.
+2. `uv run kona probe` again and share `summary.md`. It now inlines the
+   profile/device/location bodies (redacted) and runs five speculative
+   queries, one per known type. Read the "did you mean" hints, add the
+   near-misses they name, repeat until they stop teaching anything.
+3. Then wire what the bodies confirm: Kona's photo into the avatar,
+   `areaName` and collar signal onto the page.
 
 *At home only (the camera stream originates there):*
 3. Tapo C120 on the Wi-Fi + camera account -> `uv run kona camera-test` ->
@@ -138,6 +139,8 @@ ipconfig                        # IPv4 of the PC; iPhone opens http://<that-ip>:
 - **A mock that answers any query tests the parser, not the query.** The
   malformed sleep query passed 102 tests because `tests/conftest.py` routed on
   operation name alone. Mocks must refuse what the server refuses.
+- **Fi's day is midnight-to-midnight local, and the newest daily rest window
+  is today, in progress.** "Last night" is the window before it. Fetch two.
 - **Never redact the error that names the fix.** `FiGraphQLError` keeps
   graphql-js validation messages verbatim (they contain schema identifiers
   only) and redacts everything else, including `Expected type "X", found
