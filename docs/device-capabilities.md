@@ -69,24 +69,82 @@ API fail without it. It is step 2 in `docs/first-run.md`.
 
 ## 2. Fi collar
 
-**Built on shapes, not on evidence.** The Activity tab reads sleep, naps,
-steps, step goal and distance, and those queries are exercised end to end
-against `httpx.MockTransport` — but no real Fi response has ever been seen.
-The fixtures come from pytryfi's source, not from Kona's collar.
+Kona's collar was paired on 2026-09-10 and `kona probe` has now run against
+the real API. Everything below is either measured or explicitly marked
+unverified.
 
-Two things are unresolved until somebody runs `kona probe` for real:
+### Confirmed present
 
-- **Units.** Durations are assumed to be seconds. `hours_from_duration()`
-  returns `None` outside 0-24 hours, so a unit change shows the raw figure
-  marked raw rather than a confident wrong total. Distance is printed raw
-  and labelled raw, because nothing says it is metres.
-- **Sleep quality and behaviours.** A quality score, and barking,
-  scratching, eating and drinking counts, remain unconfirmed. Nothing on
-  the page may assume one exists.
+| Data | Status |
+|---|---|
+| Steps today, and step goal | **Working.** 3,383 of 28,000 on the first run |
+| Steps this week / month | **Working** (`currentActivitySummary`, three periods) |
+| Sleep and nap duration | Query **fixed**, not yet re-run against the collar |
 
-The probe writes `probe-out/summary.md`, which answers both.
+### Confirmed ABSENT — do not design for these
 
----
+The speculative probe query asks for field names we hoped existed and reads
+the validation errors. Fi's server suggests a near match when there is one —
+it answered `currentBehaviorSummary` with *"Did you mean
+currentActivitySummary?"* — so a rejection **with no suggestion** is real
+evidence of absence, not just a wrong guess.
+
+- `sleepQuality`, `restQuality`, `restScore`, `sleepScore` — **no sleep
+  quality score of any kind exists on `Pet`.**
+- `behaviorSummary`, `behaviorFeed`, `currentBehaviorSummary`,
+  `interruptions` — **no barking, scratching, licking, eating or drinking
+  counts.**
+
+These had been open questions since the project started. They are closed.
+Nothing in the UI may assume a 0-100 score or a behaviour count.
+
+### Not trustworthy yet
+
+`totalDistance` returned **0 for the day against 3,383 steps**, and 93 for
+the week. Whatever the unit is, that is not consistent with the step count.
+It is shown raw and labelled raw, and it is not a headline number until
+somebody explains it.
+
+Introspection is **disabled** on the production API, so the schema cannot be
+dumped. Field names come from asking and reading the errors.
+
+### The bug that hid sleep, and the lesson
+
+`RestSummary.data` is an abstract type; `sleepAmounts` lives on the concrete
+implementation. Our fragment selected it directly, so Fi rejected the whole
+query — steps arrived, sleep did not. The fix is an inline fragment:
+
+```graphql
+data { __typename ... on ConcreteRestSummaryData { sleepAmounts { type duration } } }
+```
+
+Two things made this expensive, both worth remembering:
+
+1. **The mock answered a malformed query.** `tests/conftest.py` routed on
+   operation name alone, so 102 passing tests validated the *parser* and
+   never the *query*. The mock now rejects a rest query missing the inline
+   fragment, exactly as the server does.
+2. **The error allowlist ate the answer.** Fi almost certainly replied *"Did
+   you mean to use an inline fragment on ConcreteRestSummaryData?"* and we
+   kept only "GraphQL error". `FiGraphQLError` now preserves the whole
+   graphql-js validation family, which names schema identifiers only.
+
+### Sourced but unverified
+
+Taken from [pytryfi](https://github.com/sbabcock23/pytryfi)'s `const.py` —
+the library behind the Home Assistant integration — and added to the probe,
+not to the page:
+
+- **`photos`** on `BasePetProfile` — Kona's picture from the Fi app, so the
+  avatar need not be a hand-copied jpg.
+- `ongoingActivity`: `areaName`, `lastReportTimestamp`, live walk distance
+  and GPS positions with an error radius.
+- `lastConnectionState`: charging-base state, `signalStrengthPercent`.
+- `operationParams`: lost-dog `mode`, `ledEnabled`, LED colour.
+- breed, weight, birthday, `homeCityState`.
+
+The probe fetches these; the next `summary.md` says which are real. Until
+then they stay out of the UI.
 
 ## 3. Apple TV and general home automation
 

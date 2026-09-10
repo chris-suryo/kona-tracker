@@ -96,11 +96,15 @@ def pets_from(data: Any) -> list[Pet]:
     return pets
 
 
-def rest_from(data: Any) -> list[RestWindow]:
-    """Rest windows, newest first as Fi returns them."""
+def rest_from(data: Any, period: str = "dailyStat") -> list[RestWindow]:
+    """Rest windows for one aliased period, newest first as Fi returns them.
+
+    `period` is the alias in the query (`dailyStat`, `weeklyStat`,
+    `monthlyStat`), not the enum.
+    """
     if not isinstance(data, dict):
         return []
-    feed = ((data.get("pet") or {}).get("restSummaryFeed") or {}).get("restSummaries") or []
+    feed = ((data.get("pet") or {}).get(period) or {}).get("restSummaries") or []
     windows: list[RestWindow] = []
     for summary in feed:
         amounts = (summary.get("data") or {}).get("sleepAmounts") or []

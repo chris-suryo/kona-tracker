@@ -1,0 +1,9 @@
+{"data": {"pet": {"__typename": "Pet", "device": {"__typename": "Device",
+  "id": "d1", "moduleId": "MOD-SECRET-1", "info": {"batteryPercent": 88},
+  "nextLocationUpdateExpectedBy": "2026-09-10T20:00:00Z",
+  "operationParams": {"__typename": "OperationParams", "mode": "NORMAL",
+                      "ledEnabled": true, "ledOffAt": null},
+  "lastConnectionState": {"__typename": "ConnectedToCellular",
+                          "date": "2026-09-10T19:30:00Z", "signalStrengthPercent": 72},
+  "ledColor": {"__typename": "LedColor", "ledColorCode": 2, "hexCode": "#4B7A3A",
+               "name": "Green"}}}}}

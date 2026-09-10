@@ -1,5 +1,50 @@
-{"data": {"pet": {"restSummaryFeed": {"restSummaries": [
-  {"start": "2026-09-08T00:00:00Z", "end": "2026-09-09T00:00:00Z",
-   "data": {"__typename": "ConcreteRestSummaryData",
-            "sleepAmounts": [{"type": "SLEEP", "duration": 30600}, {"type": "NAP", "duration": 5400}]}}
-]}}}}
+{
+  "data": {
+    "pet": {
+      "dailyStat": {
+        "restSummaries": [
+          {
+            "__typename": "RestSummary",
+            "start": "2026-09-08T00:00:00Z",
+            "end": "2026-09-09T00:00:00Z",
+            "data": {
+              "__typename": "ConcreteRestSummaryData",
+              "sleepAmounts": [
+                {
+                  "type": "SLEEP",
+                  "duration": 30600
+                },
+                {
+                  "type": "NAP",
+                  "duration": 5400
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "weeklyStat": {
+        "restSummaries": [
+          {
+            "__typename": "RestSummary",
+            "start": "2026-09-08T00:00:00Z",
+            "end": "2026-09-09T00:00:00Z",
+            "data": {
+              "__typename": "ConcreteRestSummaryData",
+              "sleepAmounts": [
+                {
+                  "type": "SLEEP",
+                  "duration": 208800
+                },
+                {
+                  "type": "NAP",
+                  "duration": 39600
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  }
+}

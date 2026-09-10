@@ -11,10 +11,18 @@ def test_probe_end_to_end_writes_redacted_files(fake_client, tmp_path):
     assert report.introspection_ok
     assert report.errors == {}
     names = sorted(p.name for p in report.files)
-    assert names == ["pet-kona-activity.json", "pet-kona-rest.json", "schema.json", "summary.md"]
+    assert names == [
+        "pet-kona-activity.json",
+        "pet-kona-device.json",
+        "pet-kona-location.json",
+        "pet-kona-profile.json",
+        "pet-kona-rest.json",
+        "schema.json",
+        "summary.md",
+    ]
 
     rest = json.loads((tmp_path / "pet-kona-rest.json").read_text(encoding="utf-8"))
-    amounts = rest["pet"]["restSummaryFeed"]["restSummaries"][0]["data"]["sleepAmounts"]
+    amounts = rest["pet"]["dailyStat"]["restSummaries"][0]["data"]["sleepAmounts"]
     assert amounts[0] == {"duration": 30600, "type": "SLEEP"}
 
     summary = (tmp_path / "summary.md").read_text(encoding="utf-8")

@@ -26,19 +26,27 @@ design we cannot ship.
 > safe-area insets. Light and dark both matter and follow the phone; there
 > is no in-app theme switch.
 >
-> **What the data actually is.** Only these fields are confirmed to exist:
+> **What the data actually is.** Measured against the real collar on
+> 2026-09-10, not assumed:
 >
+> - Steps and a step goal, for today / this week / this month. **Confirmed
+>   working** (3,383 of 28,000 on the first real run).
 > - Sleep duration and nap duration, for a window Fi groups them into. The
 >   window is a calendar day — it is **not** the moment she fell asleep, so
 >   nothing may be labelled "fell asleep at 10:40pm".
-> - Steps today, and a step goal.
-> - Distance today, in **units Fi does not document**. Shown raw and
->   labelled raw until somebody verifies them against the collar.
+> - Distance is returned but **is not trustworthy**: 0 for the day against
+>   3,383 steps. Do not put it in a layout as a headline number.
 >
-> There is **no** sleep-quality score, no restlessness, no barking,
-> scratching, eating or drinking count, and no heart rate. Do not design a
-> component that needs one. If a layout only works with a 0-100 score,
-> it does not work.
+> There is **no sleep-quality score** and **no behaviour counts** — not
+> barking, scratching, licking, eating or drinking — and no heart rate.
+> That is confirmed, not assumed: Fi's API rejects every one of those field
+> names, and it offers a "did you mean" when something is close, so silence
+> means absence. Do not design a component that needs one. If a layout only
+> works with a 0-100 score, it does not work.
+>
+> Likely available but not yet verified: her photo from the Fi app, the area
+> she is in, whether she is out on a walk, and collar charge/signal. Ask
+> before building on these.
 >
 > **What the camera can do.** Live video and a still snapshot on every
 > model. Pan, tilt and presets on the C210/C220/C225 only — the C120 is

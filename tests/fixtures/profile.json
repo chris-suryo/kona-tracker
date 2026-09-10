@@ -1,0 +1,8 @@
+{"data": {"pet": {"__typename": "Pet", "id": "pet-1", "name": "Kona",
+  "homeCityState": "Austin, TX", "yearOfBirth": 2021, "monthOfBirth": 4, "dayOfBirth": 12,
+  "gender": "FEMALE", "weight": 24.5, "isPurebred": false,
+  "breed": {"__typename": "Breed", "id": "b1", "name": "Labrador Retriever"},
+  "photos": {"__typename": "PetPhotos",
+    "first": {"__typename": "Photo", "id": "p1", "date": "2026-08-01T00:00:00Z",
+              "image": {"__typename": "Image", "fullSize": "https://example.invalid/kona.jpg"}},
+    "items": []}}}}

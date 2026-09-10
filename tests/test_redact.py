@@ -70,3 +70,42 @@ def test_credentials_round_trip_with_special_characters():
         "",
     )
     assert with_credentials("rtsp://cam.local/x", "", "") == "rtsp://cam.local/x"
+
+
+def test_where_kona_lives_and_stands_never_reaches_the_summary():
+    """`probe-out/summary.md` gets pasted into chats; it says locations are
+    redacted, so they have to actually be."""
+    from kona_tracker.probe.redact import REDACTED, redact
+
+    out = redact(
+        {
+            "pet": {
+                "name": "Kona",
+                "homeCityState": "Austin, TX",
+                "ongoingActivity": {"areaName": "Elm Street Dog Park"},
+                "photos": {"first": {"image": {"fullSize": "https://cdn/kona.jpg"}}},
+            }
+        }
+    )
+    pet = out["pet"]
+    assert pet["name"] == "Kona", "her name is not a secret and is useful"
+    assert pet["homeCityState"] == REDACTED
+    assert pet["ongoingActivity"]["areaName"] == REDACTED
+    assert pet["photos"]["first"]["image"]["fullSize"] == REDACTED
+
+
+def test_redaction_does_not_eat_the_answer_the_probe_exists_to_find():
+    """A bare "state" rule would blank `lastConnectionState` wholesale."""
+    from kona_tracker.probe.redact import redact
+
+    out = redact(
+        {
+            "device": {
+                "lastConnectionState": {
+                    "__typename": "ConnectedToCellular",
+                    "signalStrengthPercent": 72,
+                }
+            }
+        }
+    )
+    assert out["device"]["lastConnectionState"]["signalStrengthPercent"] == 72

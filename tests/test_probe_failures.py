@@ -74,7 +74,7 @@ def test_null_and_zero_are_distinct():
     assert "totalSteps=0" in lines[0]
     assert "stepGoal=unavailable" in lines[0]
     lines = _metric_lines(
-        "rest", {"pet": {"restSummaryFeed": {"restSummaries": [{"data": None}]}}}, "kona"
+        "rest", {"pet": {"dailyStat": {"restSummaries": [{"data": None}]}}}, "kona"
     )
     assert all("duration=unavailable" in line for line in lines)
 

@@ -1,0 +1,3 @@
+{"errors": [
+  {"message": "Cannot query field \"sleepAmounts\" on type \"RestSummaryData\". Did you mean to use an inline fragment on \"ConcreteRestSummaryData\"?"}
+], "data": null}

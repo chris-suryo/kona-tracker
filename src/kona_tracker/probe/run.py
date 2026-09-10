@@ -25,6 +25,7 @@ from kona_tracker.fi.parse import (
     pets_from,
     rest_from,
 )
+from kona_tracker.fi.queries import REST_PERIODS
 from kona_tracker.probe.redact import redact
 from kona_tracker.probe.scan import SchemaScan, scan_schema
 
@@ -95,6 +96,19 @@ def run_probe(client: FiClient, out_dir: Path) -> ProbeReport:
                 path = out_dir / f"pet-{slug}-{label}.json"
                 _write_json(path, data)
                 report.files.append(path)
+        # Sourced from pytryfi but never yet seen from a real collar. Each is
+        # its own step so one unsupported shape cannot sink the others.
+        for label, q in (
+            ("profile", queries.pet_profile(pet["id"])),
+            ("device", queries.pet_device(pet["id"])),
+            ("location", queries.pet_location(pet["id"])),
+        ):
+            data = _try(report, f"{label}:{slug}", lambda q=q: client.graphql(q))
+            if data is not None:
+                path = out_dir / f"pet-{slug}-{label}.json"
+                _write_json(path, data)
+                report.files.append(path)
+
         try:
             data = client.graphql(queries.pet_speculative(pet["id"]))
             path = out_dir / f"pet-{slug}-speculative.json"
@@ -154,12 +168,14 @@ def _metric_lines(label: str, data: dict, pet: str) -> list[str]:
                 f"totalDistance={_number(stats.distance)} (raw API units)."
             )
     else:
-        windows = rest_from(data)
-        for window in windows:
-            span = f"{_date(window.start)} to {_date(window.end)}"
-            for kind, amount in ((SLEEP, window.sleep), (NAP, window.nap)):
-                result.append(f"{pet} {span}: {kind} duration={_reading(amount)}.")
-        if not windows:
+        found = False
+        for period, _enum in REST_PERIODS:
+            for window in rest_from(data, period):
+                found = True
+                span = f"{_date(window.start)} to {_date(window.end)}"
+                for kind, amount in ((SLEEP, window.sleep), (NAP, window.nap)):
+                    result.append(f"{pet} {period} {span}: {kind} duration={_reading(amount)}.")
+        if not found:
             result.append(f"{pet}: rest summaries unavailable or empty; no sleep value confirmed.")
     return result
 

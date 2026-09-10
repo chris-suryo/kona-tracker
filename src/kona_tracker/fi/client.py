@@ -40,25 +40,66 @@ class FiLoginError(FiError):
         super().__init__(f"Fi login failed (HTTP {status}): {body}")
 
 
+# --------------------------------------------------------------------------
+# What a GraphQL error is allowed to say out loud.
+#
+# Fi's server prose and error `extensions` can carry account data, so the
+# default is to redact. The exception is graphql-js's **validation** errors:
+# they are authored by the GraphQL library, not by Fi, and they name only
+# schema identifiers — types, fields, arguments, enum values. Those are
+# exactly the messages that tell us how the API changed, and throwing them
+# away has already cost this project real time: the sleep query broke with
+# "Did you mean to use an inline fragment on ConcreteRestSummaryData?" and
+# all we kept was "GraphQL error".
+#
+# `Expected type "X", found <literal>` is deliberately NOT here. It echoes
+# the value that was sent, which is the one validation message that can
+# carry data.
+# --------------------------------------------------------------------------
+_NAME = r'"[A-Za-z_][A-Za-z_0-9]*"'
+#: A type reference, which may be wrapped: "ID!", "[String!]!".
+_TYPE = r'"[A-Za-z_][A-Za-z_0-9]*[!\]\[]*"|"\[[A-Za-z_][A-Za-z_0-9!\]\[]*"'
+#: graphql-js names an argument's owner as "Type.field".
+_COORD = r'"[A-Za-z_][A-Za-z_0-9]*\.[A-Za-z_][A-Za-z_0-9]*"'
+#: `"a"`, `"a", "b"`, `"a", "b", or "c"` — keep the whole list; the
+#: suggestions are the entire point of the speculative probe query.
+_LIST = rf"{_NAME}(?:, {_NAME})*(?:,? or {_NAME})?"
+_SUGGEST = rf"(?: Did you mean {_LIST}\?)?"
+
+ALLOWED_GRAPHQL_ERRORS: tuple[str, ...] = (
+    # Unknown field, with either flavour of hint.
+    rf"Cannot query field {_NAME} on type {_NAME}\."
+    rf"(?:{_SUGGEST}| Did you mean to use an inline fragment on {_LIST}\?)",
+    rf"Unknown argument {_NAME} on field {_COORD}\.{_SUGGEST}",
+    rf"Unknown type {_NAME}\.{_SUGGEST}",
+    rf"Unknown fragment {_NAME}\.",
+    rf"Field {_COORD} argument {_NAME} of type (?:{_TYPE}) is required, "
+    r"but it was not provided\.",
+    rf"Field {_NAME} must not have a selection since type (?:{_TYPE}) has no subfields\.",
+    # The hint here quotes the whole suggestion, braces included:
+    # Did you mean "photos { ... }"?  — not "photos" { ... }.
+    rf"Field {_NAME} of type (?:{_TYPE}) must have a selection of subfields\."
+    r'(?: Did you mean "[A-Za-z_][A-Za-z_0-9]* \{ \.\.\. \}"\?)?',
+    rf"Value {_NAME} does not exist in {_NAME} enum\."
+    rf"(?: Did you mean the enum value {_LIST}\?)?",
+    rf"Fragment {_NAME} cannot be spread here as objects of type {_NAME} "
+    rf"can never be of type {_NAME}\.",
+)
+
+REDACTED = "GraphQL error (server details omitted for privacy)."
+
+
+def allowlisted(message: str) -> bool:
+    """True if this is a schema-validation message safe to repeat verbatim."""
+    return any(re.fullmatch(p, message) for p in ALLOWED_GRAPHQL_ERRORS)
+
+
 class FiGraphQLError(FiError):
     """GraphQL errors with only allowlisted schema-validation text retained."""
 
     def __init__(self, errors: list[dict[str, Any]], data: Any = None):
-        # Preserve only complete schema-validation messages. Arbitrary server prose
-        # and extensions can contain account data and must never enter reports.
-        # graphql-js lists several suggestions as `"a", "b", or "c"`; accept
-        # the whole list, since those hints are the speculative query's point.
-        name = r'"[A-Za-z_][A-Za-z_0-9]*"'
-        pattern = (
-            rf"Cannot query field {name} on type {name}\."
-            rf"(?: Did you mean {name}(?:, {name})*(?:,? or {name})?\?)?"
-        )
         self.errors = [
-            {
-                "message": message
-                if re.fullmatch(pattern, message)
-                else "GraphQL error (server details omitted for privacy)."
-            }
+            {"message": message if allowlisted(message) else REDACTED}
             for error in errors
             for message in [str(error.get("message", ""))]
         ]

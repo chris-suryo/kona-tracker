@@ -57,10 +57,7 @@ def test_parsers_read_the_shapes_the_probe_already_proved():
 
 
 def test_missing_fields_are_none_not_zero():
-    assert (
-        rest_from({"pet": {"restSummaryFeed": {"restSummaries": [{"data": None}]}}})[0].sleep
-        is None
-    )
+    assert rest_from({"pet": {"dailyStat": {"restSummaries": [{"data": None}]}}})[0].sleep is None
     stats = activity_from({"pet": {"dailyStat": {"totalSteps": 0}}})
     assert stats.steps == 0 and stats.step_goal is None  # a real zero survives
     assert pets_from(None) == [] and rest_from(None) == []

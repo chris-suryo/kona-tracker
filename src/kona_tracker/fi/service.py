@@ -126,7 +126,7 @@ def fetch_snapshot(client: FiClient, email: str, password: str) -> FiSnapshot:
     activity: ActivityStats | None = None
     problems: list[str] = []
     try:
-        windows = rest_from(client.graphql(pet_rest(pet.id, limit=1)))
+        windows = rest_from(client.graphql(pet_rest(pet.id, limit=1)), "dailyStat")
         window = windows[0] if windows else None
         if window is None:
             problems.append("Fi returned no rest windows yet.")

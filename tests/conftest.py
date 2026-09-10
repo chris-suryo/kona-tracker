@@ -25,12 +25,23 @@ def fake_fi_handler(request: httpx.Request) -> httpx.Response:
     if request.url.path == "/graphql":
         assert request.headers.get("cookie") == "fi_session=cookie-1", "not logged in"
         query = json.loads(request.content)["query"]
+        # Answer like the real server, not like a yes-man. A mock that returns
+        # a valid response to an invalid query tests the parser and nothing
+        # else -- which is exactly how a malformed sleep query shipped and
+        # only failed against Kona's actual collar. `sleepAmounts` sits on a
+        # concrete type behind an abstract one, so without the inline fragment
+        # Fi rejects the whole query, and now so does this.
+        if "KonaRest" in query and "... on ConcreteRestSummaryData" not in query:
+            return httpx.Response(200, json=fixture("rest_error"))
         for op, name in (
             ("KonaPets", "pets"),
             ("KonaIntrospect", "introspection"),
             ("KonaRest", "rest"),
             ("KonaActivity", "activity"),
             ("KonaSpeculative", "speculative_error"),
+            ("KonaProfile", "profile"),
+            ("KonaDevice", "device"),
+            ("KonaLocation", "location"),
         ):
             if op in query:
                 return httpx.Response(200, json=fixture(name))

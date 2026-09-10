@@ -23,9 +23,16 @@ kit: 3e06b156508b881bef26345c0bb7a63c90db4824 · stamped by dos new
 - **Slice 3 (Activity is real):** `fi/parse.py` holds the only parsers, shared
   by the probe and the page. `fi/service.py` caches one snapshot, refreshes on
   a background thread past `KONA_FI_REFRESH_SECONDS`, and never discards a good
-  reading when a refresh fails. `/activity` and `/activity.json` render three
-  honest states: not configured, configured but failing, working. Verified
-  against `httpx.MockTransport` only — no real Fi response has ever been seen.
+  reading when a refresh fails. `/activity` and `/activity.json` render four
+  honest states: not configured, failing, **partial** (fresh but a query
+  failed), and stale (old data, refresh failed).
+- **Slice 4 (first contact with the real API, 2026-09-10):** steps are live.
+  Sleep was rejected — `RestSummary.data` is abstract and `sleepAmounts` needs
+  an inline fragment on `ConcreteRestSummaryData`. Fixed. The probe now also
+  asks for profile/photos, device/connection, and location, and
+  `FiGraphQLError` preserves the whole graphql-js validation family instead of
+  one message shape. See `docs/device-capabilities.md` §2 for what is
+  confirmed present, confirmed **absent**, and untrustworthy.
 - **Motion:** `@view-transition { navigation: auto; }` gives animated
   cross-document navigation on Safari 18.2+ and Chrome 126+; the dial arc
   sweeps up and the stats stagger in. All CSS, no build step, all inside
@@ -38,12 +45,13 @@ kit: 3e06b156508b881bef26345c0bb7a63c90db4824 · stamped by dos new
 **next:**
 
 *Anywhere, any machine with internet:*
-1. Pair the collar in the Fi app, put `FI_EMAIL`/`FI_PASSWORD` in `.env`,
-   restart `uv run kona serve --fake-camera`. The Activity tab should show
-   last night.
-2. `uv run kona probe`, share `probe-out/summary.md`. It settles the duration
-   units (the app assumes seconds and refuses to print anything outside
-   0-24 h) and whether a sleep-quality score exists.
+1. `git pull`, restart `kona serve`, re-run `uv run kona probe` and share
+   `probe-out/summary.md`. Success = sleep durations under "Returned metrics"
+   for the first time, plus whichever of profile/device/location come back.
+2. Then slice 4b wires what returned: sleep into the dial, Kona's own photo
+   into the avatar, `areaName` and collar signal if real; and the Distance
+   tile is replaced by weekly steps, since daily distance came back 0 against
+   3,383 steps.
 
 *At home only (the camera stream originates there):*
 3. Tapo C120 on the Wi-Fi + camera account -> `uv run kona camera-test` ->
@@ -125,6 +133,15 @@ ipconfig                        # IPv4 of the PC; iPhone opens http://<that-ip>:
   internet and the Fi credentials; it does not need the home machine.
 - Fi's API is undocumented and unversioned; pytryfi (the reference) has not
   shipped since Dec 2023. Expect drift; the probe is the drift detector.
+  Its `const.py` is still the best source for field names — read it before
+  guessing. Introspection is disabled on the production API.
+- **A mock that answers any query tests the parser, not the query.** The
+  malformed sleep query passed 102 tests because `tests/conftest.py` routed on
+  operation name alone. Mocks must refuse what the server refuses.
+- **Never redact the error that names the fix.** `FiGraphQLError` keeps
+  graphql-js validation messages verbatim (they contain schema identifiers
+  only) and redacts everything else, including `Expected type "X", found
+  <value>`, which echoes literals.
 - Starlette's TestClient runs the ASGI app to completion, so an endless
   MJPEG stream cannot be tested through it; `/stream.mjpg?frames=N` caps it.
 - A USB webcam opens once per process; the hub is what lets two phones watch.

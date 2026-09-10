@@ -34,7 +34,28 @@ SENSITIVE_KEY_PARTS = (
     "chip",
     "moduleid",
     "serial",
+    # Added when the profile/location queries landed: the summary already
+    # promised "locations, addresses" and these slipped through it.
+    # `homeCityState` is the town Kona lives in and `areaName` is where she
+    # is standing right now -- both go into a file Chris pastes into chats.
+    "city",
+    "area",
+    "zip",
+    "postal",
+    "street",
+    "region",
+    "neighborhood",
+    "geo",
+    "coord",
+    "timezone",
+    # Photo URLs are shareable links to pictures of the dog and the house.
+    # The key survives, so the probe still proves the field exists.
+    "fullsize",
+    "url",
 )
+# Deliberately NOT here: a bare "state". It would match `lastConnectionState`
+# and blank the whole nested object -- including the charge and signal fields
+# the probe exists to discover. Redaction must not eat the answer.
 
 
 def is_sensitive_key(key: str) -> bool:

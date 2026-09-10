@@ -1,0 +1,6 @@
+{"data": {"pet": {"__typename": "Pet", "ongoingActivity": {"__typename": "OngoingWalk",
+  "start": "2026-09-10T18:00:00Z", "lastReportTimestamp": "2026-09-10T19:25:00Z",
+  "areaName": "Home", "distance": 420,
+  "positions": [{"__typename": "Location", "date": "2026-09-10T19:25:00Z", "errorRadius": 8,
+                 "position": {"__typename": "Position",
+                              "latitude": 30.2672, "longitude": -97.7431}}]}}}}
