@@ -121,4 +121,13 @@ ipconfig                        # IPv4 of the PC; iPhone opens http://<that-ip>:
 - RTSP credentials must live inside the URL for OpenCV/FFmpeg; `redact_url()`
   runs on every string that could carry it. Keep it that way.
 - No RTSP server exists in the cloud sandbox; the network path is proven via
-  an in-process HTTP MJPEG server. Real RTSP auth/decode = Astro's step.
+  an in-process HTTP MJPEG server. Real RTSP auth/decode needs the hardware.
+- **`docs/device-capabilities.md` is the source of truth for what the
+  hardware can do.** Read it before designing any control. Short version:
+  the C120 is fixed (no pan/tilt, despite the mockups), live two-way talk
+  is unverified, but night vision, privacy mode, alarm, LED and motion
+  settings are all available over the camera's local API using the same
+  credentials as the video. Recent firmware needs **Third-Party
+  Compatibility** enabled in the Tapo app or nothing connects.
+- Scope line: camera control belongs in this app; Apple TV and general home
+  automation belong in Home Assistant on the same Pi. See the doc for why.
