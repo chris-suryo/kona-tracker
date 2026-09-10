@@ -8,6 +8,12 @@
   <meta name="theme-color" content="#F3F1EA" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#121611" media="(prefers-color-scheme: dark)">
   <title>{% block title %}Kona{% endblock %}</title>
+  <!-- Home-screen install: the manifest drives the icon and the chrome-free
+       launch. iOS reads apple-touch-icon rather than the manifest icons. -->
+  <link rel="manifest" href="/static/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/static/icon-180.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png">
+  <meta name="apple-mobile-web-app-title" content="Kona">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/app.css">

@@ -14,6 +14,9 @@ from kona_tracker.cli_env import read_env_file
 
 CAMERA_SOURCES = ("usb", "rtsp", "fake")
 
+# Below this, warn that the passcode is too short to face the public internet.
+MIN_SAFE_PASSCODE = 6
+
 
 @dataclass(frozen=True, repr=False)
 class Settings:
@@ -65,6 +68,15 @@ def load_settings(env_file: Path | None = Path(".env"), fake_camera: bool = Fals
     passcode = get("KONA_PASSCODE")
     if not passcode:
         raise SettingsError("KONA_PASSCODE is not set (put it in .env; see .env.example)")
+    if len(passcode) < MIN_SAFE_PASSCODE:
+        # Fine on a LAN, dangerous behind a tunnel: once the app has a public
+        # URL a short numeric code is guessable. Warn, never block — the user
+        # may genuinely be on a closed network.
+        print(
+            f"KONA_PASSCODE is under {MIN_SAFE_PASSCODE} characters. That is fine on your own "
+            "Wi-Fi, but use a longer one before exposing this through a tunnel or port forward.",
+            file=sys.stderr,
+        )
     secret = get("KONA_SECRET")
     if not secret:
         # Sessions will not survive a restart, which is fine for a first run

@@ -95,3 +95,31 @@ def test_logout_clears_cookie(client):
     r = client.post("/logout", follow_redirects=False)
     assert r.status_code == 303
     assert client.get("/camera", follow_redirects=False).status_code == 303
+
+
+def test_manifest_and_icons_are_public(client):
+    """Install must work before login, so these cannot sit behind the gate."""
+    r = client.get("/static/manifest.webmanifest", follow_redirects=False)
+    assert r.status_code == 200
+    manifest = r.json()
+    assert manifest["display"] == "standalone"
+    assert manifest["start_url"] == "/camera"
+    srcs = {i["src"] for i in manifest["icons"]}
+    assert "/static/icon-192.png" in srcs and "/static/icon-512.png" in srcs
+    assert any(i.get("purpose") == "maskable" for i in manifest["icons"])
+
+    for src in sorted(srcs) + ["/static/icon-180.png", "/static/favicon-32.png"]:
+        icon = client.get(src, follow_redirects=False)
+        assert icon.status_code == 200, src
+        assert icon.headers["content-type"] == "image/png", src
+        assert icon.content.startswith(b"\x89PNG"), src
+
+
+def test_pages_link_the_manifest_and_apple_icon(client):
+    login(client)
+    html = client.get("/camera").text
+    assert '<link rel="manifest" href="/static/manifest.webmanifest">' in html
+    assert '<link rel="apple-touch-icon" href="/static/icon-180.png">' in html
+    assert '<meta name="apple-mobile-web-app-title" content="Kona">' in html
+    # The standalone launch depends on this one; it predates the manifest.
+    assert 'name="apple-mobile-web-app-capable" content="yes"' in html
