@@ -86,6 +86,15 @@ unverified.
 | LED colour / on-off, lost-dog mode | **Confirmed** readable: `ledColor`, `operationParams.ledEnabled`, `.mode` |
 | Resting vs walking | **Confirmed**: `ongoingActivity.__typename` is `OngoingRest` or `OngoingWalk` |
 
+### Data before 2026-09-10 is not Kona
+
+Chris had an earlier Fi collar that did not fit and sat unworn. Fi attaches
+data to the *pet*, not the device, so the history carries that collar's
+readings: "resting since 7 Sep 18:51", 2.4 h of "sleep" on the 9th, 7.6 h
+across the week. That is a collar in a drawer. The new collar went on
+2026-09-10; treat only readings from then as hers. Any week or month view
+must not be designed around the earlier numbers.
+
 ### How Fi's days work — measured, and it changed the design
 
 The daily rest window runs **midnight to midnight in the owner's timezone**

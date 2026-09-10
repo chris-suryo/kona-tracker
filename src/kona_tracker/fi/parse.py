@@ -12,7 +12,7 @@ returns `None` for absent data and the caller decides how to say so.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Any
 
 # Fi documents no units. The fixture's 30600 is 8.5 hours if it is seconds,
@@ -53,6 +53,45 @@ class RestWindow:
     end: datetime | None
     sleep: int | float | None
     nap: int | float | None
+
+
+@dataclass(frozen=True)
+class PetProfile:
+    """Who she is, from the Fi profile. Every field measured 2026-09-10."""
+
+    name: str = ""
+    breed: str | None = None
+    birthday: date | None = None
+    #: The photo set in the Fi app. A URL on Fi's CDN; served through our
+    #: own `/avatar.jpg` so it never reaches the browser and a dead link
+    #: degrades to the initial.
+    photo_url: str | None = None
+
+
+@dataclass(frozen=True)
+class CollarStatus:
+    """The collar right now. Measured shapes only; `None` is "not reported".
+
+    Battery is not on `Pet` or `Device` -- both rejected every battery name
+    -- it lives inside the `device.info` blob. `on_base` comes from the
+    connection state's concrete type: `ConnectedToBase` when she is on the
+    charger, `ConnectedToCellular` (with a signal) when she is out.
+    """
+
+    battery_percent: int | float | None = None
+    time_to_empty_s: int | float | None = None
+    on_base: bool | None = None
+    signal_percent: int | float | None = None
+    led_on: bool | None = None
+    led_color: str | None = None
+    mode: str | None = None
+    #: "rest" | "walk" | None, from `ongoingActivity.__typename`.
+    activity: str | None = None
+    activity_since: datetime | None = None
+    last_report: datetime | None = None
+    #: Only while `activity == "walk"`.
+    walk_distance: int | float | None = None
+    next_update: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -151,4 +190,53 @@ def activity_from(data: Any, period: str = "dailyStat") -> ActivityStats:
         steps=_num(stats.get("totalSteps")),
         step_goal=_num(stats.get("stepGoal")),
         distance=_num(stats.get("totalDistance")),
+    )
+
+
+def profile_from(data: Any) -> PetProfile:
+    """Name, breed, birthday and photo URL. Absent parts stay None."""
+    pet: Any = (data.get("pet") or {}) if isinstance(data, dict) else {}
+    birthday: date | None = None
+    y, m, d = (pet.get("yearOfBirth"), pet.get("monthOfBirth"), pet.get("dayOfBirth"))
+    if all(type(v) is int for v in (y, m, d)):
+        try:
+            birthday = date(y, m, d)
+        except ValueError:
+            birthday = None
+    photo = ((pet.get("photos") or {}).get("first") or {}).get("image") or {}
+    url = photo.get("fullSize")
+    return PetProfile(
+        name=str(pet.get("name") or ""),
+        breed=((pet.get("breed") or {}).get("name")) or None,
+        birthday=birthday,
+        photo_url=url if isinstance(url, str) and url.startswith("https://") else None,
+    )
+
+
+def status_from(data: Any) -> CollarStatus:
+    """The collar and what she is doing, from `pet_status`."""
+    pet: Any = (data.get("pet") or {}) if isinstance(data, dict) else {}
+    device = pet.get("device") or {}
+    info = device.get("info") if isinstance(device.get("info"), dict) else {}
+    conn = device.get("lastConnectionState") or {}
+    kind = conn.get("__typename")
+    params = device.get("operationParams") or {}
+    led = device.get("ledColor") or {}
+    ongoing = pet.get("ongoingActivity") or {}
+    activity_kind = {"OngoingRest": "rest", "OngoingWalk": "walk"}.get(ongoing.get("__typename"))
+    return CollarStatus(
+        battery_percent=_num(info.get("batteryPercent")),
+        time_to_empty_s=_num((info.get("max77658Info") or {}).get("timeToEmptyS")),
+        on_base=(
+            True if kind == "ConnectedToBase" else False if kind == "ConnectedToCellular" else None
+        ),
+        signal_percent=_num(conn.get("signalStrengthPercent")),
+        led_on=params.get("ledEnabled") if isinstance(params.get("ledEnabled"), bool) else None,
+        led_color=led.get("name") or None,
+        mode=params.get("mode") or None,
+        activity=activity_kind,
+        activity_since=_moment(ongoing.get("start")),
+        last_report=_moment(ongoing.get("lastReportTimestamp")),
+        walk_distance=_num(ongoing.get("distance")) if activity_kind == "walk" else None,
+        next_update=_moment(device.get("nextLocationUpdateExpectedBy")),
     )

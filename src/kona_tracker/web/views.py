@@ -8,6 +8,7 @@ as `None`, and the template renders the muted dash for it.
 
 from __future__ import annotations
 
+from datetime import date, datetime
 from typing import Any
 
 from kona_tracker.fi.service import FiSnapshot
@@ -39,6 +40,28 @@ def _day(moment: Any) -> str | None:
     return f"{moment.day} {moment:%b}"
 
 
+def age_label(birthday: date | None, on: datetime) -> str | None:
+    """`13 months`, `1 year 1 month`, `3 years`. None without a birthday."""
+    if birthday is None:
+        return None
+    months = (on.year - birthday.year) * 12 + on.month - birthday.month
+    if on.day < birthday.day:
+        months -= 1
+    if months < 0:
+        return None
+    if months < 12:
+        return f"{months} month{'s' if months != 1 else ''}"
+    years, rest = divmod(months, 12)
+    label = f"{years} year{'s' if years != 1 else ''}"
+    if years < 2 and rest:
+        label += f" {rest} month{'s' if rest != 1 else ''}"
+    return label
+
+
+def _days(seconds: int | float | None) -> str | None:
+    return f"{seconds / 86400:.1f}" if seconds is not None else None
+
+
 def dial_offset(hours: float | None) -> float:
     """`stroke-dashoffset` that reveals `hours` of the ring.
 
@@ -57,9 +80,22 @@ def activity_context(snapshot: FiSnapshot | None, configured: bool) -> dict[str,
     today = snapshot.today if snapshot else None
     activity = snapshot.activity if snapshot else None
     week = snapshot.week if snapshot else None
+    profile = snapshot.profile if snapshot else None
+    status = snapshot.status if snapshot else None
     sleep_hours = snapshot.sleep_hours if snapshot else None
 
     return {
+        # Who she is and what the collar says, for the template to use when
+        # the design lands. Nothing here is rendered yet.
+        "has_photo": bool(profile and profile.photo_url),
+        "breed": profile.breed if profile else None,
+        "age": age_label(profile.birthday, snapshot.fetched_at) if profile and snapshot else None,
+        "battery": _count(status.battery_percent) if status else None,
+        "days_left": _days(status.time_to_empty_s) if status else None,
+        "on_base": status.on_base if status else None,
+        "signal": _count(status.signal_percent) if status else None,
+        "activity": status.activity if status else None,
+        "led_on": status.led_on if status else None,
         "tab": "activity",
         "configured": configured,
         "has_data": bool(snapshot and snapshot.has_data),
@@ -104,8 +140,26 @@ def activity_json(snapshot: FiSnapshot | None, configured: bool) -> dict[str, An
     today = snapshot.today if snapshot else None
     activity = snapshot.activity if snapshot else None
     week = snapshot.week if snapshot else None
+    profile = snapshot.profile if snapshot else None
+    status = snapshot.status if snapshot else None
     return {
         "configured": configured,
+        "breed": profile.breed if profile else None,
+        "birthday": profile.birthday.isoformat() if profile and profile.birthday else None,
+        # The photo URL itself stays server-side; the page uses /avatar.jpg.
+        "has_photo": bool(profile and profile.photo_url),
+        "battery_percent": status.battery_percent if status else None,
+        "time_to_empty_s": status.time_to_empty_s if status else None,
+        "on_base": status.on_base if status else None,
+        "signal_percent": status.signal_percent if status else None,
+        "activity": status.activity if status else None,
+        "activity_since": (
+            status.activity_since.isoformat() if status and status.activity_since else None
+        ),
+        "walk_distance_raw": status.walk_distance if status else None,
+        "led_on": status.led_on if status else None,
+        "led_color": status.led_color if status else None,
+        "mode": status.mode if status else None,
         "fetched_at": snapshot.fetched_at.isoformat() if snapshot else None,
         "pet_name": snapshot.pet_name if snapshot else None,
         "sleep_seconds": window.sleep if window else None,

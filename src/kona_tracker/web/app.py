@@ -27,6 +27,34 @@ from kona_tracker.web.views import activity_context, activity_json
 HERE = Path(__file__).parent
 PUBLIC_PATHS = {"/login", "/healthz"}
 
+#: Kona's photo is a few hundred KB; anything bigger is not a photo.
+AVATAR_MAX_BYTES = 5 * 1024 * 1024
+
+AvatarFetch = Callable[[str], tuple[bytes, str] | None]
+
+
+def fetch_avatar(url: str) -> tuple[bytes, str] | None:
+    """Fetch the profile photo from Fi's CDN, or None if it is not an image.
+
+    The URL comes from Fi's own response, never from a request, and it is
+    still held to https and an image content type. A dead or expiring link
+    returns None and the page shows the initial instead.
+    """
+    import httpx
+
+    if not url.startswith("https://"):
+        return None
+    try:
+        resp = httpx.get(url, timeout=10.0, follow_redirects=True)
+    except httpx.HTTPError:
+        return None
+    ctype = resp.headers.get("content-type", "").split(";")[0].strip().lower()
+    if not resp.is_success or not ctype.startswith("image/"):
+        return None
+    if len(resp.content) > AVATAR_MAX_BYTES:
+        return None
+    return resp.content, ctype
+
 
 def default_control(s: Settings) -> CameraControl:
     """The thing that drives the camera, as opposed to reading from it.
@@ -67,6 +95,7 @@ def create_app(
     source_factory: Callable[[], FrameSource] | None = None,
     control: CameraControl | None = None,
     fi_service: FiService | None = None,
+    avatar_fetch: AvatarFetch = fetch_avatar,
 ):
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
@@ -98,6 +127,9 @@ def create_app(
     app.state.auth = auth
     app.state.control = control
     app.state.fi = fi
+    # One photo, fetched once per URL. Fi rotates the link rarely; the
+    # snapshot refresh decides when we look again.
+    avatar_cache: dict[str, tuple[bytes, str]] = {}
 
     def authed(request: Request) -> bool:
         return auth.valid_cookie(request.cookies.get(COOKIE_NAME))
@@ -108,7 +140,7 @@ def create_app(
         if path in PUBLIC_PATHS or path.startswith("/static/") or authed(request):
             return await call_next(request)
         # An <img> can't follow a redirect to a login page; give it a 401.
-        if path.startswith("/stream") or path.startswith("/snapshot"):
+        if path.startswith(("/stream", "/snapshot", "/avatar")):
             return Response(status_code=401)
         return RedirectResponse("/login", status_code=303)
 
@@ -169,6 +201,25 @@ def create_app(
         snapshot = fi.snapshot() if fi else None
         return templates.TemplateResponse(
             request, "activity.html", activity_context(snapshot, configured=fi is not None)
+        )
+
+    @app.get("/avatar.jpg")
+    def avatar():
+        """Her photo from the Fi app, proxied. 404 when there is none, so an
+        <img onerror> falls back to the initial rather than a broken icon."""
+        snapshot = fi.snapshot() if fi else None
+        url = snapshot.profile.photo_url if snapshot and snapshot.profile else None
+        if not url:
+            return Response(status_code=404)
+        if url not in avatar_cache:
+            fetched = avatar_fetch(url)
+            if fetched is None:
+                return Response(status_code=404)
+            avatar_cache.clear()  # never hold more than the current photo
+            avatar_cache[url] = fetched
+        body, ctype = avatar_cache[url]
+        return Response(
+            content=body, media_type=ctype, headers={"Cache-Control": "private, max-age=3600"}
         )
 
     @app.get("/activity.json")

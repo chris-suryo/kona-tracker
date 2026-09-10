@@ -31,8 +31,8 @@ design we cannot ship.
 > The app asks Fi every 5 minutes; the collar reports every ~3.
 >
 > *Who she is (from the Fi profile)*
-> - name `Kona` · Labrador Retriever · female · born 15 Aug 2025, so **13
->   months old** · weight `15.42` (unit unverified, probably kg)
+> - name `Kona` · Labrador Retriever · female · born 15 Aug 2025, so she
+>   **just turned one** · weight `15.42` (unit unverified, probably kg)
 > - **her photo**, the one set in the Fi app — a real image URL, dated 7 Sep.
 >   The avatar should be her, not an initial.
 >

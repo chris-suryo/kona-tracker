@@ -1,0 +1,63 @@
+{
+  "data": {
+    "pet": {
+      "__typename": "Pet",
+      "name": "Kona",
+      "breed": {
+        "__typename": "Breed",
+        "name": "Labrador Retriever"
+      },
+      "yearOfBirth": 2025,
+      "monthOfBirth": 8,
+      "dayOfBirth": 15,
+      "photos": {
+        "__typename": "PhotoFeed",
+        "first": {
+          "__typename": "Photo",
+          "id": "p1",
+          "date": "2026-09-07T14:02:05.269Z",
+          "image": {
+            "__typename": "Image",
+            "fullSize": "https://cdn.example.invalid/kona.jpg"
+          }
+        }
+      },
+      "device": {
+        "__typename": "Device",
+        "info": {
+          "batteryPercent": 57,
+          "buildId": "5.0.77-prod",
+          "max77658Info": {
+            "timeToEmptyS": 368634,
+            "avgTempDegreesC": 35.7
+          }
+        },
+        "nextLocationUpdateExpectedBy": "2026-09-10T20:27:44.617Z",
+        "lastConnectionState": {
+          "__typename": "ConnectedToBase",
+          "date": "2026-09-10T20:24:44.315Z",
+          "chargingBase": {
+            "__typename": "ChargingBase",
+            "id": "base-1"
+          }
+        },
+        "ledColor": {
+          "__typename": "LedColor",
+          "name": "White",
+          "hexCode": "ffffff"
+        },
+        "operationParams": {
+          "__typename": "OperationParams",
+          "mode": "NORMAL",
+          "ledEnabled": false
+        }
+      },
+      "ongoingActivity": {
+        "__typename": "OngoingRest",
+        "areaName": null,
+        "lastReportTimestamp": "2026-09-10T20:24:44.315Z",
+        "start": "2026-09-10T12:00:00.000Z"
+      }
+    }
+  }
+}

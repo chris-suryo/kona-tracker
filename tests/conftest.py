@@ -39,6 +39,7 @@ def fake_fi_handler(request: httpx.Request) -> httpx.Response:
             ("KonaRest", "rest"),
             ("KonaActivity", "activity"),
             ("KonaSpeculative", "speculative_error"),
+            ("KonaStatus", "status"),
             ("KonaProfile", "profile"),
             ("KonaDevice", "device"),
             ("KonaLocation", "location"),

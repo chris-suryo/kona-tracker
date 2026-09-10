@@ -192,6 +192,30 @@ def speculative_queries(pet_id: str) -> list[tuple[str, str]]:
     ]
 
 
+def pet_status(pet_id: str) -> str:
+    """Everything the page shows beyond rest and steps, in one round trip.
+
+    Only fields measured on Kona's collar on 2026-09-10. `info` is a JSON
+    scalar; battery is inside it. The two inline fragments are the concrete
+    connection states -- selecting `signalStrengthPercent` directly would be
+    the same class of error that broke sleep.
+    """
+    return (
+        f'query KonaStatus {{ pet(id: "{pet_id}") {{ __typename name '
+        "breed { __typename name } yearOfBirth monthOfBirth dayOfBirth "
+        "photos { __typename first { __typename id date image { __typename fullSize } } } "
+        "device { __typename info nextLocationUpdateExpectedBy "
+        "lastConnectionState { __typename date "
+        "... on ConnectedToBase { chargingBase { __typename id } } "
+        "... on ConnectedToCellular { signalStrengthPercent } } "
+        "ledColor { __typename name hexCode } "
+        "operationParams { __typename mode ledEnabled } } "
+        "ongoingActivity { __typename start lastReportTimestamp areaName "
+        "... on OngoingWalk { distance } } "
+        "} }"
+    )
+
+
 # --------------------------------------------------------------------------
 # Probe-only queries.
 #

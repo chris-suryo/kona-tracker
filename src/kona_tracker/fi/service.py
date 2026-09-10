@@ -21,14 +21,18 @@ from datetime import UTC, datetime
 from kona_tracker.fi.client import FiClient, FiError, FiGraphQLError
 from kona_tracker.fi.parse import (
     ActivityStats,
+    CollarStatus,
+    PetProfile,
     RestWindow,
     activity_from,
     hours_from_duration,
     pets_from,
+    profile_from,
     rest_from,
     split_windows,
+    status_from,
 )
-from kona_tracker.fi.queries import CURRENT_USER_PETS, pet_activity, pet_rest
+from kona_tracker.fi.queries import CURRENT_USER_PETS, pet_activity, pet_rest, pet_status
 
 DEFAULT_REFRESH_SECONDS = 300.0
 
@@ -58,6 +62,10 @@ class FiSnapshot:
     today: RestWindow | None = None
     activity: ActivityStats | None = None
     week: ActivityStats | None = None
+    #: Photo, breed, birthday; and the collar right now. Independent of rest
+    #: and steps, so a failure in one never blanks the others.
+    profile: PetProfile | None = None
+    status: CollarStatus | None = None
     problem: str | None = None
     stale: bool = False
 
@@ -72,7 +80,7 @@ class FiSnapshot:
 
     @property
     def has_data(self) -> bool:
-        return any(x is not None for x in (self.window, self.today, self.activity))
+        return any(x is not None for x in (self.window, self.today, self.activity, self.status))
 
     @property
     def partial(self) -> bool:
@@ -146,6 +154,8 @@ def fetch_snapshot(
     today: RestWindow | None = None
     activity: ActivityStats | None = None
     week: ActivityStats | None = None
+    profile: PetProfile | None = None
+    status: CollarStatus | None = None
     problems: list[str] = []
     try:
         windows = rest_from(client.graphql(pet_rest(pet.id, limit=2)), "dailyStat")
@@ -160,6 +170,12 @@ def fetch_snapshot(
         week = activity_from(data, "weeklyStat")
     except FiError as e:
         problems.append(f"Steps: {_explain(e)}")
+    try:
+        data = client.graphql(pet_status(pet.id))
+        profile = profile_from(data)
+        status = status_from(data)
+    except FiError as e:
+        problems.append(f"Collar: {_explain(e)}")
 
     return FiSnapshot(
         fetched_at=now,
@@ -169,6 +185,8 @@ def fetch_snapshot(
         today=today,
         activity=activity,
         week=week,
+        profile=profile,
+        status=status,
         problem=" ".join(problems) or None,
     )
 
