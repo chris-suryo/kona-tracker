@@ -16,6 +16,12 @@ level; [pyatv](https://pyatv.dev/) for Apple TV.
 
 ## 1. Camera models
 
+The camera in use today is a **Logitech C230 HD USB webcam**, verified on
+2026-09-10 at index 0. It supplies live video and still JPEGs; it has no
+motors or presets, so the production UI intentionally shows capture/share
+and no directional controls. A Tapo may replace it later, but is not the
+current production device.
+
 Abilities are **data**, not assumptions in a template. `KONA_CAMERA_MODEL`
 picks the set; `src/kona_tracker/camera/capabilities.py` holds it. A model
 we do not recognise gets video only, because showing too few controls beats
@@ -53,11 +59,12 @@ Deliberately dropped. `Capabilities.talk` is `False` everywhere and a test
 pins it, so it cannot be switched on hopefully — only by someone who proved
 it against real hardware.
 
-### The plan across two cameras
+### The likely next camera
 
-The C120 already ordered is not wasted: fixed cameras make good second
-angles. A C225 added later becomes the one you steer. The app renders each
-correctly from the same code, so both can be plugged in and compared.
+A Tapo is still a reasonable always-on replacement for the temporary USB
+webcam. Pick its capability row only after the exact model is in hand. The
+app renders controls from the connected driver, so even a pan/tilt model
+does not advertise motion until a real driver can move it.
 
 ### Setup gotcha
 
@@ -302,10 +309,16 @@ Controls that **may** appear, gated on the connected camera's capabilities:
 - motion detection toggle and sensitivity
 - speaker volume, microphone mute
 - snapshot (already working)
+- capture/share on fixed USB cameras (working; save-to-device fallback when
+  Web Share is unavailable)
 
 Controls that **must not** appear:
 
 - hold-to-talk — impossible on Tapo, on any model
 - pan/tilt on a fixed camera — the page must ask, never assume
 
-Still undecided, pending the probe: everything on the Activity tab.
+The Activity tab now uses only the confirmed fields above. Its free MVP map
+uses Leaflet 1.9.4 and OpenStreetMap's standard raster tiles. Fi supplies
+coordinates only during an ongoing walk; the app preserves the last fix it
+has seen, labels its time, and otherwise displays an explicit GPS-empty
+state. It never invents a home coordinate.
