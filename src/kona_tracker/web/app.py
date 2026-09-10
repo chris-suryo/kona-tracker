@@ -215,9 +215,7 @@ def create_app(
             if preview
             else activity_context(snapshot, configured=fi is not None)
         )
-        return templates.TemplateResponse(
-            request, "activity.html", context
-        )
+        return templates.TemplateResponse(request, "activity.html", context)
 
     @app.get("/settings", response_class=HTMLResponse)
     def profile_settings(request: Request):

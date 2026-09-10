@@ -151,7 +151,9 @@ def activity_context(snapshot: FiSnapshot | None, configured: bool) -> dict[str,
         "data_start_label": (
             "today"
             if snapshot and snapshot.data_start == snapshot.fetched_at.date()
-            else _day(snapshot.data_start) if snapshot and snapshot.data_start else None
+            else _day(snapshot.data_start)
+            if snapshot and snapshot.data_start
+            else None
         ),
         "historical_totals_hidden": bool(snapshot and snapshot.historical_totals_hidden),
         "tab": "activity",

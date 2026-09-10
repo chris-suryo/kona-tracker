@@ -453,10 +453,16 @@ def test_walk_positions_are_validated_sorted_and_exposed_behind_auth():
     walk = fixture("location")["data"]["pet"]["ongoingActivity"]
     walk["positions"].extend(
         [
-            {"date": "2026-09-10T19:20:00Z", "errorRadius": -2,
-             "position": {"latitude": 30.26, "longitude": -97.74}},
-            {"date": "2026-09-10T19:30:00Z", "errorRadius": 4,
-             "position": {"latitude": 999, "longitude": -97.74}},
+            {
+                "date": "2026-09-10T19:20:00Z",
+                "errorRadius": -2,
+                "position": {"latitude": 30.26, "longitude": -97.74},
+            },
+            {
+                "date": "2026-09-10T19:30:00Z",
+                "errorRadius": 4,
+                "position": {"latitude": 999, "longitude": -97.74},
+            },
         ]
     )
     data["pet"]["ongoingActivity"] = walk
