@@ -8,6 +8,7 @@ as `None`, and the template renders the muted dash for it.
 
 from __future__ import annotations
 
+import re
 from datetime import date, datetime
 from typing import Any
 
@@ -21,6 +22,19 @@ TRACK = 603.0
 # What a full ring means. Fi publishes no target for sleep the way it does
 # for steps, so this is our scale, not Fi's, and the page says so.
 DIAL_SCALE_HOURS = 12.0
+
+
+def _location_label(status: Any) -> str | None:
+    """A useful place label that does not publish a street address."""
+    if status is None:
+        return None
+    if status.area_name:
+        return status.area_name
+    if not status.place_name:
+        return None
+    if status.activity == "rest" and re.match(r"^\s*\d+\s+\S", status.place_name):
+        return "Home"
+    return status.place_name
 
 
 def _hours(value: float | None) -> str | None:
@@ -81,6 +95,7 @@ def activity_context(snapshot: FiSnapshot | None, configured: bool) -> dict[str,
     sleep_hours = snapshot.sleep_hours if snapshot else None
     positions = status.positions if status else ()
     last_position = positions[-1] if positions else None
+    location_label = _location_label(status)
 
     return {
         # Who she is and what the collar says, for the template to use when
@@ -103,7 +118,7 @@ def activity_context(snapshot: FiSnapshot | None, configured: bool) -> dict[str,
         "distance_m": _count(activity.distance if activity else None),
         "walk_distance_m": _count(status.walk_distance) if status else None,
         "led_on": status.led_on if status else None,
-        "area_name": status.area_name if status else None,
+        "area_name": location_label,
         "map_points": [
             {
                 "lat": point.latitude,
@@ -192,7 +207,7 @@ def activity_json(snapshot: FiSnapshot | None, configured: bool) -> dict[str, An
         "led_on": status.led_on if status else None,
         "led_color": status.led_color if status else None,
         "mode": status.mode if status else None,
-        "area_name": status.area_name if status else None,
+        "area_name": _location_label(status),
         "positions": (
             [
                 {

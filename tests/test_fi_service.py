@@ -25,7 +25,7 @@ from kona_tracker.fi.parse import (
 from kona_tracker.fi.service import FiService, FiSnapshot, fetch_snapshot
 from kona_tracker.web.app import create_app
 from kona_tracker.web.settings import Settings
-from kona_tracker.web.views import TRACK, activity_context, dial_offset
+from kona_tracker.web.views import TRACK, activity_context, activity_json, dial_offset
 
 EMAIL, PASSWORD = "chris@example.com", "correct"
 
@@ -322,6 +322,10 @@ def test_activity_page_renders_real_numbers():
         assert data["steps"] == 4210 and data["problem"] is None
         assert "password" not in json.dumps(data).lower()
 
+        assert body.index("Steps today") < body.index("Naps today")
+        assert body.index("Naps today") < body.index("Location") < body.index("This week")
+        assert "Fi identifies this resting place as Home" in body
+
 
 def test_activity_page_without_credentials_explains_the_two_env_lines():
     with web_client(None) as c:
@@ -386,6 +390,7 @@ def test_profile_and_status_parse_the_measured_shapes():
     assert status.time_to_empty_s == 368634
     assert status.on_base is True and status.signal_percent is None
     assert status.activity == "rest" and status.walk_distance is None
+    assert status.area_name is None and status.place_name == "Home"
     assert status.led_on is False and status.led_color == "White" and status.mode == "NORMAL"
     assert status.next_update is not None and status.last_report is not None
 
@@ -551,6 +556,20 @@ def test_activity_json_exposes_the_collar_without_the_photo_url():
     assert data["activity"] == "rest" and data["breed"] == "Labrador Retriever"
     assert data["birthday"] == "2025-08-15" and data["has_photo"] is True
     assert "cdn.example.invalid" not in json.dumps(data), "the URL stays server-side"
+
+
+def test_a_saved_home_address_is_never_exposed_to_the_page_or_json():
+    from kona_tracker.fi.parse import CollarStatus
+
+    private = "86 Norfolk"
+    snap = FiSnapshot(
+        fetched_at=NOW,
+        pet_name="Kona",
+        status=CollarStatus(activity="rest", place_name=private),
+    )
+    assert activity_context(snap, configured=True)["area_name"] == "Home"
+    payload = activity_json(snap, configured=True)
+    assert payload["area_name"] == "Home" and private not in json.dumps(payload)
 
 
 # --------------------------------------------------------------------------

@@ -52,31 +52,6 @@
   </div>
 </section>
 
-{% if configured %}
-<section class="location-card {{ 'urgent' if escaped or lost else '' }}" aria-labelledby="location-title">
-  <div class="location-heading">
-    <div>
-      <span class="eyebrow">Location</span>
-      <strong id="location-title">
-        {% if location_live %}Current walk
-        {% elif map_points %}Last GPS fix
-        {% elif activity == 'rest' and area_name %}{{ area_name }}
-        {% else %}Waiting for GPS{% endif %}
-      </strong>
-    </div>
-    {% if location_updated %}<span>{{ 'Updated' if location_live else 'Last seen' }} {{ location_updated }}</span>{% endif %}
-  </div>
-  {% if map_points %}
-  <div id="kona-map" class="map" aria-label="Map showing Kona's {{ 'current walk route' if location_live else 'last reported location' }}"></div>
-  {% else %}
-  <div class="map-empty">
-    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s6-5.2 6-11a6 6 0 1 0-12 0c0 5.8 6 11 6 11Z"/><circle cx="12" cy="10" r="2"/></svg>
-    <span>Fi sends map points during an active walk or escape. No location is being guessed.</span>
-  </div>
-  {% endif %}
-</section>
-{% endif %}
-
 <section class="steps-hero {{ 'dimmed' if stale else '' }}" aria-label="Steps today">
   <div class="hero-copy">
     <span class="eyebrow">Steps today</span>
@@ -94,6 +69,11 @@
 
 <section class="rest-grid {{ 'dimmed' if stale else '' }}" aria-label="Rest">
   <div class="metric">
+    <span class="eyebrow">Naps today</span>
+    <span class="d metric-value {{ '' if nap_hours else 'empty' }}">{{ nap_hours or '&ndash;'|safe }}<small>h</small></span>
+    <span>so far today</span>
+  </div>
+  <div class="metric">
     <span class="eyebrow">Asleep last night</span>
     {% if sleep_hours %}
     <span class="d metric-value">{{ sleep_hours }}<small>h</small></span>
@@ -106,12 +86,32 @@
     <span>{% if partial %}Sleep didn't come through{% elif night_pending %}First full night still to come{% elif problem %}couldn't reach the collar{% elif configured %}No rest data yet{% else %}waiting for the collar{% endif %}</span>
     {% endif %}
   </div>
-  <div class="metric">
-    <span class="eyebrow">Naps today</span>
-    <span class="d metric-value {{ '' if nap_hours else 'empty' }}">{{ nap_hours or '&ndash;'|safe }}<small>h</small></span>
-    <span>so far today</span>
-  </div>
 </section>
+
+{% if configured %}
+<section class="location-card {{ 'urgent' if escaped or lost else '' }}" aria-labelledby="location-title">
+  <div class="location-heading">
+    <div>
+      <span class="eyebrow">Location</span>
+      <strong id="location-title">
+        {% if location_live %}Current walk
+        {% elif map_points %}Last GPS fix
+        {% elif area_name %}{{ area_name }}
+        {% else %}Waiting for GPS{% endif %}
+      </strong>
+    </div>
+    {% if location_updated %}<span>{{ 'Updated' if location_live else 'Last seen' }} {{ location_updated }}</span>{% endif %}
+  </div>
+  {% if map_points %}
+  <div id="kona-map" class="map" aria-label="Map showing Kona's {{ 'current walk route' if location_live else 'last reported location' }}"></div>
+  {% else %}
+  <div class="map-empty">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s6-5.2 6-11a6 6 0 1 0-12 0c0 5.8 6 11 6 11Z"/><circle cx="12" cy="10" r="2"/></svg>
+    <span>{% if area_name %}Fi identifies this resting place as {{ area_name }}, but only sends map coordinates during a walk or escape.{% else %}Fi sends map coordinates during an active walk or escape. No location is being guessed.{% endif %}</span>
+  </div>
+  {% endif %}
+</section>
+{% endif %}
 
 <section class="week-row {{ 'dimmed' if stale else '' }}">
   {% if historical_totals_hidden %}

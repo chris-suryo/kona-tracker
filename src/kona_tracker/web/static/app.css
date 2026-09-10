@@ -117,10 +117,10 @@ body { min-height: 100dvh; display: flex; flex-direction: column; -webkit-font-s
              background: var(--bg2); border-radius: 4px; padding: 1px 5px; }
 /* Sections rise in gently; the complete content is present without motion. */
 .collar-summary, .location-card, .steps-hero, .rest-grid, .week-row { animation: rise .5s cubic-bezier(.22,1,.36,1) both; }
-.location-card { animation-delay: .04s; }
-.steps-hero { animation-delay: .05s; }
-.rest-grid { animation-delay: .1s; }
-.week-row { animation-delay: .15s; }
+.steps-hero { animation-delay: .04s; }
+.rest-grid { animation-delay: .08s; }
+.location-card { animation-delay: .12s; }
+.week-row { animation-delay: .16s; }
 @keyframes rise { from { opacity: 0; transform: translateY(10px); } }
 
 /* camera */
@@ -128,8 +128,7 @@ body { min-height: 100dvh; display: flex; flex-direction: column; -webkit-font-s
 .cam-page .hdr { padding-left: 20px; padding-right: 20px; }
 .cam { position: relative; margin: 12px 0 0; overflow: hidden; background: #0b0e0c; }
 .cam img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; }
-.cam .top { position: absolute; left: 16px; right: 16px; top: 14px; display: flex; justify-content: space-between; align-items: center; color: #fff; }
-.cam .name { font-family: var(--disp); font-weight: 700; letter-spacing: -.03em; font-size: 22px; text-shadow: 0 1px 6px rgba(0,0,0,.5); }
+.cam .top { position: absolute; left: 16px; right: 16px; top: 14px; display: flex; justify-content: flex-end; align-items: center; color: #fff; }
 .live { display: flex; align-items: center; gap: 8px; font-size: 11px; letter-spacing: .14em; font-weight: 700;
         padding: 6px 12px; border-radius: 999px; background: rgba(0,0,0,.45); border: 1px solid rgba(255,255,255,.15); }
 .dot { width: 7px; height: 7px; border-radius: 50%; background: rgba(255,255,255,.35); }
