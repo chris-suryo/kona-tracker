@@ -36,3 +36,31 @@ def test_non_json_response_is_a_fi_error():
         with pytest.raises(FiLoginError) as exc:
             c.login("a@b.c", "x")
         assert exc.value.status == 502
+
+
+def test_graphql_multi_suggestion_hints_survive_the_allowlist():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "errors": [
+                    {
+                        "message": 'Cannot query field "sleepQuality" on type "Pet". '
+                        'Did you mean "sleepScore", "sleepStats", or "sleep"?'
+                    },
+                    {
+                        "message": 'Cannot query field "restQuality" on type "Pet". '
+                        'Did you mean "rest" or "restStats"?'
+                    },
+                    {"message": "denied for chris@example.com session=abc"},
+                ]
+            },
+        )
+
+    with FiClient(transport=httpx.MockTransport(handler)) as c:
+        with pytest.raises(FiGraphQLError) as exc:
+            c.graphql("query KonaSpeculative { pet { sleepQuality } }")
+    msgs = [e["message"] for e in exc.value.errors]
+    assert '"sleepScore", "sleepStats", or "sleep"' in msgs[0]
+    assert '"rest" or "restStats"' in msgs[1]
+    assert "chris@example.com" not in msgs[2] and "omitted" in msgs[2]

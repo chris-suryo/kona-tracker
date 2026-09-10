@@ -46,10 +46,12 @@ class FiGraphQLError(FiError):
     def __init__(self, errors: list[dict[str, Any]], data: Any = None):
         # Preserve only complete schema-validation messages. Arbitrary server prose
         # and extensions can contain account data and must never enter reports.
+        # graphql-js lists several suggestions as `"a", "b", or "c"`; accept
+        # the whole list, since those hints are the speculative query's point.
+        name = r'"[A-Za-z_][A-Za-z_0-9]*"'
         pattern = (
-            r'Cannot query field "[A-Za-z_][A-Za-z_0-9]*" on type '
-            r'"[A-Za-z_][A-Za-z_0-9]*"\.'
-            r'(?: Did you mean "[A-Za-z_][A-Za-z_0-9]*"\?)?'
+            rf"Cannot query field {name} on type {name}\."
+            rf"(?: Did you mean {name}(?:, {name})*(?:,? or {name})?\?)?"
         )
         self.errors = [
             {
