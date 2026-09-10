@@ -32,7 +32,7 @@ from typing import Any
 
 from kona_tracker.camera.placeholder import NO_SIGNAL_JPEG
 from kona_tracker.camera.redact import redact_url
-from kona_tracker.camera.source import FrameSource
+from kona_tracker.camera.source import CameraFrameError, FrameSource
 
 BOUNDARY = "kona-frame"
 
@@ -83,6 +83,7 @@ class CameraHub:
         self.opens = 0  # successful source opens (tests, status)
         self.reconnects = 0  # reconnect attempts after the first connection
         self.last_error: str | None = None  # always redacted
+        self.last_error_kind: str | None = None
 
     # -- status -------------------------------------------------------------
 
@@ -107,6 +108,7 @@ class CameraHub:
                 "opens": self.opens,
                 "reconnects": self.reconnects,
                 "last_error": self.last_error,
+                "last_error_kind": self.last_error_kind,
             }
 
     # -- lifecycle ----------------------------------------------------------
@@ -164,6 +166,7 @@ class CameraHub:
                         with self._lock:
                             self._reader_alive = False  # abandon; reader sees gen != current
                             self.last_error = f"no frames for {self._hang_after:.0f}s; reconnecting"
+                            self.last_error_kind = "hung"
                             self._fails += 1
                             self._lock.notify_all()
                         break
@@ -186,6 +189,7 @@ class CameraHub:
             with self._lock:
                 if gen == self._generation:
                     self.last_error = redact_url(f"{type(e).__name__}: {e}")
+                    self.last_error_kind = "open"
                     self._reader_alive = False
                     self._fails += 1
                     self._lock.notify_all()
@@ -200,6 +204,9 @@ class CameraHub:
                 except Exception as e:
                     with self._lock:
                         self.last_error = redact_url(f"{type(e).__name__}: {e}")
+                        self.last_error_kind = (
+                            "black_frame" if isinstance(e, CameraFrameError) else "read"
+                        )
                     break
                 if jpeg:
                     misses = 0
@@ -216,6 +223,7 @@ class CameraHub:
                     if misses >= self._max_misses:
                         with self._lock:
                             self.last_error = f"{misses} consecutive empty reads"
+                            self.last_error_kind = "empty_frames"
                         break
                     time.sleep(0.05)
                 elapsed = time.monotonic() - started

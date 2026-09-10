@@ -159,6 +159,21 @@ def test_open_failure_gives_placeholder_and_redacted_error_then_reconnects():
         hub.stop()
 
 
+def test_a_fully_black_camera_is_not_reported_as_live():
+    from kona_tracker.camera.source import CameraFrameError
+
+    hub, _ = make_hub(
+        [[CameraFrameError("camera image is fully black")]],
+        backoff_base=0.5,
+        backoff_max=0.5,
+    )
+    frame, state = hub.snapshot(timeout=0.2)
+    status = hub.status()
+    assert frame == NO_SIGNAL_JPEG and state == DISCONNECTED
+    assert status["last_error_kind"] == "black_frame"
+    hub.stop()
+
+
 def test_exception_mid_stream_reconnects_and_resumes():
     # backoff (0.5 s) exceeds stale_after (0.3 s), so the gap becomes visible;
     # with a shorter backoff the reconnect is seamless and every part is LIVE.
@@ -283,3 +298,14 @@ def test_the_fake_source_without_a_control_is_unchanged():
     plain = FakeSource(fps=200).read_jpeg()
     assert plain.startswith(b"\xff\xd8") and len(plain) < 2000
     assert frame_number(plain) == 1
+
+
+def test_nearly_black_pixels_are_not_a_usable_webcam_picture():
+    np = pytest.importorskip("numpy")
+    from kona_tracker.camera.source import frame_is_unusable
+
+    black = np.zeros((480, 640, 3), dtype=np.uint8)
+    black[0, 0, 0] = 240  # a hot pixel does not make the room visible
+    visible = np.full((480, 640, 3), 2, dtype=np.uint8)
+    assert frame_is_unusable(black)
+    assert not frame_is_unusable(visible)

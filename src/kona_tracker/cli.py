@@ -117,6 +117,7 @@ def camera_test(
     import time
 
     from kona_tracker.camera.redact import redact_url
+    from kona_tracker.camera.source import CameraFrameError
     from kona_tracker.web.app import default_source_factory
     from kona_tracker.web.settings import SettingsError, load_settings
 
@@ -140,6 +141,9 @@ def camera_test(
             jpeg = source.read_jpeg()
             if jpeg:
                 sizes.append(len(jpeg))
+    except CameraFrameError as e:
+        typer.echo(f"Read failed: {e}. Check the lens cover and room light.", err=True)
+        raise typer.Exit(code=1) from None
     finally:
         source.close()
     elapsed = time.monotonic() - t0
