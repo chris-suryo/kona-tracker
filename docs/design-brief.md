@@ -26,30 +26,68 @@ design we cannot ship.
 > safe-area insets. Light and dark both matter and follow the phone; there
 > is no in-app theme switch.
 >
-> **What the data actually is.** Measured against the real collar on
-> 2026-09-10, not assumed:
+> **What the data actually is.** Measured on Kona's collar on 2026-09-10 —
+> every value below is a real reading (private ones blanked), not a guess.
+> The app asks Fi every 5 minutes; the collar reports every ~3.
 >
-> - Steps and a step goal, for today / this week / this month. **Confirmed
->   working** (3,383 of 28,000 on the first real run).
-> - Sleep duration and nap duration, for a window Fi groups them into. The
->   window is a calendar day — it is **not** the moment she fell asleep, so
->   nothing may be labelled "fell asleep at 10:40pm".
-> - Distance is returned but **is not trustworthy**: 0 for the day against
->   3,383 steps. Do not put it in a layout as a headline number.
+> *Who she is (from the Fi profile)*
+> - name `Kona` · Labrador Retriever · female · born 15 Aug 2025, so **13
+>   months old** · weight `15.42` (unit unverified, probably kg)
+> - **her photo**, the one set in the Fi app — a real image URL, dated 7 Sep.
+>   The avatar should be her, not an initial.
 >
-> There is **no sleep-quality score** and **no behaviour counts** — not
-> barking, scratching, licking, eating or drinking — and no heart rate.
-> That is confirmed, not assumed: Fi's API rejects every one of those field
-> names, and it offers a "did you mean" when something is close, so silence
-> means absence. Do not design a component that needs one. If a layout only
+> *Rest — durations in seconds, verified*
+> - Fi's day is midnight-to-midnight in the owner's timezone. The newest
+>   daily window is **today, in progress**: its SLEEP is 0 until tonight and
+>   its NAP climbs through the day (`1290` → `3146` s across one afternoon).
+> - **Last night** is the window before it: yesterday `SLEEP 8796` (2.4 h),
+>   `NAP 6971` (1.9 h).
+> - This week `SLEEP 27202` (7.6 h), `NAP 40238` (11.2 h). Monthly is the
+>   same because the collar went on 7 Sep.
+> - Coming in the next data round: `overnightRestSummary` (Fi's own "last
+>   night"), and `restFeed` — a history, so a week strip or sparkline is
+>   realistic to design for.
+>
+> *Activity*
+> - Today `3579` steps of a `28000` goal. This week `5370` of `196000`.
+>   Monthly exists too.
+> - Distance is **walk distance only** and she has not been logged on a walk
+>   yet (today `0`, week `93`). Do not headline it. `stepFeed` and
+>   `activityFeed` exist for history.
+>
+> *The collar itself*
+> - battery `57`%, with an estimated `4.3 days` to empty
+> - **on the charger right now** (`ConnectedToBase`); when she is out it
+>   reports cellular `signalStrengthPercent` instead
+> - LED colour `White`, LED currently off; lost-dog mode `NORMAL` (off)
+> - next update expected in ~3 minutes — a "live" affordance is honest
+>
+> *Where she is*
+> - status is either **resting** or **on a walk** (`OngoingRest` /
+>   `OngoingWalk`). Resting since 7 Sep 18:51 — i.e. home.
+> - a resting place name and a home location exist and arrive next round;
+>   on a walk there is live distance and GPS with an error radius.
+>
+> *Does not exist — confirmed at every level, do not design for it*
+> - no sleep quality, score, restfulness or wake-ups, on the pet or on any
+>   rest summary
+> - no barking, scratching, licking, eating or drinking counts
+> - no heart rate, calories or active minutes
+> - no geofences
+>
+> A rejection with no "did you mean" is how we know: Fi suggests a near
+> match when one exists (`currentBehaviorSummary` → "did you mean
+> `currentActivitySummary`?"), so silence is absence. If a layout only
 > works with a 0-100 score, it does not work.
 >
-> Likely available but not yet verified: her photo from the Fi app, the area
-> she is in, whether she is out on a walk, and collar charge/signal. Ask
-> before building on these.
->
+> *What is on screen today*, so you know the baseline: a passcode page; a
+> Camera tab (live video, snapshot, and a pan/tilt pad only when the camera
+> has motors); an Activity tab with a 12-hour ring for last night's sleep,
+> then three tiles — steps today vs goal, naps so far today, steps this week
+> — and one line of plain-language state (fresh / partial / stale /
+> not-configured / couldn't-reach-Fi). Nothing on it is fake.
 > **What the camera can do.** Live video and a still snapshot on every
-> model. Pan, tilt and presets on the C210/C220/C225 only — the C120 is
+> model — proven today on a fixed Logitech C270 over USB, on the phone. Pan, tilt and presets on the C210/C220/C225 only — the C120 is
 > fixed and has no motors, and the same page has to render correctly for
 > both, so any control has to survive being absent. Night vision, privacy
 > mode, alarm, LED and motion settings exist on the local API but are not

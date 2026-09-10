@@ -80,7 +80,11 @@ unverified.
 | Steps today, and step goal | **Working.** 3,383 of 28,000 on the first run |
 | Steps this week / month | **Working** (`currentActivitySummary`, three periods) |
 | Sleep and nap duration | **Working**, daily / weekly / monthly. **Units are seconds**: weekly SLEEP 27,202 = 7.6 h, NAP 38,382 = 10.7 h |
-| Profile, photo, device, location | **Returned** (`pet-kona-{profile,device,location}.json` written); contents not yet read |
+| Her photo, breed, birthday, weight | **Confirmed** in the profile body. Born 2025-08-15; photo dated 2026-09-07 |
+| Collar battery | **Confirmed**: `device.info.batteryPercent` (57), `max77658Info.timeToEmptyS` (≈4.3 d). Not on `Pet` or `Device` directly — both rejected |
+| On charger vs out | **Confirmed**: `lastConnectionState.__typename` is `ConnectedToBase` (with a base id) or `ConnectedToCellular { signalStrengthPercent }` |
+| LED colour / on-off, lost-dog mode | **Confirmed** readable: `ledColor`, `operationParams.ledEnabled`, `.mode` |
+| Resting vs walking | **Confirmed**: `ongoingActivity.__typename` is `OngoingRest` or `OngoingWalk` |
 
 ### How Fi's days work — measured, and it changed the design
 
@@ -116,9 +120,11 @@ Nothing in the UI may assume a 0-100 score or a behaviour count.
 
 `totalDistance` returned **0 for the day against 3,383 steps**, and 93 for
 the week — and did not move on the second run while steps rose to 3,538.
-Whatever the unit is, it is not tracking steps. Working hypothesis: it only
-accrues on GPS-tracked walks. It is **off the page** (weekly steps took its
-tile) and stays in `/activity.json` marked raw until somebody knows.
+Whatever the unit is, it is not tracking steps. Now near-certain: it only
+accrues on walks. `ongoingActivity` has been `OngoingRest` since 2026-09-07
+18:51 — no walk has been logged since the collar went on — and distance is
+~0 to match. It is **off the page** (weekly steps took its tile) and stays in
+`/activity.json` marked raw until a real walk confirms the unit.
 
 Introspection is **disabled** on the production API, so the schema cannot be
 dumped. Field names come from asking and reading the errors.
@@ -143,6 +149,30 @@ Two things made this expensive, both worth remembering:
    you mean to use an inline fragment on ConcreteRestSummaryData?"* and we
    kept only "GraphQL error". `FiGraphQLError` now preserves the whole
    graphql-js validation family, which names schema identifiers only.
+
+### Named by Fi, not yet queried (round 3)
+
+Every one of these came from a "did you mean" on 2026-09-10, so they exist;
+their shapes do not. Each needs a subfield guess and another correction.
+
+- `overnightRestSummary` on `Pet` — Fi's own "last night". Should replace
+  the previous-completed-window heuristic once its shape is known.
+- `restFeed`, `activityFeed`, `stepFeed` — history feeds.
+- `OngoingRest { place }` — where she is resting. `homeLocation`, `places`,
+  `timezone` on `Pet`.
+- `heatmap`, `packs`, `packFeed`, `activity` on `Pet`.
+- `carrier`, `hardwareRevision`, `firmwareUpdate` on `Device`;
+  `uncertaintyInfo` on `OngoingActivity`.
+
+### Confirmed absent, second round
+
+On `Device`: `battery*`, `charging`, `firmware*`, `signalStrength`,
+`temperature`, `serialNumber` (battery is inside `info`; signal is on the
+cellular connection state). On `ActivitySummary`: `activeMinutes`,
+`calories`, `walks`, `distanceMeters` — `totalDistance` is the only distance.
+On `RestSummary`: `quality`, `score`, `restfulness`, `interruptions`,
+`wakeUps` — **no sleep quality at any level.** On `Pet`: `heartRate` (Fi
+offered `heatmap`), `health*`, `locationHistory`, `geofences`, `goals`.
 
 ### Sourced but unverified
 
