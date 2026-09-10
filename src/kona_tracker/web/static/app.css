@@ -46,6 +46,7 @@ body { min-height: 100dvh; display: flex; flex-direction: column; -webkit-font-s
 .lead { padding-top: 22px; display: flex; justify-content: space-between; align-items: baseline; }
 .lead b { font-size: 15px; font-weight: 600; }
 .lead span { font-size: 12px; color: var(--ink2); }
+.lead span.warn { color: var(--warn); }
 
 /* dial hero */
 .dial { position: relative; margin: 8px auto 0; width: 250px; height: 230px; }
@@ -55,6 +56,13 @@ body { min-height: 100dvh; display: flex; flex-direction: column; -webkit-font-s
 .dial .score .d { font-size: 88px; }
 .dial .score .u { font-size: 26px; color: var(--ink2); }
 .dial .sub { font-size: 13px; font-weight: 600; margin-top: 4px; color: var(--t4); white-space: nowrap; }
+.dial .sub.warn { color: var(--warn); }
+/* The value arc sweeps up from empty on load. `from` alone is deliberate:
+   the implicit to-keyframe is the element's own stroke-dashoffset, which
+   the template writes inline, so the animation needs no JS to know the
+   target. 603 is the full track, i.e. an empty ring. */
+.dial .val { animation: dial-fill 1.1s cubic-bezier(.22,1,.36,1); }
+@keyframes dial-fill { from { stroke-dashoffset: 603; } }
 .dial .end { position: absolute; bottom: 0; font-size: 12px; color: var(--ink2); text-align: center; }
 .dial .end.l { left: 6px; } .dial .end.r { right: 6px; }
 .dial .end .cap { font-size: 10px; }
@@ -70,6 +78,15 @@ body { min-height: 100dvh; display: flex; flex-direction: column; -webkit-font-s
 .stat .v small { font-size: 13px; color: var(--ink2); font-weight: 500; letter-spacing: 0; margin-left: 2px; }
 .stat .n { font-size: 11px; color: var(--ink2); font-weight: 500; }
 .note { font-size: 13px; color: var(--ink2); line-height: 1.45; margin-top: 18px; }
+.note.warn { color: var(--warn); }
+.note code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;
+             background: var(--bg2); border-radius: 4px; padding: 1px 5px; }
+/* Stats rise in behind the dial, staggered. Decoration only: they are
+   already in the HTML, so a browser that ignores this shows them at once. */
+.stat { animation: rise .5s cubic-bezier(.22,1,.36,1) both; }
+.stat:nth-child(2) { animation-delay: .07s; }
+.stat:nth-child(3) { animation-delay: .14s; }
+@keyframes rise { from { opacity: 0; transform: translateY(10px); } }
 
 /* camera */
 .cam-page { padding: 0; }
@@ -125,3 +142,38 @@ body { min-height: 100dvh; display: flex; flex-direction: column; -webkit-font-s
 .presets .pill { background: transparent; font: inherit; font-size: 13px; font-weight: 600;
                  cursor: pointer; touch-action: manipulation; }
 .presets .pill:active { background: var(--bg2); }
+
+
+/* ---------------------------------------------------------------------------
+   Cross-document view transitions.
+
+   This is what makes a multi-page app stop feeling like a website: Safari
+   18.2+ (iOS included) and Chrome 126+ animate between two ordinary page
+   loads, and named elements morph across the navigation instead of
+   flashing. Every other browser ignores all of it and navigates as before,
+   so there is nothing to fall back to and nothing to ship.
+
+   Each name must be unique on a page. `.seg a.on` qualifies because exactly
+   one tab is current at a time — which is also what makes the pill slide.
+
+   Measured in Chromium 141 via the `pageswap` / `pagereveal` events: both
+   fire with a live `viewTransition`, in both directions, so this is on and
+   not merely parsed. One caveat found the same way — when the Google Fonts
+   stylesheet in base.html is unreachable, the outgoing page still starts a
+   transition but the incoming page refuses it, because a render-blocking
+   stylesheet that never arrives pushes first paint past the deadline. The
+   page degrades to a plain navigation, which is the correct failure, but it
+   means "no animation" can mean "the font CDN is down", not "unsupported".
+   --------------------------------------------------------------------------- */
+@view-transition { navigation: auto; }
+.hdr { view-transition-name: kona-header; }
+.seg a.on { view-transition-name: kona-tab; }
+.cam { view-transition-name: kona-frame; }
+.dial { view-transition-name: kona-hero; }
+
+@media (prefers-reduced-motion: reduce) {
+  @view-transition { navigation: none; }
+  .dial .val, .stat { animation: none; }
+  .dot.on { animation: none; opacity: 1; }
+  .nub { transition: none; }
+}
