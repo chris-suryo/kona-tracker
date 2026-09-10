@@ -82,25 +82,60 @@ to **http://localhost:8000**. You should see the Kona Tracker login. Enter
 the passcode. The Camera tab shows a test pattern; the Activity tab shows
 the dial waiting for the collar.
 
-**On your iPhone** (joined to the same network as the laptop, whichever
-network that is): find the laptop's address, then open it.
+To stop the server, press Ctrl+C in the terminal.
+
+### Getting it onto your phone
+
+Two ways. The tunnel is better unless you are certain you are on your own
+home Wi-Fi.
+
+**Option A: a tunnel (works anywhere, including cellular).** The laptop
+dials out to Cloudflare, which hands back a public `https://` address. No
+account, no domain, no router changes, and it works even on office or guest
+Wi-Fi that blocks devices from talking to each other.
+
+Leave `kona serve` running and open a **second** terminal tab:
+
+```bash
+brew install cloudflared                       # Mac, one time
+cloudflared tunnel --url http://localhost:8000
+```
+
+It prints an address like `https://three-random-words.trycloudflare.com`.
+Open that on your phone. Send it to your sister and it works on her phone
+too, with no app to install.
+
+Two things to know. The address changes every time you restart the tunnel;
+a permanent one needs a Cloudflare account and a domain, which is a later
+job. And **this puts the app on the public internet**, so the passcode is
+now the only thing standing between a stranger and Kona's camera. Use a
+real one, not `1234`.
+
+**Option B: the local address (same Wi-Fi only).**
+
+```bash
+# Mac; if this prints nothing, try en1
+ipconfig getifaddr en0
+```
 
 ```powershell
 # Windows: look for "IPv4 Address" under your Wi-Fi adapter
 ipconfig
 ```
 
-```bash
-# Mac
-ipconfig getifaddr en0
-```
+Open `http://<that address>:8000` in Safari. On Windows a firewall prompt
+appears the first time; click **Allow** for private networks. If the page
+never loads, the network is probably isolating devices from each other,
+which is common on office and guest Wi-Fi. Use the tunnel instead.
 
-Open `http://<that address>:8000` in Safari. The first time on Windows, a
-firewall prompt appears; click **Allow** for private networks. Toggle the
-phone's dark mode to see the dark variant. Tap Share > Add to Home Screen
-and it behaves like an app.
+### Add to Home Screen
 
-To stop the server, press Ctrl+C in the terminal.
+With the page open in Safari, tap Share, then **Add to Home Screen**. You
+get the paw icon and it opens full-screen with no address bar, like a real
+app. This only works properly over `https://`, so use the tunnel rather
+than the local address if you want the clean version.
+
+Toggle your phone's dark mode to see the dark theme.
 
 ## 4. When the Tapo C120 arrives (this one needs you at home)
 
