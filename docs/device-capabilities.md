@@ -203,8 +203,10 @@ Asked for the fields Fi had named. What came back:
   **`activityFeed` takes `limit`, not `cursor`.** All three still want a
   required argument. History is real; the pagination differs per feed.
 - **`OngoingRest { place { id name } }` is accepted.** So is
-  `homeLocation`, `places { id name }` and `timezone`. Both queries wrote
-  files. This is the "she's at Home" answer.
+  `homeLocation { position { latitude longitude } }`, `places { id name
+  position { latitude longitude } }` and `timezone`. These are verified
+  shapes. `homeLocation.position` is the privacy-safe source for drawing the
+  Home map; the saved place's street-address-shaped name stays server-side.
 - `heatmap`, `activity`, `packs` and one of the `device` extras each need a
   required argument.
 
@@ -236,8 +238,7 @@ their shapes do not. Each needs a subfield guess and another correction.
 - `overnightRestSummary` on `Pet` — Fi's own "last night". Should replace
   the previous-completed-window heuristic once its shape is known.
 - `restFeed`, `activityFeed`, `stepFeed` — history feeds.
-- `OngoingRest { place }` — where she is resting. `homeLocation`, `places`,
-  `timezone` on `Pet`.
+- `timezone` on `Pet`; `homeLocation.position` and resting `place` are now shaped.
 - `heatmap`, `packs`, `packFeed`, `activity` on `Pet`.
 - `carrier`, `hardwareRevision`, `firmwareUpdate` on `Device`;
   `uncertaintyInfo` on `OngoingActivity`.
@@ -322,7 +323,7 @@ Controls that **must not** appear:
 - pan/tilt on a fixed camera — the page must ask, never assume
 
 The Activity tab now uses only the confirmed fields above. Its free MVP map
-uses Leaflet 1.9.4 and OpenStreetMap's standard raster tiles. Fi supplies
-coordinates only during an ongoing walk; the app preserves the last fix it
-has seen, labels its time, and otherwise displays an explicit GPS-empty
-state. It never invents a home coordinate.
+uses Leaflet 1.9.4 and OpenStreetMap's standard raster tiles. At rest it uses
+the verified `homeLocation.position`; on a walk it switches to Fi's live
+route, then preserves and labels the last fix. It never geocodes or invents
+a coordinate.

@@ -25,13 +25,14 @@ from "mocked everything" to real collar data and real video on a phone.
 | Activity: last night's sleep, naps today, steps, weekly steps | **Real Fi data** |
 | Five honest page states: fresh / partial / stale / unconfigured / failing | Working, tested |
 | Her photo, battery, charge state, signal, activity, escape flag | **Rendered from real Fi data** |
-| Current-walk map / last GPS fix | **Built** with Leaflet + free OpenStreetMap tiles; no API key |
+| Home / current-walk / last-fix map | **Built** with verified Fi coordinates, Leaflet, and free OpenStreetMap tiles; no API key |
 | New-collar cutoff | **Built**; local `.env` has `KONA_FI_DATA_START=2026-09-10` |
 | Fixed-camera capture/share | **Built**; Web Share where supported, download fallback |
+| Profile/settings + complete-data preview | **Built** behind Kona's photo; preview is conspicuously sample-only |
 | `kona probe` — Fi API discovery, redacted | Four rounds run against the real API |
 | Design pass | Complete on `chatgpt/ui-pass`; map/camera follow-up is on `chatgpt/map-camera-pass` |
 
-163 tests locally. CI is an ubuntu + windows matrix.
+165 tests locally. CI is an ubuntu + windows matrix.
 
 ## How to run it
 
@@ -42,7 +43,7 @@ Python directly.
 git clone https://github.com/chris-suryo/kona-tracker.git
 cd kona-tracker
 uv sync
-uv run pytest -q                       # expect 163 passed on the follow-up branch
+uv run pytest -q                       # expect 165 passed on the follow-up branch
 Copy-Item .env.example .env            # then fill it in, see below
 uv run kona serve                      # http://localhost:8000
 uv run kona serve --fake-camera        # no camera needed, test pattern
@@ -121,18 +122,14 @@ device. Only today onward is Kona.
    room, and retry. The only camera index is 0; DirectShow and the automatic
    backend both returned an essentially black frame at SD and HD sizes, so
    changing the index, resolution or exposure in code is not the fix.
-3. **Profile and settings.** Make the avatar an intentional entry point for
-   Kona's confirmed profile fields and the small set of owner settings. Do
-   not crowd those into the two primary tabs. Log and Training remain future
-   product areas until real data and concrete jobs exist for them.
-4. **Probe round 4.** `uv run kona probe --out probe-out\round4`. The
+3. **Probe round 4.** `uv run kona probe --out probe-out\round4`. The
    allowlist fix means the required-argument messages will finally name the
    arguments for `overnightRestSummary` (Fi's own "last night", better than
    the current heuristic) and the three history feeds.
-5. **The eventual Tapo** when the exact model is chosen — `docs/first-run.md` step 4. Turn on
+4. **The eventual Tapo** when the exact model is chosen — `docs/first-run.md` step 4. Turn on
    **Third-Party Compatibility** in the Tapo app first or nothing connects.
    This is the first real RTSP test.
-6. **Host it properly** — the spare laptop as a dedicated always-on machine,
+5. **Host it properly** — the spare laptop as a dedicated always-on machine,
    then a permanent URL. The Raspberry Pi is bought but unopened; add it
    only after the C120 is proven on a machine that already works.
 
@@ -151,10 +148,16 @@ to a supported provider or self-hosted PMTiles.
 The phone hierarchy is now: current safety/state, steps, naps + last night,
 location, weekly baseline. This follows the useful part of the round-nine
 reference without reviving unsupported Log or Training tabs. While resting,
-Fi's verified `OngoingRest.place` supplies the saved place. The real name is
+Fi's verified `homeLocation.position` supplies the Home map point and
+`OngoingRest.place` supplies the saved place. The real place name is
 street-address-shaped, so the page and `/activity.json` normalize it to
-`Home`; the raw address must not reach either surface. GPS coordinates still
-appear only for a walk or escape.
+`Home`; the raw address must not reach either surface. During a walk, the
+map changes to the current route, then retains the last GPS fix.
+
+Kona's photo is now the settings entry point. That page holds her confirmed
+profile/collar summary, sign-out, and a complete-dashboard preview. Preview
+values are constructed locally, clearly labelled as sample data, and never
+enter the Fi cache or `/activity.json`.
 
 ## House rules for whoever picks this up
 
