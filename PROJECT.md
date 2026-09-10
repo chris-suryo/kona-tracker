@@ -8,37 +8,49 @@ once the hardware exists.
 kit: 3e06b156508b881bef26345c0bb7a63c90db4824 · stamped by dos new
 ---
 
-## Status (2026-09-10, end of chapter 1)
+## Status (2026-09-10, chapter 2)
 
-Everything below lives on branch `claude/nice-bohr-6tnfn0`, PR'd to `main`
-for Chris to merge. Astro's PR #1 is absorbed (with the regex fix).
+`main` carries slices 1-3. Chapter-2 work is on `claude/nice-bohr-6tnfn0`.
 
-- **Slice 1:** `kona probe` dumps every Fi API field, redacted. Unverified
-  against Fi (collar not yet here). `docs/slice-1-probe-plan.md`.
+- **Slice 1:** `kona probe` dumps every Fi API field, redacted. Still
+  unverified against the real API. `docs/slice-1-probe-plan.md`.
 - **Slice 2 + 2b:** `kona serve` = passcode gate, live camera (USB or RTSP,
-  reconnects, "NO SIGNAL" when stale), Activity placeholder. Verified with
-  simulated cameras only. `docs/slice-2-camera-plan.md`, `docs/slice-2b-rtsp-plan.md`.
-- **Meadow shell:** Claude Design round 3 implemented in templates/CSS;
-  light + dark. Screenshots verified with a fake camera.
-- **Hardware:** Tapo C120 ordered (RTSP/ONVIF, fits as-is). Blink Mini 2K+
-  and Wyze v4 do NOT work without unofficial bridges. Fi collar arrives
-  2026-09-11. Raspberry Pi 5 kit bought; not set up.
+  reconnects, "NO SIGNAL" when stale). Verified with simulated cameras only.
+  `docs/slice-2-camera-plan.md`, `docs/slice-2b-rtsp-plan.md`.
+- **Pan/tilt:** abilities are data (`KONA_CAMERA_MODEL` ->
+  `camera/capabilities.py`); the fake camera is steerable so the control
+  surface exists before the hardware. `docs/device-capabilities.md`.
+- **Slice 3 (Activity is real):** `fi/parse.py` holds the only parsers, shared
+  by the probe and the page. `fi/service.py` caches one snapshot, refreshes on
+  a background thread past `KONA_FI_REFRESH_SECONDS`, and never discards a good
+  reading when a refresh fails. `/activity` and `/activity.json` render three
+  honest states: not configured, configured but failing, working. Verified
+  against `httpx.MockTransport` only — no real Fi response has ever been seen.
+- **Motion:** `@view-transition { navigation: auto; }` gives animated
+  cross-document navigation on Safari 18.2+ and Chrome 126+; the dial arc
+  sweeps up and the stats stagger in. All CSS, no build step, all inside
+  `prefers-reduced-motion` guards. `docs/design-brief.md` explains why the app
+  is HTML and not React, and is the block to paste into a design session.
+- **Hardware:** Fi collar delivered 2026-09-10, not yet paired. Tapo C120
+  ordered, arriving 2026-09-11. Blink Mini 2K+ and Wyze v4 do NOT work
+  without unofficial bridges. Raspberry Pi 5 kit bought; not set up.
 
-**next (chapter 2):** Chris follows `docs/first-run.md`.
+**next:**
 
 *Anywhere, any machine with internet:*
-1. Merge PR #2 so `main` stops being an empty scaffold.
-2. See the app: `uv run kona serve --fake-camera`, open `localhost:8000`.
-3. Once the collar is paired in the Fi app: `FI_*` in `.env`,
-   `uv run kona probe`, share `probe-out/summary.md`. This is what unblocks
-   slice 3 — it says which Fi fields actually exist.
+1. Pair the collar in the Fi app, put `FI_EMAIL`/`FI_PASSWORD` in `.env`,
+   restart `uv run kona serve --fake-camera`. The Activity tab should show
+   last night.
+2. `uv run kona probe`, share `probe-out/summary.md`. It settles the duration
+   units (the app assumes seconds and refuses to print anything outside
+   0-24 h) and whether a sleep-quality score exists.
 
 *At home only (the camera stream originates there):*
-4. Tapo C120 on the Wi-Fi + camera account -> `uv run kona camera-test` ->
+3. Tapo C120 on the Wi-Fi + camera account -> `uv run kona camera-test` ->
    `uv run kona serve` -> iPhone on the same Wi-Fi.
 
-Then `/plan` slice 3: Activity hero on the confirmed Fi fields, and
-Pi + Tailscale for remote viewing.
+Then: a design round using `docs/design-brief.md` on data we have actually
+seen, and Pi + tunnel for remote viewing.
 
 ## Ownership
 

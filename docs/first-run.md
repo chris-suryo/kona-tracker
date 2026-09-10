@@ -80,7 +80,7 @@ uv run kona serve --fake-camera
 Leave that window open; it is the server. On the same laptop, open a browser
 to **http://localhost:8000**. You should see the Kona Tracker login. Enter
 the passcode. The Camera tab shows a test pattern; the Activity tab shows
-the dial waiting for the collar.
+the dial waiting for the collar until you do step 5.
 
 To stop the server, press Ctrl+C in the terminal.
 
@@ -178,14 +178,21 @@ Fi's API is a normal internet service, so this does **not** need the home
 network. All it needs is that Kona's collar is set up in the Fi app, plus
 internet on whichever machine you run it from.
 
-Add to `.env`:
+These are **your own Fi app login** — the email and password you use to sign
+into the Fi app on your phone. Nobody hands them to you; they exist the moment
+Kona's collar is paired. Add them to `.env`:
 
 ```
 FI_EMAIL=<your Fi app email>
 FI_PASSWORD=<your Fi app password>
 ```
 
-Then run the discovery once:
+Restart `kona serve` and the Activity tab fills in: last night's sleep in the
+dial, naps, steps against her goal, and distance. If Fi cannot be reached the
+page says so rather than showing a blank dial as though she slept nothing.
+
+Then run the discovery once. This is separate from the app and answers the
+questions the app cannot:
 
 ```
 uv run kona probe
@@ -196,10 +203,13 @@ It logs in, asks Fi's API what it knows about Kona, and writes
 Read the "Step errors" and "Speculative field hints" sections, then paste
 or attach that file in the next session.
 
-**This is the step that unblocks the Activity tab.** Nobody yet knows
-whether Fi exposes a sleep-quality score, or barking and scratching counts,
-or only raw sleep and step totals. The summary answers that, and the answer
-decides what the dial and the numbers underneath it can honestly show.
+**Please send that file.** Two things are still unknown, and only real
+responses settle them. First, the units: the app assumes durations are
+seconds, and shows the raw number instead of a total if a value comes back
+outside a plausible 0-24 hours. Second, whether Fi exposes a sleep-quality
+score, or barking and scratching counts, or only raw sleep and step totals.
+The summary answers both, and the answer decides what else the page can
+honestly show.
 
 ## Updating later
 

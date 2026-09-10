@@ -69,11 +69,22 @@ API fail without it. It is step 2 in `docs/first-run.md`.
 
 ## 2. Fi collar
 
-**Still unknown.** Nobody has run `kona probe` against a real account yet.
-Whether Fi exposes a sleep-quality score, or only raw sleep and step
-totals, decides what the Activity tab can honestly show. The probe writes
-`probe-out/summary.md`; nothing on that tab should be designed before it
-exists.
+**Built on shapes, not on evidence.** The Activity tab reads sleep, naps,
+steps, step goal and distance, and those queries are exercised end to end
+against `httpx.MockTransport` — but no real Fi response has ever been seen.
+The fixtures come from pytryfi's source, not from Kona's collar.
+
+Two things are unresolved until somebody runs `kona probe` for real:
+
+- **Units.** Durations are assumed to be seconds. `hours_from_duration()`
+  returns `None` outside 0-24 hours, so a unit change shows the raw figure
+  marked raw rather than a confident wrong total. Distance is printed raw
+  and labelled raw, because nothing says it is metres.
+- **Sleep quality and behaviours.** A quality score, and barking,
+  scratching, eating and drinking counts, remain unconfirmed. Nothing on
+  the page may assume one exists.
+
+The probe writes `probe-out/summary.md`, which answers both.
 
 ---
 
