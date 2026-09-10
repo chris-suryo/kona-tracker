@@ -56,3 +56,12 @@ def test_rtsp_requires_url_and_source_is_validated(tmp_path, monkeypatch):
     with pytest.raises(SettingsError, match="KONA_CAMERA_SOURCE"):
         load_settings(tmp_path / "none.env")
     assert load_settings(tmp_path / "none.env", fake_camera=True).fake_camera
+
+
+def test_scheme_less_rtsp_url_is_refused_before_it_can_leak(tmp_path, monkeypatch):
+    monkeypatch.setenv("KONA_PASSCODE", "1")
+    monkeypatch.setenv("KONA_SECRET", "s")
+    monkeypatch.setenv("KONA_CAMERA_SOURCE", "rtsp")
+    monkeypatch.setenv("KONA_RTSP_URL", "192.168.1.10:554/stream1")
+    with pytest.raises(SettingsError, match="scheme"):
+        load_settings(tmp_path / "none.env")

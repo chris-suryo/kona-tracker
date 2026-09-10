@@ -71,4 +71,22 @@ def test_rtsp_source_open_failure_is_redacted():
     s.close()
     with pytest.raises(CameraOpenError) as exc:
         RtspSource(f"http://127.0.0.1:{port}/x", "kona", "hunter2")
-    assert "hunter2" not in str(exc.value) and "***@127.0.0.1" in str(exc.value)
+    # message is built from the bare URL: host visible, credentials absent
+    assert "hunter2" not in str(exc.value) and "kona" not in str(exc.value)
+    assert "127.0.0.1" in str(exc.value)
+
+
+def test_rtsp_source_error_never_carries_credentials_even_for_odd_urls():
+    from kona_tracker.camera.source import CameraOpenError, RtspSource
+
+    s = socket.socket()
+    s.bind(("127.0.0.1", 0))
+    port = s.getsockname()[1]
+    s.close()
+    for url, user, pw in [
+        (f"http://127.0.0.1:{port}/x", "kona", "sec/ret"),
+        (f"http://kona:sec/ret@127.0.0.1:{port}/x", "", ""),  # embedded, raw slash
+    ]:
+        with pytest.raises(CameraOpenError) as exc:
+            RtspSource(url, user, pw)
+        assert "sec" not in str(exc.value), str(exc.value)

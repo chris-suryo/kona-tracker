@@ -109,9 +109,13 @@ class RtspSource:
         cv2 = _import_cv2()
         self._cv2 = cv2
         self._quality = quality
-        self.display_url = redact_url(with_credentials(url, user, password))
+        # Messages are built from the BARE url only (redacted in case the
+        # caller embedded credentials anyway); the credentialed string exists
+        # solely to hand to FFmpeg.
+        self.display_url = redact_url(url)
         full = with_credentials(url, user, password)
         cap = cv2.VideoCapture(full, cv2.CAP_FFMPEG)
+        del full
         if not cap.isOpened():
             cap.release()
             raise CameraOpenError(f"could not open {self.display_url}")

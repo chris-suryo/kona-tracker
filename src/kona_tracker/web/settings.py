@@ -9,7 +9,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from kona_tracker.camera.redact import redact_url, split_credentials
+from kona_tracker.camera.redact import has_scheme, redact_url, split_credentials
 from kona_tracker.cli_env import read_env_file
 
 CAMERA_SOURCES = ("usb", "rtsp", "fake")
@@ -86,6 +86,10 @@ def load_settings(env_file: Path | None = Path(".env"), fake_camera: bool = Fals
     rtsp_password = get("KONA_RTSP_PASSWORD") or url_pass
     if source == "rtsp" and not rtsp_url:
         raise SettingsError("KONA_CAMERA_SOURCE=rtsp needs KONA_RTSP_URL (see .env.example)")
+    if rtsp_url and not has_scheme(rtsp_url):
+        # FFmpeg could not open it anyway, and a scheme-less URL is the one
+        # shape a credential redactor can get wrong; refuse early.
+        raise SettingsError("KONA_RTSP_URL must start with a scheme, e.g. rtsp://<ip>:554/stream1")
 
     return Settings(
         passcode=passcode,

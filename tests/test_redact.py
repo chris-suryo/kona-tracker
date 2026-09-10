@@ -33,10 +33,30 @@ def test_redacts_identity_and_location_but_keeps_measurements():
         ("http://user@host/", "http://***@host/"),
         ("rtsp://10.0.0.9:554/stream1", "rtsp://10.0.0.9:554/stream1"),
         ("no url here", "no url here"),
+        # the shapes a strict regex got wrong (security review 2026-09-10)
+        ("could not open //kona:hunter2@/10.0.0.9:554/s", "could not open //***@/10.0.0.9:554/s"),
+        ("rtsp://kona:sec/ret@10.0.0.9:554/stream1", "rtsp://***@10.0.0.9:554/stream1"),
+        (
+            "rtsp://kona:p@ss@[fe80::1]:554/s and rtsp://a:b@h/x",
+            "rtsp://***@[fe80::1]:554/s and rtsp://***@h/x",
+        ),
     ],
 )
 def test_redact_url(text, expected):
     assert redact_url(text) == expected
+
+
+def test_split_handles_raw_slash_in_password_and_ipv6():
+    assert split_credentials("rtsp://kona:sec/ret@10.0.0.9:554/stream1") == (
+        "rtsp://10.0.0.9:554/stream1",
+        "kona",
+        "sec/ret",
+    )
+    url = with_credentials("rtsp://[fe80::1]:554/s?x=1", "u", "p@w")
+    assert url == "rtsp://u:p%40w@[fe80::1]:554/s?x=1"
+    assert split_credentials(url) == ("rtsp://[fe80::1]:554/s?x=1", "u", "p@w")
+    with pytest.raises(ValueError):
+        with_credentials("10.0.0.9:554/stream1", "u", "p")
 
 
 def test_credentials_round_trip_with_special_characters():
