@@ -191,27 +191,33 @@ def speculative_queries(pet_id: str) -> list[tuple[str, str]]:
         ),
         # Round 3: every one of these was named by a "did you mean" on
         # 2026-09-10. The shapes are guesses; the corrections name the truth.
+        # Round 4. Round 3 proved these exist and named their shape only
+        # partly, because the required-argument message was being redacted.
+        # One unknown per query now, so each error names exactly one thing.
         (
             "overnight",
             f'query KonaSpeculativeOvernight {{ pet(id: "{pet_id}") {{ '
-            "overnightRestSummary { __typename start end data { __typename "
-            "... on ConcreteRestSummaryData { sleepAmounts { __typename type duration } } } } "
-            "} }",
+            # A distinct type: `start`, `end` and `data` were all rejected and
+            # `data` drew "did you mean `date`?".
+            "overnightRestSummary { __typename date } } }",
         ),
         (
             "restFeed",
+            # `cursor` was accepted, `limit` was not, and something required
+            # is still missing. Ask with cursor alone and let it name it.
             f'query KonaSpeculativeRestFeed {{ pet(id: "{pet_id}") {{ '
-            "restFeed(cursor: null, limit: 3) { __typename } } }",
+            "restFeed(cursor: null) { __typename } } }",
         ),
         (
             "activityFeed",
+            # The mirror image: `limit` accepted, `cursor` rejected.
             f'query KonaSpeculativeActivityFeed {{ pet(id: "{pet_id}") {{ '
-            "activityFeed(cursor: null, limit: 3) { __typename } } }",
+            "activityFeed(limit: 3) { __typename } } }",
         ),
         (
             "stepFeed",
             f'query KonaSpeculativeStepFeed {{ pet(id: "{pet_id}") {{ '
-            "stepFeed(cursor: null, limit: 3) { __typename } } }",
+            "stepFeed(cursor: null) { __typename } } }",
         ),
         (
             "place",
@@ -223,15 +229,30 @@ def speculative_queries(pet_id: str) -> list[tuple[str, str]]:
             f'query KonaSpeculativeHome {{ pet(id: "{pet_id}") {{ '
             "homeLocation { __typename } places { __typename id name } timezone } }",
         ),
+        # All three needed arguments; split so one error names one field.
         (
-            "extras",
-            f'query KonaSpeculativeExtras {{ pet(id: "{pet_id}") {{ '
-            "heatmap { __typename } activity { __typename } packs { __typename } } }",
+            "heatmap",
+            f'query KonaSpeculativeHeatmap {{ pet(id: "{pet_id}") {{ '
+            "heatmap { __typename } } }",
+        ),
+        (
+            "activityField",
+            f'query KonaSpeculativeActivityField {{ pet(id: "{pet_id}") {{ '
+            "activity { __typename } } }",
+        ),
+        (
+            "packs",
+            f'query KonaSpeculativePacks {{ pet(id: "{pet_id}") {{ packs {{ __typename }} }} }}',
         ),
         (
             "device2",
             f'query KonaSpeculativeDevice2 {{ pet(id: "{pet_id}") {{ device {{ '
-            "__typename carrier hardwareRevision firmwareUpdate { __typename } } } }",
+            "__typename carrier hardwareRevision } } }",
+        ),
+        (
+            "firmwareUpdate",
+            f'query KonaSpeculativeFirmware {{ pet(id: "{pet_id}") {{ device {{ '
+            "__typename firmwareUpdate { __typename } } } }",
         ),
     ]
 

@@ -123,6 +123,11 @@ def test_the_mock_now_refuses_what_fi_refuses(fake_client):
         'Unknown argument "cursor" on field "Pet.restSummaryFeed".',
         'Unknown type "RestPeriod". Did you mean "RestPeriodType"?',
         'Unknown fragment "RestSummaryDetails".',
+        # graphql-js names the field alone here, not "Type.field". The first
+        # version of this test invented the coordinate form and passed while
+        # every real message from Fi was being redacted. Both shapes now.
+        'Field "restFeed" argument "cursor" of type "String!" is required,'
+        " but it was not provided.",
         'Field "Query.pet" argument "id" of type "ID!" is required, but it was not provided.',
         'Field "name" must not have a selection since type "String!" has no subfields.',
         'Field "photos" of type "PetPhotos" must have a selection of subfields.'
@@ -169,13 +174,15 @@ def test_everything_else_is_still_redacted(message):
     "message,expected",
     [
         # A graphql-js shape the allowlist does not know: exactly what we need
-        # to see in order to extend it.
+        # to see in order to extend it. ASCII "...", not the ellipsis
+        # character: Windows PowerShell 5.1's Get-Content reads summary.md as
+        # the ANSI codepage and turned it into mojibake in a real paste.
         (
             'Variable "$id" is never used in operation "KonaX".',
-            'Variable "…" is never used in operation "…".',
+            'Variable "..." is never used in operation "...".',
         ),
         # A value inside the quotes is blanked with the quotes.
-        ('Unknown type "chris@example.com".', 'Unknown type "…".'),
+        ('Unknown type "chris@example.com".', 'Unknown type "...".'),
         # A value outside the quotes: no skeleton at all.
         ('Unknown type "X". Contact chris@example.com', None),
         ('Field "a" argument "b" got 12345.', None),
@@ -201,7 +208,7 @@ def test_a_redacted_error_carries_its_shape_when_one_is_safe():
     )
     assert err.errors[0] == {
         "message": REDACTED,
-        "shape": 'Variable "…" is never used in operation "…".',
+        "shape": 'Variable "..." is never used in operation "...".',
     }
     assert err.errors[1] == {"message": REDACTED}, "no shape for server prose"
     assert "chris@example.com" not in str(err)

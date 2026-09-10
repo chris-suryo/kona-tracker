@@ -179,7 +179,45 @@ Two things made this expensive, both worth remembering:
    kept only "GraphQL error". `FiGraphQLError` now preserves the whole
    graphql-js validation family, which names schema identifiers only.
 
-### Named by Fi, not yet queried (round 3)
+### Round 3 results, 2026-09-10
+
+Asked for the fields Fi had named. What came back:
+
+- **`overnightRestSummary` exists and is its own type**, `OvernightRestSummary`
+  — not a `RestSummary`. `start`, `end` and `data` were all rejected, and
+  `data` drew *"did you mean `date`?"*. It also takes a **required argument**.
+  This is Fi's own "last night" and should replace the
+  previous-completed-window heuristic once its shape is known.
+- **`restFeed` and `stepFeed` take `cursor`, not `limit`.**
+  **`activityFeed` takes `limit`, not `cursor`.** All three still want a
+  required argument. History is real; the pagination differs per feed.
+- **`OngoingRest { place { id name } }` is accepted.** So is
+  `homeLocation`, `places { id name }` and `timezone`. Both queries wrote
+  files. This is the "she's at Home" answer.
+- `heatmap`, `activity`, `packs` and one of the `device` extras each need a
+  required argument.
+
+### The redaction and allowlist fixes this round proved out
+
+The `cell`, `wifi*`, `iccid`, `eid` and `credentialPackHash` blanking all
+worked, and the 749-point GPS track collapsed to four lines. Two follow-ups
+the same run exposed:
+
+1. **The allowlist was rejecting every required-argument message.**
+   graphql-js's `ProvidedRequiredArgumentsRule` names the field alone —
+   `Field "restFeed" argument "cursor" ...` — not `Type.field`. The pattern
+   demanded the coordinate form, and its test used a shape invented rather
+   than observed, so it passed while every real message was redacted for two
+   rounds. Same failure mode as the mock that answered any query: tested
+   against an assumption instead of reality.
+2. **The skeleton used a Unicode ellipsis.** Windows PowerShell 5.1's
+   `Get-Content` reads `summary.md` as the ANSI codepage, so it arrived as
+   mojibake. It is ASCII `"..."` now.
+
+Mildly over-redacted, and left that way: `rcellMohm` (matches `cell`) and the
+`wifiScanCount`-style counters. They are diagnostics nobody needs.
+
+### Named by Fi, still unshaped
 
 Every one of these came from a "did you mean" on 2026-09-10, so they exist;
 their shapes do not. Each needs a subfield guess and another correction.

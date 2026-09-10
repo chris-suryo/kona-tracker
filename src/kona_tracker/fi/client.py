@@ -73,7 +73,12 @@ ALLOWED_GRAPHQL_ERRORS: tuple[str, ...] = (
     rf"Unknown argument {_NAME} on field {_COORD}\.{_SUGGEST}",
     rf"Unknown type {_NAME}\.{_SUGGEST}",
     rf"Unknown fragment {_NAME}\.",
-    rf"Field {_COORD} argument {_NAME} of type (?:{_TYPE}) is required, "
+    # graphql-js's ProvidedRequiredArgumentsRule names the FIELD, not the
+    # coordinate: `Field "restFeed" argument "cursor" ...`. The first version
+    # of this pattern demanded "Type.field" -- and its test used a shape I
+    # invented rather than one Fi had actually sent, so it passed while every
+    # real message was redacted for two probe rounds. Accept both.
+    rf"Field (?:{_COORD}|{_NAME}) argument {_NAME} of type (?:{_TYPE}) is required, "
     r"but it was not provided\.",
     rf"Field {_NAME} must not have a selection since type (?:{_TYPE}) has no subfields\.",
     # The hint here quotes the whole suggestion, braces included:
@@ -118,7 +123,7 @@ def skeleton(message: str) -> str | None:
 
     One `[pet]` speculative error had been redacted for three probe runs,
     and there was no way to extend the allowlist without seeing what shape
-    it had. This is the safe way to see: every quoted string becomes "…",
+    it had. This is the safe way to see: every quoted string becomes "...",
     and the remainder must be graphql-js template prose -- letters and
     punctuation only, no digits, opening like a graphql-js message. Anything
     else (server prose, ids, addresses, an email outside quotes) yields
@@ -127,10 +132,10 @@ def skeleton(message: str) -> str | None:
     """
     if not message.startswith(_GRAPHQL_JS_OPENERS) or len(message) > 300:
         return None
-    shape = re.sub(r'"[^"]*"', '"…"', message)
+    shape = re.sub(r'"[^"]*"', '"..."', message)
     # Letters, spaces, the blanked-quote marker and graphql-js punctuation.
     # No digits: an id, a count or a street number cannot get through.
-    if not re.fullmatch(r'[A-Za-z "…\.,?;:!(){}\[\]$-]*', shape):
+    if not re.fullmatch(r'[A-Za-z "\.,?;:!(){}\[\]$-]*', shape):
         return None
     return shape
 

@@ -44,7 +44,12 @@ def test_probe_end_to_end_writes_redacted_files(fake_client, tmp_path):
         assert "chris@example.com" not in f.read_text(encoding="utf-8")
 
 
-def test_round_three_queries_are_all_speculative_and_the_overnight_one_is_shaped_right():
+def test_speculative_queries_isolate_one_unknown_each():
+    """Round 3 proved the fields exist and half-named their shapes; round 4
+    asks so each error names exactly one thing. `overnightRestSummary` turned
+    out to be its own type -- `start`, `end` and `data` were all rejected and
+    `data` drew "did you mean `date`?" -- so it is no longer asked for as if
+    it were a RestSummary."""
     from kona_tracker.fi.queries import speculative_queries
 
     labelled = dict(speculative_queries("pet-1"))
@@ -55,18 +60,21 @@ def test_round_three_queries_are_all_speculative_and_the_overnight_one_is_shaped
         "stepFeed",
         "place",
         "home",
-        "extras",
+        "heatmap",
+        "activityField",
+        "packs",
         "device2",
+        "firmwareUpdate",
     ):
         assert label in labelled, label
-    for query in labelled.values():
-        assert query.lstrip().startswith("query KonaSpeculative"), (
-            "so the mock routes them together"
-        )
-    assert "... on ConcreteRestSummaryData" in labelled["overnight"], (
-        "same lesson as the sleep query"
-    )
+    for label, query in labelled.items():
+        assert query.lstrip().startswith("query KonaSpeculative"), label
+    assert "date" in labelled["overnight"] and "sleepAmounts" not in labelled["overnight"]
     assert "... on OngoingRest { place" in labelled["place"]
+    # `cursor` was accepted on restFeed and rejected on activityFeed. Ask each
+    # with only the argument it took, so the remaining error is the real one.
+    assert "restFeed(cursor: null)" in labelled["restFeed"]
+    assert "activityFeed(limit: 3)" in labelled["activityFeed"]
 
 
 def test_gps_tracks_collapse_to_their_shape_in_the_summary():

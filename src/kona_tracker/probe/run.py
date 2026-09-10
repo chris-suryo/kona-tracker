@@ -159,9 +159,9 @@ def run_probe(client: FiClient, out_dir: Path) -> ProbeReport:
                 _write_json(path, data)
                 report.files.append(path)
                 report.speculative_hints.append(
-                    f"[{label}] query accepted; inspect the saved file before claiming "
-                    "availability."
+                    f"[{label}] query ACCEPTED -- see the inlined body below."
                 )
+                report.extras[f"speculative-{label}:{slug}"] = _collapse_positions(redact(data))
             except FiGraphQLError as e:
                 report.speculative_hints.extend(f"[{label}] {_msg(x)}" for x in e.errors)
             except FiError as e:
