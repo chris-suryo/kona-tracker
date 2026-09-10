@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from kona_tracker.camera.hub import BOUNDARY, CameraHub
-from kona_tracker.camera.source import FakeSource, FrameSource, OpenCVSource
+from kona_tracker.camera.source import FakeSource, FrameSource, OpenCVSource, RtspSource
 from kona_tracker.web.auth import COOKIE_NAME, Lockout, PasscodeAuth
 from kona_tracker.web.settings import Settings
 
@@ -21,8 +21,10 @@ PUBLIC_PATHS = {"/login", "/healthz"}
 
 
 def default_source_factory(s: Settings) -> Callable[[], FrameSource]:
-    if s.fake_camera:
+    if s.camera_source == "fake":
         return lambda: FakeSource(fps=s.camera_fps)
+    if s.camera_source == "rtsp":
+        return lambda: RtspSource(s.rtsp_url, s.rtsp_user, s.rtsp_password, s.rtsp_transport)
     return lambda: OpenCVSource(s.camera_index, s.camera_width, s.camera_height, s.camera_fps)
 
 
@@ -44,7 +46,12 @@ def create_app(settings: Settings, source_factory: Callable[[], FrameSource] | N
         settings.cookie_max_age,
         Lockout(settings.lockout_attempts, settings.lockout_seconds),
     )
-    hub = CameraHub(source_factory or default_source_factory(settings), max_fps=settings.camera_fps)
+    hub = CameraHub(
+        source_factory or default_source_factory(settings),
+        max_fps=settings.camera_fps,
+        stale_after=settings.stale_seconds,
+        hang_after=settings.hang_seconds,
+    )
     app.state.hub = hub
     app.state.auth = auth
 
@@ -126,13 +133,16 @@ def create_app(settings: Settings, source_factory: Callable[[], FrameSource] | N
 
     @app.get("/snapshot.jpg")
     def snapshot():
-        frame = hub.snapshot()
-        if frame is None:
-            return Response(
-                content=hub.error or "camera not ready", status_code=503, media_type="text/plain"
-            )
+        # Always an image (an <img> fallback can show it); the header is the truth.
+        frame, state = hub.snapshot()
         return Response(
-            content=frame, media_type="image/jpeg", headers={"Cache-Control": "no-store"}
+            content=frame,
+            media_type="image/jpeg",
+            headers={"Cache-Control": "no-store", "X-Kona-State": state},
         )
+
+    @app.get("/status.json")
+    def status():
+        return hub.status()
 
     return app

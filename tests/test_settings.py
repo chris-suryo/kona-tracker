@@ -17,3 +17,42 @@ def test_env_file_values_and_generated_secret_warning(tmp_path, monkeypatch, cap
     assert s.passcode == "1234" and s.camera_index == 2 and s.fake_camera
     assert len(s.secret) > 20
     assert "KONA_SECRET not set" in capsys.readouterr().err
+
+
+def test_rtsp_settings_split_embedded_credentials_and_mask_repr(tmp_path, monkeypatch):
+    for k in (
+        "KONA_PASSCODE",
+        "KONA_SECRET",
+        "KONA_RTSP_URL",
+        "KONA_RTSP_USER",
+        "KONA_RTSP_PASSWORD",
+    ):
+        monkeypatch.delenv(k, raising=False)
+    (tmp_path / ".env").write_text(
+        "KONA_PASSCODE=1234\nKONA_SECRET=x\nKONA_CAMERA_SOURCE=rtsp\n"
+        "KONA_RTSP_URL=rtsp://kona:hunter2@10.0.0.9:554/stream1\n",
+        encoding="utf-8",
+    )
+    s = load_settings(tmp_path / ".env")
+    assert s.camera_source == "rtsp"
+    assert s.rtsp_url == "rtsp://10.0.0.9:554/stream1"
+    assert (s.rtsp_user, s.rtsp_password) == ("kona", "hunter2")
+    assert (
+        "hunter2" not in repr(s)
+        and "1234" not in repr(s)
+        and "x" not in repr(s).split("secret")[1][:5]
+    )
+    assert s.camera_label() == "rtsp rtsp://10.0.0.9:554/stream1"
+
+
+def test_rtsp_requires_url_and_source_is_validated(tmp_path, monkeypatch):
+    monkeypatch.delenv("KONA_RTSP_URL", raising=False)
+    monkeypatch.setenv("KONA_PASSCODE", "1")
+    monkeypatch.setenv("KONA_SECRET", "s")
+    monkeypatch.setenv("KONA_CAMERA_SOURCE", "rtsp")
+    with pytest.raises(SettingsError, match="KONA_RTSP_URL"):
+        load_settings(tmp_path / "none.env")
+    monkeypatch.setenv("KONA_CAMERA_SOURCE", "webcam")
+    with pytest.raises(SettingsError, match="KONA_CAMERA_SOURCE"):
+        load_settings(tmp_path / "none.env")
+    assert load_settings(tmp_path / "none.env", fake_camera=True).fake_camera

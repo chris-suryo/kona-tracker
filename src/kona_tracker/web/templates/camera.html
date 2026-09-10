@@ -17,9 +17,20 @@
       dot.className = 'dot';
       img.src = '/stream.mjpg?t=' + Date.now();
     }
-    img.addEventListener('load', function () { cap.textContent = ''; dot.className = 'dot on'; tries = 0; });
+    img.addEventListener('load', function () { tries = 0; });
     img.addEventListener('error', function () { setTimeout(reload, Math.min(1000 * tries, 5000)); });
-    document.addEventListener('visibilitychange', function () { if (!document.hidden) reload(); });
+    document.addEventListener('visibilitychange', function () { if (!document.hidden) { reload(); poll(); } });
+    // The server already swaps in a "NO SIGNAL" frame when the picture is not
+    // fresh; this label just says so in words. Classes: on / stale / off.
+    function poll() {
+      fetch('/status.json', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (s) {
+        if (s.state === 'live') { dot.className = 'dot on'; cap.textContent = ''; }
+        else if (s.state === 'stale') { dot.className = 'dot stale'; cap.textContent = 'Stale ' + Math.round(s.last_frame_age) + ' s'; }
+        else if (s.state === 'connecting') { dot.className = 'dot stale'; cap.textContent = 'Connecting\u2026'; }
+        else { dot.className = 'dot off'; cap.textContent = 'Disconnected, reconnecting\u2026'; }
+      }).catch(function () { dot.className = 'dot off'; cap.textContent = 'No connection to the server'; });
+    }
+    poll(); setInterval(poll, 2000);
   })();
 </script>
 {% endblock %}

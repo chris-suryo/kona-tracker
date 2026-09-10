@@ -31,6 +31,25 @@ def test_unauthenticated_html_redirects_to_login(client):
 def test_unauthenticated_stream_is_401_not_redirect(client):
     assert client.get("/stream.mjpg", follow_redirects=False).status_code == 401
     assert client.get("/snapshot.jpg", follow_redirects=False).status_code == 401
+    assert client.get("/status.json", follow_redirects=False).status_code == 303
+
+
+def test_snapshot_shows_placeholder_with_honest_state_when_camera_fails():
+    from kona_tracker.camera.placeholder import NO_SIGNAL_JPEG
+
+    def boom():
+        raise RuntimeError("could not open rtsp://kona:hunter2@10.0.0.9:554/stream1")
+
+    settings = Settings(passcode="4242", secret="s", stale_seconds=0.2, hang_seconds=0.5)
+    app = create_app(settings, source_factory=boom)
+    with TestClient(app) as c:
+        login(c)
+        snap = c.get("/snapshot.jpg")
+        assert snap.status_code == 200 and snap.content == NO_SIGNAL_JPEG
+        assert snap.headers["x-kona-state"] == "disconnected"
+        status = c.get("/status.json").json()
+        assert "hunter2" not in status["last_error"] and "***@10.0.0.9" in status["last_error"]
+    app.state.hub.stop()
 
 
 def test_wrong_passcode_then_right_passcode(client):
@@ -60,6 +79,9 @@ def test_snapshot_and_stream_with_cookie(client):
     snap = client.get("/snapshot.jpg")
     assert snap.status_code == 200 and snap.headers["content-type"] == "image/jpeg"
     assert snap.content.startswith(b"\xff\xd8")
+    assert snap.headers["x-kona-state"] == "live"
+    status = client.get("/status.json").json()
+    assert status["state"] == "live" and status["opens"] == 1 and status["last_error"] is None
 
     # Starlette's TestClient runs the app to completion, so cap the stream.
     r = client.get("/stream.mjpg", params={"frames": 3})

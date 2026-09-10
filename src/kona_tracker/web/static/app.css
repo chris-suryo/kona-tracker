@@ -14,6 +14,8 @@ body { min-height: 100dvh; display: flex; flex-direction: column; }
        padding: 8px 0 12px; border-bottom: 1px solid var(--line); }
 .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--line); }
 .dot.on { background: var(--teal-4); box-shadow: 0 0 8px var(--teal-4); }
+.dot.stale { background: #e0a33a; box-shadow: 0 0 8px #e0a33a; }
+.dot.off { background: #ff6b57; box-shadow: 0 0 8px #ff6b57; }
 .cam { margin: 12px 0 0; }
 .cam img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover;
            background: var(--teal-1); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }

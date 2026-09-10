@@ -85,8 +85,7 @@ def serve(
     except SettingsError as e:
         typer.echo(str(e), err=True)
         raise typer.Exit(code=2) from None
-    cam = "fake" if fake_camera else f"index {settings.camera_index}"
-    typer.echo(f"kona-tracker on http://{host}:{port}  (camera: {cam})")
+    typer.echo(f"kona-tracker on http://{host}:{port}  (camera: {settings.camera_label()})")
     uvicorn.run(create_app(settings), host=host, port=port, log_level="info")
 
 
@@ -101,6 +100,58 @@ def cameras() -> None:
         raise typer.Exit(code=1)
     typer.echo("Cameras that open: " + ", ".join(str(i) for i in found))
     typer.echo(f"Set KONA_CAMERA_INDEX={found[0]} in .env (or another index from the list).")
+
+
+@app.command("camera-test")
+def camera_test(
+    env_file: Annotated[Path, typer.Option(help="KEY=VALUE file with KONA_* settings.")] = Path(
+        ".env"
+    ),
+    frames: Annotated[int, typer.Option(help="Frames to read before reporting.")] = 10,
+) -> None:
+    """Open the configured camera once and report size, fps, bytes per frame.
+
+    The first thing to run with real hardware. Prints the redacted URL and the
+    exact open/read error; never the password.
+    """
+    import time
+
+    from kona_tracker.camera.redact import redact_url
+    from kona_tracker.web.app import default_source_factory
+    from kona_tracker.web.settings import SettingsError, load_settings
+
+    try:
+        settings = load_settings(env_file)
+    except SettingsError as e:
+        typer.echo(str(e), err=True)
+        raise typer.Exit(code=2) from None
+    typer.echo(f"Opening {settings.camera_label()} ...")
+    started = time.monotonic()
+    try:
+        source = default_source_factory(settings)()
+    except Exception as e:
+        typer.echo(f"Open failed: {redact_url(f'{type(e).__name__}: {e}')}", err=True)
+        raise typer.Exit(code=1) from None
+    typer.echo(f"Opened in {time.monotonic() - started:.1f}s")
+    sizes: list[int] = []
+    t0 = time.monotonic()
+    try:
+        while len(sizes) < frames and time.monotonic() - t0 < 30:
+            jpeg = source.read_jpeg()
+            if jpeg:
+                sizes.append(len(jpeg))
+    finally:
+        source.close()
+    elapsed = time.monotonic() - t0
+    if not sizes:
+        typer.echo("Opened, but no frames arrived in 30 s.", err=True)
+        raise typer.Exit(code=1)
+    w = getattr(source, "width", "?")
+    h = getattr(source, "height", "?")
+    typer.echo(
+        f"{len(sizes)} frames in {elapsed:.1f}s ({len(sizes) / max(elapsed, 1e-6):.1f} fps), "
+        f"{sum(sizes) // len(sizes)} bytes/frame avg, size {w}x{h}"
+    )
 
 
 def main() -> None:  # pragma: no cover - console entry
