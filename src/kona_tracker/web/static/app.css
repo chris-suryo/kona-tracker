@@ -22,7 +22,7 @@
 * { box-sizing: border-box; }
 html, body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--body); }
 body { min-height: 100dvh; display: flex; flex-direction: column; -webkit-font-smoothing: antialiased; }
-.page { flex: 1; display: flex; flex-direction: column; padding: 0 24px 24px; }
+.page { width: 100%; max-width: 440px; margin: 0 auto; flex: 1; display: flex; flex-direction: column; padding: 0 20px max(24px, env(safe-area-inset-bottom)); }
 
 /* display numerals */
 .d { font-family: var(--disp); font-weight: 700; letter-spacing: -.05em; font-variant-numeric: tabular-nums; line-height: .9; }
@@ -31,8 +31,8 @@ body { min-height: 100dvh; display: flex; flex-direction: column; -webkit-font-s
 .hr { height: 1px; background: var(--line); }
 
 /* header: photo · segmented toggle · collar battery */
-.hdr { display: flex; justify-content: space-between; align-items: center;
-       padding-top: max(16px, env(safe-area-inset-top)); }
+.hdr { display: flex; justify-content: space-between; align-items: center; gap: 12px;
+       min-height: 64px; padding-top: max(12px, env(safe-area-inset-top)); }
 .avatar { width: 44px; height: 44px; border-radius: 50%; overflow: hidden; flex: none;
           background: var(--t1); color: var(--t5); display: grid; place-items: center;
           font-weight: 700; font-size: 18px; position: relative; }
@@ -40,52 +40,67 @@ body { min-height: 100dvh; display: flex; flex-direction: column; -webkit-font-s
 .seg { display: flex; padding: 3px; border-radius: 999px; background: var(--bg2); }
 .seg a { padding: 8px 18px; border-radius: 999px; font-size: 13px; font-weight: 600; color: var(--ink2); text-decoration: none; }
 .seg a.on { background: var(--ink); color: var(--bg); font-weight: 700; }
-.hdr .right { width: 44px; text-align: right; font-size: 12px; font-weight: 600; color: var(--ink2); }
+.hdr .right { min-width: 52px; text-align: right; font-size: 12px; font-weight: 600; color: var(--ink2); }
+.battery { display: inline-flex; align-items: center; justify-content: flex-end; gap: 4px; white-space: nowrap; }
+.battery svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
 
-/* section line under the header */
-.lead { padding-top: 22px; display: flex; justify-content: space-between; align-items: baseline; }
-.lead b { font-size: 15px; font-weight: 600; }
-.lead span { font-size: 12px; color: var(--ink2); }
-.lead span.warn { color: var(--warn); }
+/* Activity: safety first, then current state and measured values. */
+.eyebrow { display: block; font-size: 12px; color: var(--ink2); font-weight: 600; }
+.safety-alert { display: flex; align-items: center; gap: 12px; margin: 16px 0 2px; padding: 14px;
+                border: 1px solid color-mix(in srgb, var(--warn) 45%, transparent); border-radius: 16px;
+                background: color-mix(in srgb, var(--warn) 14%, var(--bg)); color: var(--ink); }
+.safety-alert.danger { border-color: color-mix(in srgb, var(--bad) 52%, transparent); background: color-mix(in srgb, var(--bad) 15%, var(--bg)); }
+.alert-mark { width: 34px; height: 34px; border-radius: 50%; flex: none; display: grid; place-items: center;
+              background: var(--warn); color: var(--bg); font-size: 20px; font-weight: 800; }
+.danger .alert-mark { background: var(--bad); }
+.safety-alert div { display: flex; flex-direction: column; line-height: 1.3; }
+.safety-alert strong { font-size: 15px; }
+.safety-alert div span { margin-top: 3px; color: var(--ink2); font-size: 12px; }
+.safety-alert div span.muted { color: var(--warn); }
 
-/* dial hero */
-.dial { position: relative; margin: 8px auto 0; width: 250px; height: 230px; }
-.dial svg { width: 250px; height: 250px; position: absolute; top: 0; left: 0; }
-.dial .mid { position: absolute; inset: 0 0 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-.dial .score { display: flex; align-items: baseline; }
-.dial .score .d { font-size: 88px; }
-.dial .score .u { font-size: 26px; color: var(--ink2); }
-.dial .sub { font-size: 13px; font-weight: 600; margin-top: 4px; color: var(--t4); white-space: nowrap; }
-.dial .sub.warn { color: var(--warn); }
-/* The value arc sweeps up from empty on load. `from` alone is deliberate:
-   the implicit to-keyframe is the element's own stroke-dashoffset, which
-   the template writes inline, so the animation needs no JS to know the
-   target. 603 is the full track, i.e. an empty ring. */
-.dial .val { animation: dial-fill 1.1s cubic-bezier(.22,1,.36,1); }
-@keyframes dial-fill { from { stroke-dashoffset: 603; } }
-.dial .end { position: absolute; bottom: 0; font-size: 12px; color: var(--ink2); text-align: center; }
-.dial .end.l { left: 6px; } .dial .end.r { right: 6px; }
-.dial .end .cap { font-size: 10px; }
-.dial .end b { color: var(--ink); }
+.collar-summary { display: flex; justify-content: space-between; align-items: end; gap: 16px; padding: 22px 0 18px; border-bottom: 1px solid var(--line); }
+.collar-summary > div:first-child { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.collar-summary strong { font-size: 20px; letter-spacing: -.035em; }
+.collar-summary strong + span { color: var(--ink2); font-size: 12px; }
+.connection, .freshness { display: flex; align-items: center; gap: 7px; color: var(--ink2); font-size: 12px; font-weight: 600; white-space: nowrap; }
+.status-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; background: var(--ink3); }
+.status-dot.live { background: var(--t4); animation: pulse 2.4s ease-in-out infinite; }
+.warn-dot { background: var(--warn); }
+.bad-dot { background: var(--bad); }
 
-/* three-up stats */
-.stats { margin-top: 22px; padding: 16px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
-         display: grid; grid-template-columns: 1fr 1fr 1fr; }
-.stat { display: flex; flex-direction: column; gap: 2px; }
-.stat + .stat { padding-left: 14px; border-left: 1px solid var(--line); }
-.stat .l { font-size: 11px; color: var(--ink2); font-weight: 600; letter-spacing: .04em; }
-.stat .v { font-family: var(--disp); font-weight: 700; letter-spacing: -.04em; font-size: 30px; line-height: 1; font-variant-numeric: tabular-nums; }
-.stat .v small { font-size: 13px; color: var(--ink2); font-weight: 500; letter-spacing: 0; margin-left: 2px; }
-.stat .n { font-size: 11px; color: var(--ink2); font-weight: 500; }
+.steps-hero { display: flex; align-items: center; gap: 18px; padding: 28px 0 26px; border-bottom: 1px solid var(--line); }
+.hero-copy { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.hero-number { margin-top: 10px; font-size: clamp(48px, 14vw, 60px); }
+.hero-note { margin-top: 10px; color: var(--ink2); font-size: 12px; }
+.goal-ring { position: relative; width: 112px; height: 112px; flex: none; display: grid; place-items: center; }
+.goal-ring svg { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); }
+.goal-ring circle { fill: none; stroke-width: 18; }
+.goal-ring .track { stroke: var(--t1); }
+.goal-ring .value { stroke: var(--t5); stroke-linecap: round; animation: goal-fill 1s cubic-bezier(.22,1,.36,1); }
+.goal-ring strong { font-size: 19px; letter-spacing: -.04em; font-variant-numeric: tabular-nums; }
+@keyframes goal-fill { from { stroke-dashoffset: 100; } }
+
+.rest-grid { display: grid; grid-template-columns: 1fr 1fr; padding: 22px 0; border-bottom: 1px solid var(--line); }
+.metric { min-width: 0; display: flex; flex-direction: column; }
+.metric + .metric { padding-left: 20px; border-left: 1px solid var(--line); }
+.metric-value { margin-top: 9px; font-size: 34px; }
+.metric-value small { margin-left: 3px; color: var(--ink2); font-size: 14px; font-weight: 500; letter-spacing: 0; }
+.metric > span:last-child { min-height: 2.8em; margin-top: 8px; color: var(--ink2); font-size: 11px; line-height: 1.35; }
+.metric > span.warn:last-child { color: var(--warn); }
+.week-row { display: flex; justify-content: space-between; align-items: end; padding: 20px 0; border-bottom: 1px solid var(--line); color: var(--ink2); font-size: 12px; }
+.week-row > span:first-child { display: flex; flex-direction: column; gap: 8px; }
+.week-row strong { color: var(--ink); font-size: 30px; }
+.freshness { padding-top: 16px; }
+.dimmed { opacity: .55; }
 .note { font-size: 13px; color: var(--ink2); line-height: 1.45; margin-top: 18px; }
 .note.warn { color: var(--warn); }
 .note code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;
              background: var(--bg2); border-radius: 4px; padding: 1px 5px; }
-/* Stats rise in behind the dial, staggered. Decoration only: they are
-   already in the HTML, so a browser that ignores this shows them at once. */
-.stat { animation: rise .5s cubic-bezier(.22,1,.36,1) both; }
-.stat:nth-child(2) { animation-delay: .07s; }
-.stat:nth-child(3) { animation-delay: .14s; }
+/* Sections rise in gently; the complete content is present without motion. */
+.collar-summary, .steps-hero, .rest-grid, .week-row { animation: rise .5s cubic-bezier(.22,1,.36,1) both; }
+.steps-hero { animation-delay: .05s; }
+.rest-grid { animation-delay: .1s; }
+.week-row { animation-delay: .15s; }
 @keyframes rise { from { opacity: 0; transform: translateY(10px); } }
 
 /* camera */
@@ -169,10 +184,12 @@ body { min-height: 100dvh; display: flex; flex-direction: column; -webkit-font-s
 .hdr { view-transition-name: kona-header; }
 .seg a.on { view-transition-name: kona-tab; }
 .cam { view-transition-name: kona-frame; }
-.dial { view-transition-name: kona-hero; }
+.steps-hero { view-transition-name: kona-hero; }
 
 @media (prefers-reduced-motion: reduce) {
   @view-transition { navigation: none; }
+  .goal-ring .value, .collar-summary, .steps-hero, .rest-grid, .week-row { animation: none; }
+  /* Kept as a compatibility guard for the previous template and its test. */
   .dial .val, .stat { animation: none; }
   .dot.on { animation: none; opacity: 1; }
   .nub { transition: none; }
