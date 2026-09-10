@@ -8,34 +8,38 @@ once the hardware exists.
 kit: 3e06b156508b881bef26345c0bb7a63c90db4824 · stamped by dos new
 ---
 
-## Status
+## Status (2026-09-10, end of chapter 1)
 
-- **Slice 1 (in-repo, unverified against Fi):** `kona probe` dumps every Fi
-  API field, redacted. See `docs/slice-1-probe-plan.md`. Astro's follow-up
-  fixes are in PR #1 (reviewed; one regex fix requested before merge).
-- **Slice 2 (in-repo, verified with fake camera only):** `kona serve` = passcode
-  gate + live camera (MJPEG) + Activity placeholder. See
-  `docs/slice-2-camera-plan.md`.
-- **Slice 2b (in-repo, verified with simulated streams):** RTSP network camera
-  source (Tapo TC73 is the leading option), reconnect supervisor, "NO SIGNAL"
-  placeholder + status label so frozen video never looks live, `kona
-  camera-test`. See `docs/slice-2b-rtsp-plan.md`.
-- **next:** Astro runs `uv run kona camera-test` then `kona serve` against the
-  real camera on the Windows PC and reports; when the collar arrives, the
-  probe. Then `/plan` slice 3: Activity hero on confirmed Fi fields, and
-  Pi + Tailscale for remote viewing.
+Everything below lives on branch `claude/nice-bohr-6tnfn0`, PR'd to `main`
+for Chris to merge. Astro's PR #1 is absorbed (with the regex fix).
+
+- **Slice 1:** `kona probe` dumps every Fi API field, redacted. Unverified
+  against Fi (collar not yet here). `docs/slice-1-probe-plan.md`.
+- **Slice 2 + 2b:** `kona serve` = passcode gate, live camera (USB or RTSP,
+  reconnects, "NO SIGNAL" when stale), Activity placeholder. Verified with
+  simulated cameras only. `docs/slice-2-camera-plan.md`, `docs/slice-2b-rtsp-plan.md`.
+- **Meadow shell:** Claude Design round 3 implemented in templates/CSS;
+  light + dark. Screenshots verified with a fake camera.
+- **Hardware:** Tapo C120 ordered (RTSP/ONVIF, fits as-is). Blink Mini 2K+
+  and Wyze v4 do NOT work without unofficial bridges. Fi collar arrives
+  2026-09-11. Raspberry Pi 5 kit bought; not set up.
+
+**next (chapter 2):** Chris follows `docs/first-run.md` on the laptop:
+(1) see the app with `--fake-camera`; (2) Tapo C120 on Wi-Fi ->
+`kona camera-test` -> `kona serve` -> iPhone; (3) collar -> `kona probe` ->
+share `probe-out/summary.md`. Then `/plan` slice 3: Activity hero on the
+confirmed Fi fields, and Pi + Tailscale for remote viewing.
 
 ## Ownership
 
 | Who | Owns |
 |---|---|
-| Claude Code (cloud) | web app, camera backend, tests, CI, docs. Cannot see hardware, LAN, or the Fi API. |
-| Astro (ChatGPT, local clone) | probe fixes (PR #1); running things on real hardware; reporting results. |
-| Claude Design | templates + CSS (`src/kona_tracker/web/templates`, `static/app.css`). |
-| Chris | hardware, `.env`, merges. |
+| Claude Code (cloud) | code, tests, CI, docs. Cannot see hardware, LAN, or the Fi API. |
+| Chris | runs the local steps (`docs/first-run.md`), hardware, `.env`, merges. |
+| Astro (ChatGPT) | paused (out of credit). Its PR #1 is absorbed. |
+| Claude Design | Meadow direction chosen; further visual passes edit `web/templates` + `static/app.css`. |
 
-Shared only via GitHub. Separate branches; do not edit another owner's area
-without a PR.
+Shared only via GitHub. One branch per assistant.
 
 ## v0 scope
 
@@ -61,7 +65,7 @@ Windows PC now, Raspberry Pi 5 next. Remote access (Tailscale) and where the
 rest lives (Chris mentioned Vercel + Supabase to Astro) are still open; the
 app is env-var configured only, so nothing locks that in.
 
-## Commands (PowerShell, repo root)
+## Commands (PowerShell or Mac Terminal, repo root; plain-language walkthrough in `docs/first-run.md`)
 
 ```powershell
 uv sync                         # install (first run pulls the OpenCV wheel, ~50 MB)
