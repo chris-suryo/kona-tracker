@@ -9,9 +9,12 @@ the real source ever loads the OpenCV wheel.
 
 from __future__ import annotations
 
+import os
 import struct
 import time
 from typing import Protocol
+
+from kona_tracker.camera.redact import redact_url, with_credentials
 
 
 class FrameSource(Protocol):
@@ -23,7 +26,23 @@ class FrameSource(Protocol):
 
 
 class CameraOpenError(RuntimeError):
-    """The camera at the requested index could not be opened."""
+    """The camera (USB index or network URL) could not be opened."""
+
+
+def _import_cv2():
+    """Import OpenCV with FFmpeg tuned for network cameras.
+
+    Env vars must be set before the first import: TCP transport avoids UDP
+    packet-loss artifacts on Wi-Fi, `timeout` (microseconds) makes a dead
+    socket error out instead of blocking forever, and the log level keeps
+    FFmpeg from printing connection strings (which carry credentials).
+    """
+    os.environ.setdefault("OPENCV_FFMPEG_CAPTURE_OPTIONS", "rtsp_transport;tcp|timeout;5000000")
+    os.environ.setdefault("OPENCV_FFMPEG_LOGLEVEL", "-8")
+    os.environ.setdefault("OPENCV_LOG_LEVEL", "ERROR")
+    import cv2
+
+    return cv2
 
 
 class OpenCVSource:
@@ -36,7 +55,7 @@ class OpenCVSource:
     def __init__(
         self, index: int = 0, width: int = 1280, height: int = 720, fps: int = 15, quality: int = 80
     ):
-        import cv2  # lazy: tests and CI never need the wheel loaded
+        cv2 = _import_cv2()  # lazy: tests and CI never need the wheel loaded
 
         self._cv2 = cv2
         self._quality = quality
@@ -68,9 +87,57 @@ class OpenCVSource:
         self._cap.release()
 
 
+class RtspSource:
+    """Network camera (RTSP, or any URL FFmpeg can open, e.g. an HTTP MJPEG
+    stream). Credentials go into the URL because that is the only form
+    OpenCV/FFmpeg accept; `repr()` and every error string are redacted.
+    """
+
+    def __init__(
+        self,
+        url: str,
+        user: str = "",
+        password: str = "",
+        transport: str = "tcp",
+        quality: int = 80,
+    ):
+        if transport and transport != "tcp":
+            # Honour an explicit UDP request; default stays TCP (set in _import_cv2).
+            os.environ.setdefault(
+                "OPENCV_FFMPEG_CAPTURE_OPTIONS", f"rtsp_transport;{transport}|timeout;5000000"
+            )
+        cv2 = _import_cv2()
+        self._cv2 = cv2
+        self._quality = quality
+        self.display_url = redact_url(with_credentials(url, user, password))
+        full = with_credentials(url, user, password)
+        cap = cv2.VideoCapture(full, cv2.CAP_FFMPEG)
+        if not cap.isOpened():
+            cap.release()
+            raise CameraOpenError(f"could not open {self.display_url}")
+        self._cap = cap
+        self.width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
+        self.height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
+
+    def __repr__(self) -> str:
+        return f"RtspSource({self.display_url})"
+
+    def read_jpeg(self) -> bytes | None:
+        ok, frame = self._cap.read()
+        if not ok or frame is None:
+            return None
+        ok, buf = self._cv2.imencode(
+            ".jpg", frame, [int(self._cv2.IMWRITE_JPEG_QUALITY), self._quality]
+        )
+        return buf.tobytes() if ok else None
+
+    def close(self) -> None:
+        self._cap.release()
+
+
 def probe_camera_indexes(candidates: range = range(0, 5)) -> list[int]:
     """Which indexes open? Used by `kona cameras` so nobody guesses."""
-    import cv2
+    cv2 = _import_cv2()
 
     found: list[int] = []
     for i in candidates:
