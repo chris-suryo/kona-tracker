@@ -12,6 +12,7 @@ Auth model (from pytryfi's source): POST /auth/login with form fields
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -31,7 +32,7 @@ class FiError(Exception):
 
 
 class FiLoginError(FiError):
-    """Login rejected. Carries the HTTP status and (secret-free) body."""
+    """Login rejected. Carries HTTP status and a locally authored explanation."""
 
     def __init__(self, status: int, body: str):
         self.status = status
@@ -40,13 +41,27 @@ class FiLoginError(FiError):
 
 
 class FiGraphQLError(FiError):
-    """GraphQL returned `errors`. Kept whole: Fi's validation errors include
-    'Did you mean ...?' hints that are exactly what the probe wants."""
+    """GraphQL errors with only allowlisted schema-validation text retained."""
 
     def __init__(self, errors: list[dict[str, Any]], data: Any = None):
-        self.errors = errors
+        # Preserve only complete schema-validation messages. Arbitrary server prose
+        # and extensions can contain account data and must never enter reports.
+        pattern = (
+            r'Cannot query field "[A-Za-z_][A-Za-z_0-9]*" on type '
+            r'"[A-Za-z_][A-Za-z_0-9]*"\.'
+            r'(?: Did you mean "[A-Za-z_][A-Za-z_0-9]*"\?)?'
+        )
+        self.errors = [
+            {
+                "message": message
+                if re.fullmatch(pattern, message)
+                else "GraphQL error (server details omitted for privacy)."
+            }
+            for error in errors
+            for message in [str(error.get("message", ""))]
+        ]
         self.data = data
-        messages = "; ".join(str(e.get("message", e)) for e in errors)
+        messages = "; ".join(e["message"] for e in self.errors)
         super().__init__(f"Fi GraphQL error: {messages}")
 
 
@@ -83,16 +98,19 @@ class FiClient:
         self.close()
 
     def login(self, email: str, password: str) -> FiSession:
-        resp = self._http.post(LOGIN_PATH, data={"email": email, "password": password})
+        try:
+            resp = self._http.post(LOGIN_PATH, data={"email": email, "password": password})
+        except httpx.RequestError:
+            raise FiError("Fi login connection failed; check connectivity and try again.") from None
         body: Any
         try:
             body = resp.json()
         except ValueError:
             body = None
         if not resp.is_success or not isinstance(body, dict) or "error" in body:
-            # Never echo the password; the request body is not part of `resp`.
-            detail = body.get("error", body) if isinstance(body, dict) else resp.text[:500]
-            raise FiLoginError(resp.status_code, str(detail))
+            raise FiLoginError(
+                resp.status_code, "Login rejected or invalid response; body omitted."
+            )
         try:
             self.session = FiSession(user_id=str(body["userId"]), session_id=str(body["sessionId"]))
         except KeyError as e:
@@ -104,7 +122,10 @@ class FiClient:
         payload: dict[str, Any] = {"query": query}
         if variables:
             payload["variables"] = variables
-        resp = self._http.post(GRAPHQL_PATH, json=payload)
+        try:
+            resp = self._http.post(GRAPHQL_PATH, json=payload)
+        except httpx.RequestError:
+            raise FiError("Fi query connection failed; response unavailable.") from None
         try:
             body = resp.json()
         except ValueError as e:
@@ -114,5 +135,5 @@ class FiClient:
         if body.get("errors"):
             raise FiGraphQLError(body["errors"], body.get("data"))
         if not resp.is_success:
-            raise FiError(f"GraphQL HTTP {resp.status_code}: {resp.text[:500]}")
+            raise FiError(f"GraphQL HTTP {resp.status_code}; response body omitted.")
         return body.get("data")
