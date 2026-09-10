@@ -34,6 +34,7 @@ def test_unauthenticated_stream_is_401_not_redirect(client):
     assert client.get("/status.json", follow_redirects=False).status_code == 303
     # Kona's data is behind the same gate as her camera.
     assert client.get("/activity", follow_redirects=False).status_code == 303
+    assert client.get("/settings", follow_redirects=False).status_code == 303
     assert client.get("/activity.json", follow_redirects=False).status_code == 303
 
 

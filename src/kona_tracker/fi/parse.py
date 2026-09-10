@@ -122,6 +122,7 @@ class CollarStatus:
     next_update: datetime | None = None
     area_name: str | None = None
     place_name: str | None = None
+    home_location: LocationPoint | None = None
     #: Fi currently returns positions only on OngoingWalk. Keep a bounded
     #: route so an unexpectedly long activity cannot grow the page forever.
     positions: tuple[LocationPoint, ...] = ()
@@ -282,6 +283,17 @@ def status_from(data: Any) -> CollarStatus:
     positions.sort(key=lambda point: point.recorded_at or datetime.min.replace(tzinfo=UTC))
     area_name = ongoing.get("areaName")
     place_name = _dict(ongoing.get("place")).get("name")
+    home_position = _dict(_dict(pet.get("homeLocation")).get("position"))
+    home_latitude = _num(home_position.get("latitude"))
+    home_longitude = _num(home_position.get("longitude"))
+    home_location = None
+    if (
+        home_latitude is not None
+        and home_longitude is not None
+        and -90 <= home_latitude <= 90
+        and -180 <= home_longitude <= 180
+    ):
+        home_location = LocationPoint(float(home_latitude), float(home_longitude))
     return CollarStatus(
         battery_percent=_num(info.get("batteryPercent")),
         time_to_empty_s=_num(_dict(info.get("max77658Info")).get("timeToEmptyS")),
@@ -301,5 +313,6 @@ def status_from(data: Any) -> CollarStatus:
         next_update=_moment(device.get("nextLocationUpdateExpectedBy")),
         area_name=area_name if isinstance(area_name, str) and area_name else None,
         place_name=place_name if isinstance(place_name, str) and place_name else None,
+        home_location=home_location,
         positions=tuple(positions[-MAX_LOCATION_POINTS:]),
     )

@@ -9,9 +9,10 @@ as `None`, and the template renders the muted dash for it.
 from __future__ import annotations
 
 import re
-from datetime import date, datetime
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
+from kona_tracker.fi.parse import ActivityStats, CollarStatus, LocationPoint, PetProfile, RestWindow
 from kona_tracker.fi.service import FiSnapshot
 
 # The dial's visible track is a 270 degree arc; 603 is its length in user
@@ -95,6 +96,17 @@ def activity_context(snapshot: FiSnapshot | None, configured: bool) -> dict[str,
     sleep_hours = snapshot.sleep_hours if snapshot else None
     positions = status.positions if status else ()
     last_position = positions[-1] if positions else None
+    home_position = status.home_location if status else None
+    map_positions = positions or ((home_position,) if home_position else ())
+    map_kind = (
+        "current"
+        if positions and status and status.activity == "walk" and not snapshot.stale
+        else "last"
+        if positions
+        else "home"
+        if home_position
+        else None
+    )
     location_label = _location_label(status)
 
     return {
@@ -125,8 +137,9 @@ def activity_context(snapshot: FiSnapshot | None, configured: bool) -> dict[str,
                 "lon": point.longitude,
                 "accuracy": point.accuracy_m,
             }
-            for point in positions
+            for point in map_positions
         ],
+        "map_kind": map_kind,
         "location_updated": (
             last_position.recorded_at.astimezone().strftime("%H:%M")
             if last_position and last_position.recorded_at
@@ -179,6 +192,47 @@ def activity_context(snapshot: FiSnapshot | None, configured: bool) -> dict[str,
     }
 
 
+def preview_activity_context() -> dict[str, Any]:
+    """A clearly labelled, local-only complete state for reviewing the UI.
+
+    This never enters the Fi cache or the JSON endpoint. It exists so a new
+    collar does not force the owner to wait a week before checking whether
+    every part of the dashboard reads well.
+    """
+    now = datetime.now(UTC)
+    start = (now - timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    snapshot = FiSnapshot(
+        fetched_at=now,
+        pet_name="Kona",
+        window=RestWindow(start, start + timedelta(days=1), 8 * 3600 + 12 * 60, 0),
+        today=RestWindow(
+            start + timedelta(days=1),
+            start + timedelta(days=2),
+            0,
+            1 * 3600 + 24 * 60,
+        ),
+        activity=ActivityStats(18_240, 28_000, 2100),
+        week=ActivityStats(142_300, 196_000, None),
+        profile=PetProfile(name="Kona", breed="Labrador Retriever", birthday=date(2025, 8, 15)),
+        status=CollarStatus(
+            battery_percent=57,
+            on_base=False,
+            signal_percent=78,
+            activity="walk",
+            walk_distance=420,
+            area_name="Sample walk",
+            positions=(
+                LocationPoint(30.2672, -97.7431, now - timedelta(minutes=4), 12),
+                LocationPoint(30.2680, -97.7418, now - timedelta(minutes=2), 9),
+                LocationPoint(30.2690, -97.7405, now, 8),
+            ),
+        ),
+    )
+    context = activity_context(snapshot, configured=True)
+    context["preview"] = True
+    return context
+
+
 def activity_json(snapshot: FiSnapshot | None, configured: bool) -> dict[str, Any]:
     """The same data as the page, for polling later. Never the credentials."""
     window = snapshot.window if snapshot else None
@@ -187,6 +241,7 @@ def activity_json(snapshot: FiSnapshot | None, configured: bool) -> dict[str, An
     week = snapshot.week if snapshot else None
     profile = snapshot.profile if snapshot else None
     status = snapshot.status if snapshot else None
+    home_position = status.home_location if status else None
     return {
         "configured": configured,
         "breed": profile.breed if profile else None,
@@ -219,6 +274,11 @@ def activity_json(snapshot: FiSnapshot | None, configured: bool) -> dict[str, An
                 for point in status.positions
             ]
             if status
+            else None
+        ),
+        "home_position": (
+            {"latitude": home_position.latitude, "longitude": home_position.longitude}
+            if home_position
             else None
         ),
         "data_start": snapshot.data_start.isoformat() if snapshot and snapshot.data_start else None,

@@ -35,7 +35,7 @@ body { min-height: 100dvh; display: flex; flex-direction: column; -webkit-font-s
        min-height: 64px; padding-top: max(12px, env(safe-area-inset-top)); }
 .avatar { width: 44px; height: 44px; border-radius: 50%; overflow: hidden; flex: none;
           background: var(--t1); color: var(--t5); display: grid; place-items: center;
-          font-weight: 700; font-size: 18px; position: relative; }
+          font-weight: 700; font-size: 18px; position: relative; text-decoration: none; }
 .avatar img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .seg { display: flex; padding: 3px; border-radius: 999px; background: var(--bg2); }
 .seg a { padding: 8px 18px; border-radius: 999px; font-size: 13px; font-weight: 600; color: var(--ink2); text-decoration: none; }
@@ -115,6 +115,12 @@ body { min-height: 100dvh; display: flex; flex-direction: column; -webkit-font-s
 .note.warn { color: var(--warn); }
 .note code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;
              background: var(--bg2); border-radius: 4px; padding: 1px 5px; }
+.preview-banner { margin: 16px 0 0; padding: 12px 14px; border-radius: 14px; background: var(--t1);
+                  display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.preview-banner div { display: flex; flex-direction: column; gap: 2px; }
+.preview-banner strong { font-size: 13px; }
+.preview-banner span { color: var(--ink2); font-size: 11px; }
+.preview-banner a { color: var(--t5); font-size: 11px; font-weight: 700; white-space: nowrap; }
 /* Sections rise in gently; the complete content is present without motion. */
 .collar-summary, .location-card, .steps-hero, .rest-grid, .week-row { animation: rise .5s cubic-bezier(.22,1,.36,1) both; }
 .steps-hero { animation-delay: .04s; }
@@ -164,6 +170,27 @@ body { min-height: 100dvh; display: flex; flex-direction: column; -webkit-font-s
 .login .fine { font-size: 12px; color: var(--ink3); text-align: center; }
 .error { color: var(--bad); margin: 0; font-size: 14px; }
 .logout { font-size: 12px; color: var(--ink3); background: none; border: 0; padding: 20px 0 0; font: inherit; text-align: center; }
+
+/* profile + settings: personal actions live behind the photo, not in the feed */
+.profile-hero { display: flex; align-items: center; gap: 18px; padding: 30px 0 26px; border-bottom: 1px solid var(--line); }
+.profile-photo { width: 88px; height: 88px; border-radius: 50%; overflow: hidden; flex: none; position: relative;
+                 display: grid; place-items: center; background: var(--t1); color: var(--t5); font-size: 34px; font-weight: 700; }
+.profile-photo img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.profile-hero h1 { margin: 3px 0 2px; font-size: 34px; letter-spacing: -.05em; }
+.profile-hero p { margin: 0; color: var(--ink2); font-size: 13px; }
+.settings-group { padding: 24px 0 8px; border-bottom: 1px solid var(--line); }
+.settings-group h2 { margin: 0 0 12px; color: var(--ink2); font-size: 12px; font-weight: 600; }
+.settings-row { display: flex; justify-content: space-between; gap: 20px; padding: 10px 0; font-size: 14px; }
+.settings-row span { color: var(--ink2); }
+.settings-row strong { text-align: right; }
+.settings-link { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 10px 0 14px;
+                 color: var(--ink); text-decoration: none; }
+.settings-link > span:first-child { display: flex; flex-direction: column; gap: 4px; }
+.settings-link strong { font-size: 14px; }
+.settings-link small { color: var(--ink2); font-size: 11px; line-height: 1.35; }
+.settings-link > span:last-child { color: var(--ink3); font-size: 28px; }
+.settings-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 24px; }
+.settings-actions .logout { padding: 12px 0; cursor: pointer; }
 
 /* Pan/tilt pad. Only rendered for cameras with motors; a fixed camera
    never gets these. Hit targets are 56px so a thumb finds them. */

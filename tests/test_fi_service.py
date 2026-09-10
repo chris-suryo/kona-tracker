@@ -324,7 +324,7 @@ def test_activity_page_renders_real_numbers():
 
         assert body.index("Steps today") < body.index("Naps today")
         assert body.index("Naps today") < body.index("Location") < body.index("This week")
-        assert "Fi identifies this resting place as Home" in body
+        assert 'id="kona-map"' in body and "Home" in body
 
 
 def test_activity_page_without_credentials_explains_the_two_env_lines():
@@ -391,6 +391,8 @@ def test_profile_and_status_parse_the_measured_shapes():
     assert status.on_base is True and status.signal_percent is None
     assert status.activity == "rest" and status.walk_distance is None
     assert status.area_name is None and status.place_name == "Home"
+    assert status.home_location is not None
+    assert (status.home_location.latitude, status.home_location.longitude) == (30.2672, -97.7431)
     assert status.led_on is False and status.led_color == "White" and status.mode == "NORMAL"
     assert status.next_update is not None and status.last_report is not None
 
@@ -514,6 +516,9 @@ def test_absent_status_fields_are_none_and_bad_photo_urls_are_dropped():
     http_only = {"pet": {"photos": {"first": {"image": {"fullSize": "http://x/kona.jpg"}}}}}
     assert profile_from(http_only).photo_url is None, "only https reaches the proxy"
 
+    bad_home = {"pet": {"homeLocation": {"position": {"latitude": 999, "longitude": 0}}}}
+    assert status_from(bad_home).home_location is None
+
 
 @pytest.mark.parametrize(
     "birthday,expected",
@@ -555,6 +560,7 @@ def test_activity_json_exposes_the_collar_without_the_photo_url():
     assert data["battery_percent"] == 57 and data["on_base"] is True
     assert data["activity"] == "rest" and data["breed"] == "Labrador Retriever"
     assert data["birthday"] == "2025-08-15" and data["has_photo"] is True
+    assert data["home_position"] == {"latitude": 30.2672, "longitude": -97.7431}
     assert "cdn.example.invalid" not in json.dumps(data), "the URL stays server-side"
 
 
@@ -570,6 +576,26 @@ def test_a_saved_home_address_is_never_exposed_to_the_page_or_json():
     assert activity_context(snap, configured=True)["area_name"] == "Home"
     payload = activity_json(snap, configured=True)
     assert payload["area_name"] == "Home" and private not in json.dumps(payload)
+
+
+def test_preview_is_obviously_sample_data_and_never_changes_live_json():
+    with web_client(service()) as c:
+        preview = c.get("/activity?preview=1").text
+        live = c.get("/activity.json").json()
+    assert "Sample preview" in preview and "not Kona's live collar data" in preview
+    assert "18,240" in preview and "8.2" in preview and 'id="kona-map"' in preview
+    assert live["steps"] == 4210, "preview mode must not enter Fi's cache or API"
+
+
+def test_profile_page_holds_personal_actions_and_real_collar_summary():
+    with web_client(service()) as c:
+        activity = c.get("/activity").text
+        profile = c.get("/settings").text
+    assert 'href="/settings"' in activity
+    assert "Sign out on this phone" not in activity
+    assert "Labrador Retriever" in profile and "Battery" in profile and "57%" in profile
+    assert 'href="/activity?preview=1"' in profile
+    assert 'action="/logout"' in profile
 
 
 # --------------------------------------------------------------------------

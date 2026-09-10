@@ -16,6 +16,12 @@
 {% endif %}
 {% endblock %}
 {% block body %}
+{% if preview %}
+<aside class="preview-banner" aria-label="Sample data preview">
+  <div><strong>Sample preview</strong><span>This is not Kona's live collar data.</span></div>
+  <a href="/activity">Return to live</a>
+</aside>
+{% endif %}
 {% set steps_value = steps|replace(',', '')|float if steps else 0 %}
 {% set goal_value = step_goal|replace(',', '')|float if step_goal else 0 %}
 {% set step_percent = (steps_value / goal_value * 100) if goal_value else 0 %}
@@ -94,16 +100,17 @@
     <div>
       <span class="eyebrow">Location</span>
       <strong id="location-title">
-        {% if location_live %}Current walk
-        {% elif map_points %}Last GPS fix
+        {% if map_kind == 'current' %}Current walk
+        {% elif map_kind == 'last' %}Last GPS fix
+        {% elif map_kind == 'home' %}Home
         {% elif area_name %}{{ area_name }}
         {% else %}Waiting for GPS{% endif %}
       </strong>
     </div>
-    {% if location_updated %}<span>{{ 'Updated' if location_live else 'Last seen' }} {{ location_updated }}</span>{% endif %}
+    {% if location_updated %}<span>{{ 'Updated' if map_kind == 'current' else 'Last seen' }} {{ location_updated }}</span>{% endif %}
   </div>
   {% if map_points %}
-  <div id="kona-map" class="map" aria-label="Map showing Kona's {{ 'current walk route' if location_live else 'last reported location' }}"></div>
+  <div id="kona-map" class="map" aria-label="Map showing Kona's {% if map_kind == 'current' %}current walk route{% elif map_kind == 'home' %}Home location{% else %}last reported location{% endif %}"></div>
   {% else %}
   <div class="map-empty">
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s6-5.2 6-11a6 6 0 1 0-12 0c0 5.8 6 11 6 11Z"/><circle cx="12" cy="10" r="2"/></svg>
@@ -148,7 +155,6 @@ what's missing is missing. {{ problem }}</p>
 the previous collar. {% endif %}Last night is the most recent full day on Kona's collar,
 midnight to midnight. Naps count from midnight today.</p>
 {% endif %}
-<form method="post" action="/logout"><button class="logout" type="submit">Sign out on this phone</button></form>
 {% if map_points %}
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
         integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"></script>
