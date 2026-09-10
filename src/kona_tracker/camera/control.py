@@ -29,6 +29,13 @@ class ControlUnsupported(RuntimeError):
 
 
 def _clamp(value: float, low: float, high: float) -> float:
+    """Clamp into [low, high], absorbing NaN.
+
+    The operand order is load-bearing. `min(high, value)` compares
+    `value < high`, which is False for NaN, so NaN falls out as `high`
+    rather than propagating. Written the other way round a NaN would reach
+    the viewport maths in `FakeSource` and raise on `int(round(nan))`.
+    """
     return max(low, min(high, value))
 
 
@@ -50,15 +57,23 @@ class CameraControl(Protocol):
 
 
 class NoControl:
-    """A camera we can watch but not drive: USB webcams, and any RTSP
-    camera whose model we do not recognise."""
+    """A camera we can watch but not drive: USB webcams, and any camera
+    whose driver we have not written yet.
+
+    It reports **no** capabilities, whatever the model is theoretically
+    able to do. A C225 can pan, but until `TapoControl` exists we cannot
+    make it pan, and advertising the ability would put a pad on screen that
+    409s on every press. That is the dead button `capabilities.py` exists to
+    prevent. The model's own abilities stay on `model_capabilities` for
+    status and documentation.
+    """
 
     def __init__(self, capabilities: Capabilities | None = None):
-        self._capabilities = capabilities or Capabilities()
+        self.model_capabilities = capabilities or Capabilities()
 
     @property
     def capabilities(self) -> Capabilities:
-        return self._capabilities
+        return Capabilities()
 
     def position(self) -> tuple[float, float]:
         return (0.0, 0.0)
@@ -111,7 +126,10 @@ class FakeControl:
             return (self._pan, self._tilt)
 
     def goto_preset(self, number: int) -> tuple[float, float]:
-        if not self._capabilities.presets:
+        # Presets drive the same motors, so they need ptz as well: otherwise
+        # they are a second, separately-gated way to move a camera that the
+        # operator marked as unable to move.
+        if not (self._capabilities.presets and self._capabilities.ptz):
             raise ControlUnsupported("this camera has no presets")
         try:
             pan, tilt = self.PRESETS[number]

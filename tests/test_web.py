@@ -135,15 +135,34 @@ def _app_with(model, source="fake"):
     return app, control
 
 
-def test_pan_tilt_pad_appears_only_for_a_camera_with_motors():
-    for model, expected in (("c225", True), ("c120", False)):
-        app, _ = _app_with(model, source="rtsp")
+def test_the_pad_appears_only_when_something_can_actually_move_the_camera():
+    """The invariant: a control appears when the *connected driver* can do
+    it, not when the model could in principle. A C225 over RTSP can pan,
+    but until TapoControl exists we cannot make it, so no pad — otherwise
+    every press 409s and the user gets a dead button."""
+    cases = [
+        ("c225", "fake", True),  # simulated motors: really movable
+        ("c225", "rtsp", False),  # model can pan, no driver written yet
+        ("c120", "rtsp", False),  # fixed camera, never
+    ]
+    for model, source, expected in cases:
+        app, _ = _app_with(model, source=source)
         with TestClient(app) as c:
             login(c)
             html = c.get("/camera").text
-            assert ('class="ptz"' in html) is expected, model
-            assert ('data-preset="1"' in html) is expected, model
+            assert ('class="ptz"' in html) is expected, (model, source)
+            assert ('data-preset="1"' in html) is expected, (model, source)
+            assert c.get("/status.json").json()["capabilities"]["ptz"] is expected
         app.state.hub.stop()
+
+
+def test_an_undriveable_camera_advertises_nothing_but_remembers_the_model():
+    from kona_tracker.camera.capabilities import TAPO_PAN_TILT
+    from kona_tracker.camera.control import NoControl
+
+    c = NoControl(TAPO_PAN_TILT)
+    assert c.capabilities.ptz is False and c.capabilities.presets is False
+    assert c.model_capabilities.ptz is True  # kept for status and docs
 
 
 def test_moving_a_pan_tilt_camera_updates_the_reported_position():

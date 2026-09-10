@@ -61,3 +61,13 @@ def test_a_fake_control_without_ptz_still_refuses():
     c = FakeControl(Capabilities())
     with pytest.raises(ControlUnsupported):
         c.move(pan=0.1)
+
+
+def test_presets_cannot_move_a_camera_that_is_not_allowed_to_move():
+    """Presets drive the same motors, so ptz gates them too. Otherwise they
+    are a second, independently-gated way around the operator's setting."""
+    presets_but_no_ptz = Capabilities(presets=True, ptz=False)
+    c = FakeControl(presets_but_no_ptz)
+    with pytest.raises(ControlUnsupported, match="no presets"):
+        c.goto_preset(1)
+    assert c.position() == (0.0, 0.0)
