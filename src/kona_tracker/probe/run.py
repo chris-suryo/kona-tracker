@@ -17,6 +17,14 @@ from typing import Any
 
 from kona_tracker.fi import queries
 from kona_tracker.fi.client import FiClient, FiError, FiGraphQLError
+from kona_tracker.fi.parse import (
+    NAP,
+    SLEEP,
+    activity_from,
+    hours_from_duration,
+    pets_from,
+    rest_from,
+)
 from kona_tracker.probe.redact import redact
 from kona_tracker.probe.scan import SchemaScan, scan_schema
 
@@ -62,10 +70,8 @@ def run_probe(client: FiClient, out_dir: Path) -> ProbeReport:
 
     # 1. Who's in the household.
     data = _try(report, "pets", lambda: client.graphql(queries.CURRENT_USER_PETS))
-    if data:
-        for uh in (data.get("currentUser") or {}).get("userHouseholds") or []:
-            for pet in ((uh.get("household") or {}).get("pets")) or []:
-                report.pets.append({"id": str(pet["id"]), "name": str(pet.get("name", ""))})
+    for pet in pets_from(data):
+        report.pets.append({"id": pet.id, "name": pet.name})
 
     # 2. Full schema.
     data = _try(report, "introspection", lambda: client.graphql(queries.INTROSPECTION))
@@ -116,36 +122,44 @@ def _number(value: Any) -> str:
     return str(value) if type(value) in (int, float) else "unavailable"
 
 
-def _date(value: Any) -> str:
-    try:
-        return datetime.fromisoformat(value).isoformat()
-    except (ValueError, TypeError):
-        return "unavailable"
+def _date(value: datetime | None) -> str:
+    return value.isoformat() if value else "unavailable"
+
+
+def _reading(value: Any) -> str:
+    """The raw figure, plus what it means if the seconds assumption holds.
+
+    Chris reads this file to settle the unit question, so the hint is worth
+    printing — but only when it lands somewhere plausible, and always beside
+    the raw number rather than instead of it.
+    """
+    hours = hours_from_duration(value)
+    hint = f"; {hours:.1f} h if seconds" if hours is not None else ""
+    return f"{_number(value)} (raw API units{hint})"
 
 
 def _metric_lines(label: str, data: dict, pet: str) -> list[str]:
-    """Summarize known values only; missing/null is not a measured zero."""
+    """Summarize known values only; missing/null is not a measured zero.
+
+    Parsing lives in `fi/parse.py` so the probe and the Activity page read
+    these responses through exactly one implementation.
+    """
     result = []
-    pet_data = data.get("pet") or {}
     if label == "activity":
         for period in ("dailyStat", "weeklyStat"):
-            stats = pet_data.get(period) or {}
+            stats = activity_from(data, period)
             result.append(
-                f"{pet} {period}: totalSteps={_number(stats.get('totalSteps'))}, "
-                f"stepGoal={_number(stats.get('stepGoal'))}, "
-                f"totalDistance={_number(stats.get('totalDistance'))} (raw API units)."
+                f"{pet} {period}: totalSteps={_number(stats.steps)}, "
+                f"stepGoal={_number(stats.step_goal)}, "
+                f"totalDistance={_number(stats.distance)} (raw API units)."
             )
     else:
-        summaries = (pet_data.get("restSummaryFeed") or {}).get("restSummaries") or []
-        for summary in summaries:
-            amounts = (summary.get("data") or {}).get("sleepAmounts") or []
-            for kind in ("SLEEP", "NAP"):
-                amount = next((a.get("duration") for a in amounts if a.get("type") == kind), None)
-                result.append(
-                    f"{pet} {_date(summary.get('start'))} to {_date(summary.get('end'))}: "
-                    f"{kind} duration={_number(amount)} (raw API units)."
-                )
-        if not summaries:
+        windows = rest_from(data)
+        for window in windows:
+            span = f"{_date(window.start)} to {_date(window.end)}"
+            for kind, amount in ((SLEEP, window.sleep), (NAP, window.nap)):
+                result.append(f"{pet} {span}: {kind} duration={_reading(amount)}.")
+        if not windows:
             result.append(f"{pet}: rest summaries unavailable or empty; no sleep value confirmed.")
     return result
 
