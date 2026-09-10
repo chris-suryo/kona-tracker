@@ -25,7 +25,7 @@ from "mocked everything" to real collar data and real video on a phone.
 | Activity: last night's sleep, naps today, steps, weekly steps | **Real Fi data** |
 | Five honest page states: fresh / partial / stale / unconfigured / failing | Working, tested |
 | Her photo, battery, charge state, signal, activity, escape flag | **Rendered from real Fi data** |
-| Live walk map / last GPS fix | **Built** with Leaflet + free OpenStreetMap tiles; no API key |
+| Current-walk map / last GPS fix | **Built** with Leaflet + free OpenStreetMap tiles; no API key |
 | New-collar cutoff | **Built**; set `KONA_FI_DATA_START=2026-09-10` |
 | Fixed-camera capture/share | **Built**; Web Share where supported, download fallback |
 | `kona probe` — Fi API discovery, redacted | Four rounds run against the real API |

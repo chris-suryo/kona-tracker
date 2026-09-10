@@ -469,6 +469,7 @@ def test_walk_positions_are_validated_sorted_and_exposed_behind_auth():
         page = c.get("/activity").text
         api = c.get("/activity.json").json()
         assert 'id="kona-map"' in page and "tile.openstreetmap.org" in page
+        assert "Current walk" in page and "Updated" in page
         assert "30.2672" in page and len(api["positions"]) == 2
 
 

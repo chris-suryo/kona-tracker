@@ -58,7 +58,7 @@
     <div>
       <span class="eyebrow">Location</span>
       <strong id="location-title">
-        {% if location_live %}Live route
+        {% if location_live %}Current walk
         {% elif map_points %}Last GPS fix
         {% elif activity == 'rest' and area_name %}{{ area_name }}
         {% else %}Waiting for GPS{% endif %}
@@ -67,7 +67,7 @@
     {% if location_updated %}<span>{{ 'Updated' if location_live else 'Last seen' }} {{ location_updated }}</span>{% endif %}
   </div>
   {% if map_points %}
-  <div id="kona-map" class="map" aria-label="Map showing Kona's {{ 'live route' if location_live else 'last reported location' }}"></div>
+  <div id="kona-map" class="map" aria-label="Map showing Kona's {{ 'current walk route' if location_live else 'last reported location' }}"></div>
   {% else %}
   <div class="map-empty">
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s6-5.2 6-11a6 6 0 1 0-12 0c0 5.8 6 11 6 11Z"/><circle cx="12" cy="10" r="2"/></svg>
