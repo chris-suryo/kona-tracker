@@ -67,9 +67,17 @@ cp .env.example .env
 open -e .env
 ```
 
-Set `KONA_PASSCODE=` to whatever you and your sister will type (e.g. `4242`),
-and put any long random string after `KONA_SECRET=`. Save and close. This
-file is private to the machine and is never uploaded.
+Set `KONA_PASSCODE=` to whatever you and your sister will type, and put any
+long random string after `KONA_SECRET=`. Save and close. This file is private
+to the machine and is never uploaded.
+
+Digits are fine. Use **six or more** — the moment this goes through a tunnel,
+the passcode is the only thing between the internet and the camera, and the
+app prints a warning under six.
+
+**Changing the passcode later** is the same edit plus a restart. Note that it
+does *not* sign anyone out: logins are cookies signed with `KONA_SECRET`, not
+the passcode. To force every phone to log in again, change `KONA_SECRET` too.
 
 ## 3. Run it (no camera needed, anywhere)
 
@@ -245,6 +253,14 @@ uv run kona serve
   of its own and never a folder you keep things in.
 - `KONA_PASSCODE is not set` → step 2 was skipped, or `.env` is in the wrong
   folder (it belongs next to `pyproject.toml`).
+- **Camera tab says NO SIGNAL / OFFLINE, but `uv run kona cameras` found it.**
+  Something else has the webcam open. A USB camera can be held by one program
+  at a time, and `kona cameras` only checks that the device *opens*, not that
+  frames arrive. Hit on the home PC 2026-09-10: **Windows Settings › Camera**
+  was open, showing its preview, and that alone was enough. Close Settings,
+  Teams, Zoom, the Windows Camera app, any browser tab on a call. Then
+  `uv run kona camera-test` (server stopped) reads real frames and prints
+  either the size and fps or the exact error.
 - Phone can't reach the laptop → both on the same Wi-Fi? Firewall allowed?
   Guest networks often block device-to-device traffic.
 - Anything else → copy the terminal text into the next session.
