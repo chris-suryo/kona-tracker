@@ -1,4 +1,4 @@
-"""FastAPI app: passcode gate + Camera tab (live MJPEG) + Activity placeholder."""
+"""FastAPI app: passcode gate + Camera tab (live MJPEG) + Activity from the Fi collar."""
 
 from __future__ import annotations
 
@@ -19,8 +19,10 @@ from fastapi.templating import Jinja2Templates
 from kona_tracker.camera.control import CameraControl, ControlUnsupported, FakeControl, NoControl
 from kona_tracker.camera.hub import BOUNDARY, CameraHub
 from kona_tracker.camera.source import FakeSource, FrameSource, OpenCVSource, RtspSource
+from kona_tracker.fi.service import FiService
 from kona_tracker.web.auth import COOKIE_NAME, Lockout, PasscodeAuth
 from kona_tracker.web.settings import Settings
+from kona_tracker.web.views import activity_context, activity_json
 
 HERE = Path(__file__).parent
 PUBLIC_PATHS = {"/login", "/healthz"}
@@ -39,6 +41,18 @@ def default_control(s: Settings) -> CameraControl:
     return NoControl(caps)
 
 
+def default_fi_service(s: Settings) -> FiService | None:
+    """None when FI_EMAIL/FI_PASSWORD are absent.
+
+    An unconfigured collar is a state the page explains, not an error: the
+    Camera tab still works, and the Activity tab says which two lines are
+    missing from `.env` instead of showing a broken dial.
+    """
+    if not s.fi_configured:
+        return None
+    return FiService(s.fi_email, s.fi_password, s.fi_refresh_seconds)
+
+
 def default_source_factory(s: Settings, control: CameraControl | None = None):
     if s.camera_source == "fake":
         steerable = control if (control and control.capabilities.ptz) else None
@@ -52,6 +66,7 @@ def create_app(
     settings: Settings,
     source_factory: Callable[[], FrameSource] | None = None,
     control: CameraControl | None = None,
+    fi_service: FiService | None = None,
 ):
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
@@ -78,9 +93,11 @@ def create_app(
         stale_after=settings.stale_seconds,
         hang_after=settings.hang_seconds,
     )
+    fi = fi_service if fi_service is not None else default_fi_service(settings)
     app.state.hub = hub
     app.state.auth = auth
     app.state.control = control
+    app.state.fi = fi
 
     def authed(request: Request) -> bool:
         return auth.valid_cookie(request.cookies.get(COOKIE_NAME))
@@ -149,7 +166,15 @@ def create_app(
 
     @app.get("/activity", response_class=HTMLResponse)
     def activity(request: Request):
-        return templates.TemplateResponse(request, "activity.html", {"tab": "activity"})
+        snapshot = fi.snapshot() if fi else None
+        return templates.TemplateResponse(
+            request, "activity.html", activity_context(snapshot, configured=fi is not None)
+        )
+
+    @app.get("/activity.json")
+    def activity_data():
+        snapshot = fi.snapshot() if fi else None
+        return activity_json(snapshot, configured=fi is not None)
 
     @app.get("/stream.mjpg")
     def stream(frames: int | None = None):

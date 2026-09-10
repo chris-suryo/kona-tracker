@@ -38,6 +38,16 @@ class Settings:
     cookie_max_age: int = 30 * 24 * 3600
     lockout_attempts: int = 5
     lockout_seconds: int = 30
+    # Same two keys the probe already uses, so `.env` stays one file with one
+    # Fi login in it rather than two that can drift apart.
+    fi_email: str = ""
+    fi_password: str = ""
+    fi_refresh_seconds: float = 300.0
+
+    @property
+    def fi_configured(self) -> bool:
+        """Both halves, or none: half a login only produces a 401 later."""
+        return bool(self.fi_email and self.fi_password)
 
     @property
     def fake_camera(self) -> bool:
@@ -57,7 +67,8 @@ class Settings:
     def __repr__(self) -> str:  # never print secrets, even by accident
         return (
             f"Settings(camera={self.camera_label()!r}, passcode='***', secret='***', "
-            f"rtsp_user={self.rtsp_user!r}, rtsp_password='***')"
+            f"rtsp_user={self.rtsp_user!r}, rtsp_password='***', "
+            f"fi_email={'set' if self.fi_email else 'unset'}, fi_password='***')"
         )
 
 
@@ -124,4 +135,7 @@ def load_settings(env_file: Path | None = Path(".env"), fake_camera: bool = Fals
         rtsp_transport=get("KONA_RTSP_TRANSPORT", "tcp").strip().lower() or "tcp",
         stale_seconds=float(get("KONA_STALE_SECONDS", "3")),
         hang_seconds=float(get("KONA_HANG_SECONDS", "10")),
+        fi_email=get("FI_EMAIL"),
+        fi_password=get("FI_PASSWORD"),
+        fi_refresh_seconds=float(get("KONA_FI_REFRESH_SECONDS", "300")),
     )

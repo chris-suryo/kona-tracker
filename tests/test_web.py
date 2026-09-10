@@ -32,6 +32,9 @@ def test_unauthenticated_stream_is_401_not_redirect(client):
     assert client.get("/stream.mjpg", follow_redirects=False).status_code == 401
     assert client.get("/snapshot.jpg", follow_redirects=False).status_code == 401
     assert client.get("/status.json", follow_redirects=False).status_code == 303
+    # Kona's data is behind the same gate as her camera.
+    assert client.get("/activity", follow_redirects=False).status_code == 303
+    assert client.get("/activity.json", follow_redirects=False).status_code == 303
 
 
 def test_snapshot_shows_placeholder_with_honest_state_when_camera_fails():
@@ -202,3 +205,23 @@ def test_control_endpoints_are_behind_the_passcode(client):
         client.post("/control/preset", data={"number": "1"}, follow_redirects=False).status_code
         == 303
     )
+
+
+def test_motion_is_opt_in_and_respects_the_accessibility_setting():
+    """The polish must never be something a user cannot turn off.
+
+    `@view-transition` is what makes a multi-page app feel like an app, and
+    the animations are decoration on top of markup that is already complete —
+    but both have to disappear for anyone who asked their phone for less
+    motion.
+    """
+    from kona_tracker.web.app import HERE
+
+    css = (HERE / "static" / "app.css").read_text(encoding="utf-8")
+    assert "@view-transition { navigation: auto; }" in css
+    for name in ("kona-header", "kona-tab", "kona-frame", "kona-hero"):
+        assert css.count(f"view-transition-name: {name}") == 1, "names must stay unique"
+
+    reduce = css[css.index("@media (prefers-reduced-motion: reduce)") :]
+    assert "@view-transition { navigation: none; }" in reduce
+    assert ".dial .val, .stat { animation: none; }" in reduce
