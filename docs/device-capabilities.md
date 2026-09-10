@@ -1,44 +1,69 @@
 # What the hardware can actually do
 
-Written 2026-09-10, before the UI redesign, so nobody designs another
-control the hardware cannot perform. The first design round drew pan
-controls and a large "hold to talk" button; neither works on the camera we
-bought. Everything below is either verified against a source or explicitly
-marked unverified.
+Written 2026-09-10, before the UI redesign, so nobody designs a control the
+hardware cannot perform. The first design round drew pan controls and a
+large "hold to talk" button. One of those is buildable on the right camera;
+the other is not buildable on any Tapo. Everything below is either verified
+against a source or explicitly marked unverified.
 
 Sources: [pytapo](https://github.com/JurajNyiri/pytapo) and the
 [Home Assistant Tapo integration](https://github.com/JurajNyiri/HomeAssistant-Tapo-Control)
-built on it, which lists the C120 among supported models;
-[pyatv](https://pyatv.dev/) for Apple TV.
+built on it, which lists supported models;
+[TP-Link's ONVIF FAQ](https://www.tapo.com/us/faq/724/) for the profile
+level; [pyatv](https://pyatv.dev/) for Apple TV.
 
 ---
 
-## 1. Tapo C120 camera
+## 1. Camera models
 
-Control speaks the camera's **local HTTPS API** using the same camera-account
-credentials we already collect for the video stream. No cloud, no extra
-secret to manage.
+Abilities are **data**, not assumptions in a template. `KONA_CAMERA_MODEL`
+picks the set; `src/kona_tracker/camera/capabilities.py` holds it. A model
+we do not recognise gets video only, because showing too few controls beats
+offering one that silently fails.
 
-| Control | Status on the C120 |
-|---|---|
-| Live video (RTSP) | **Built.** `/stream1` HD, `/stream2` SD. |
-| Still snapshot | **Built.** `/snapshot.jpg`. |
-| Night vision on / off / auto | **Confirmed available.** Not built. |
-| Privacy mode (lens blind) | **Confirmed available.** Not built. |
-| Alarm / siren | **Confirmed available.** Not built. |
-| LED indicator on/off | **Confirmed available.** Not built. |
-| Motion detection mode + sensitivity | **Confirmed available.** Not built. |
-| Microphone mute, speaker volume | **Confirmed available.** Not built. |
-| SD-card recording, file download | **Confirmed available.** Not built. |
-| Reboot, time sync | **Confirmed available.** Not built. |
-| **Live two-way talk** | **Unverified.** Mute and volume are exposed; a live talk channel is not. Do not put a talk button in the UI until someone proves it end to end. |
-| **Pan / tilt / presets / auto-track** | **Impossible.** The C120 is a fixed camera. These exist only on pan-tilt models such as the C210 and C225. |
+| Control | C120 (fixed) | C210 / C220 / C225 (pan-tilt) |
+|---|---|---|
+| Live video (RTSP) | **Built** | **Built** |
+| Still snapshot | **Built** | **Built** |
+| Pan / tilt | **Impossible** — no motors | **Available**, not yet driven |
+| Presets | **Impossible** | **Available**, not yet driven |
+| Night vision on / off / auto | Available | Available |
+| Privacy mode (lens blind) | Available | Available |
+| Alarm / siren | Available | Available |
+| LED indicator | Available | Available |
+| Motion detection + sensitivity | Available | Available |
+| Mic mute, speaker volume | Available | Available |
+| SD recording, file download | Available | Available |
+| Reboot, time sync | Available | Available |
+| **Live two-way talk** | **No** | **No** |
+
+"Available" means the local API exposes it and we have not written the
+driver yet. "Built" means it works today.
+
+### Why two-way talk is off on every Tapo
+
+TP-Link implements **ONVIF Profile S**. The audio backchannel that carries
+your voice to the camera is **Profile T**. Talking to Kona works in the
+Tapo app over their proprietary protocol; it does not work through
+standards, so it cannot work through ours.
+
+Getting it would mean a different class of camera (Dahua, Hikvision, some
+Reolink) *and* replacing our whole video path with go2rtc and WebRTC.
+Deliberately dropped. `Capabilities.talk` is `False` everywhere and a test
+pins it, so it cannot be switched on hopefully — only by someone who proved
+it against real hardware.
+
+### The plan across two cameras
+
+The C120 already ordered is not wasted: fixed cameras make good second
+angles. A C225 added later becomes the one you steer. The app renders each
+correctly from the same code, so both can be plugged in and compared.
 
 ### Setup gotcha
 
-Recent firmware requires **Third-Party Compatibility** to be switched on in
-the Tapo app before the camera account works at all. Both RTSP and the
-control API fail without it. This is in `docs/first-run.md` step 4.
+Recent firmware requires **Third-Party Compatibility** switched on in the
+Tapo app before the camera account works at all. Both RTSP and the control
+API fail without it. It is step 2 in `docs/first-run.md`.
 
 ---
 
@@ -47,8 +72,8 @@ control API fail without it. This is in `docs/first-run.md` step 4.
 **Still unknown.** Nobody has run `kona probe` against a real account yet.
 Whether Fi exposes a sleep-quality score, or only raw sleep and step
 totals, decides what the Activity tab can honestly show. The probe writes
-`probe-out/summary.md`; that file is the input to the Activity design and
-nothing on that tab should be designed before it exists.
+`probe-out/summary.md`; nothing on that tab should be designed before it
+exists.
 
 ---
 
@@ -56,34 +81,29 @@ nothing on that tab should be designed before it exists.
 
 **Technically possible.** pyatv is mature, covers power, remote navigation,
 app launching, now-playing and AirPlay, is pure Python, and works over the
-local network. It would run on the same home server as this app with no
-architectural change.
+local network. It would run on the same home server with no architectural
+change.
 
-**Recommended anyway: don't build it here.**
+**Recommended anyway: don't build it here.** This app is a focused thing
+for two people about one dog. Home Assistant already solves home
+automation, runs on the same Raspberry Pi, and ships integrations for both
+this camera and Apple TV. Rebuilding that inside a dog app costs months and
+makes it worse at its actual job.
 
-This app is a focused thing for two people about one dog. Apple TV control
-and general home automation is a different product, and Home Assistant
-already solves it, runs on the same Raspberry Pi, and ships integrations
-for both this exact camera and Apple TV. Rebuilding that inside a dog app
-costs months and makes it worse at its actual job.
+The line: **camera control belongs here** because it is about watching
+Kona. Everything else belongs in Home Assistant. If one surface is wanted
+later, this app can read a few Home Assistant entities over its REST API —
+a cheap bridge, not a rebuild.
 
-The line that makes sense:
-
-- **Camera control belongs here.** It is about watching Kona, it reuses
-  credentials we already have, and it is a handful of switches.
-- **Everything else belongs in Home Assistant.**
-
-If one surface is wanted later, this app can read a few Home Assistant
-entities over its REST API and show them on a tab. That is a cheap bridge,
-not a rebuild, and the door stays open either way.
+Chris has parked this for a separate project.
 
 ---
 
 ## 4. What this means for the redesign
 
-Camera controls that **may** appear in the UI, because the hardware does
-them:
+Controls that **may** appear, gated on the connected camera's capabilities:
 
+- pan and tilt, plus presets — **pan-tilt models only**
 - night vision (on / off / auto)
 - privacy mode
 - alarm
@@ -94,7 +114,7 @@ them:
 
 Controls that **must not** appear:
 
-- pan, tilt, zoom, presets, auto-track — the camera is fixed
-- hold-to-talk — unproven; earn it with a working prototype first
+- hold-to-talk — impossible on Tapo, on any model
+- pan/tilt on a fixed camera — the page must ask, never assume
 
 Still undecided, pending the probe: everything on the Activity tab.

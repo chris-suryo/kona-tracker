@@ -9,6 +9,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from kona_tracker.camera.capabilities import Capabilities, for_model
 from kona_tracker.camera.redact import has_scheme, redact_url, split_credentials
 from kona_tracker.cli_env import read_env_file
 
@@ -23,6 +24,7 @@ class Settings:
     passcode: str
     secret: str
     camera_source: str = "usb"  # usb | rtsp | fake
+    camera_model: str = ""  # c120, c225, ... picks the capability set
     camera_index: int = 0
     camera_width: int = 1280
     camera_height: int = 720
@@ -40,6 +42,10 @@ class Settings:
     @property
     def fake_camera(self) -> bool:
         return self.camera_source == "fake"
+
+    def capabilities(self) -> Capabilities:
+        """What this camera can do. Data, not an assumption in a template."""
+        return for_model(self.camera_model, self.camera_source)
 
     def camera_label(self) -> str:
         if self.camera_source == "fake":
@@ -107,6 +113,7 @@ def load_settings(env_file: Path | None = Path(".env"), fake_camera: bool = Fals
         passcode=passcode,
         secret=secret,
         camera_source=source,
+        camera_model=get("KONA_CAMERA_MODEL", "").strip().lower(),
         camera_index=int(get("KONA_CAMERA_INDEX", "0")),
         camera_width=int(get("KONA_CAMERA_WIDTH", "1280")),
         camera_height=int(get("KONA_CAMERA_HEIGHT", "720")),

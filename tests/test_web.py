@@ -123,3 +123,63 @@ def test_pages_link_the_manifest_and_apple_icon(client):
     assert '<meta name="apple-mobile-web-app-title" content="Kona">' in html
     # The standalone launch depends on this one; it predates the manifest.
     assert 'name="apple-mobile-web-app-capable" content="yes"' in html
+
+
+def _app_with(model, source="fake"):
+    """A client whose camera model decides which controls exist."""
+    from kona_tracker.web.app import default_control
+
+    settings = Settings(passcode="4242", secret="s", camera_source=source, camera_model=model)
+    control = default_control(settings)
+    app = create_app(settings, source_factory=lambda: FakeSource(fps=100), control=control)
+    return app, control
+
+
+def test_pan_tilt_pad_appears_only_for_a_camera_with_motors():
+    for model, expected in (("c225", True), ("c120", False)):
+        app, _ = _app_with(model, source="rtsp")
+        with TestClient(app) as c:
+            login(c)
+            html = c.get("/camera").text
+            assert ('class="ptz"' in html) is expected, model
+            assert ('data-preset="1"' in html) is expected, model
+        app.state.hub.stop()
+
+
+def test_moving_a_pan_tilt_camera_updates_the_reported_position():
+    app, _ = _app_with("c225", source="fake")
+    with TestClient(app) as c:
+        login(c)
+        assert c.get("/status.json").json()["position"] == {"pan": 0.0, "tilt": 0.0}
+        moved = c.post("/control/move", data={"pan": "0.4", "tilt": "-0.1"})
+        assert moved.status_code == 200 and moved.json() == {"pan": 0.4, "tilt": -0.1}
+
+        status = c.get("/status.json").json()
+        assert status["position"]["pan"] == 0.4
+        assert status["capabilities"]["ptz"] is True
+        assert status["capabilities"]["talk"] is False
+
+        preset = c.post("/control/preset", data={"number": "3"})
+        assert preset.status_code == 200 and preset.json()["pan"] == 0.8
+    app.state.hub.stop()
+
+
+def test_a_fixed_camera_refuses_to_move_instead_of_pretending():
+    app, _ = _app_with("c120", source="rtsp")
+    with TestClient(app) as c:
+        login(c)
+        r = c.post("/control/move", data={"pan": "0.4"})
+        assert r.status_code == 409
+        assert "pan or tilt" in r.json()["error"]
+        assert c.get("/status.json").json()["capabilities"]["ptz"] is False
+    app.state.hub.stop()
+
+
+def test_control_endpoints_are_behind_the_passcode(client):
+    assert (
+        client.post("/control/move", data={"pan": "0.4"}, follow_redirects=False).status_code == 303
+    )
+    assert (
+        client.post("/control/preset", data={"number": "1"}, follow_redirects=False).status_code
+        == 303
+    )

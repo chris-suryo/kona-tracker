@@ -247,3 +247,39 @@ def test_stop_ends_streams(n):
         return rest
 
     assert asyncio.run(go()) == []
+
+
+def test_steering_the_fake_source_actually_changes_the_picture():
+    """The pad is only judgeable if pressing it moves the image, so this
+    decodes two frames and asserts they differ."""
+    cv2 = pytest.importorskip("cv2")
+    import numpy as np
+
+    from kona_tracker.camera.control import FakeControl
+
+    control = FakeControl()
+    source = FakeSource(fps=200, control=control)
+
+    def frame():
+        raw = source.read_jpeg()
+        img = cv2.imdecode(np.frombuffer(raw, np.uint8), cv2.IMREAD_COLOR)
+        assert img is not None
+        return img
+
+    centre = frame()
+    control.move(pan=-0.9)
+    left = frame()
+    control.goto_preset(3)
+    right = frame()
+
+    assert centre.shape == left.shape == right.shape
+    assert not np.array_equal(centre, left), "panning left changed nothing"
+    assert not np.array_equal(left, right), "jumping to a preset changed nothing"
+
+
+def test_the_fake_source_without_a_control_is_unchanged():
+    """The tiny embedded JPEG path must survive: it is what lets the fake
+    run with no OpenCV at all."""
+    plain = FakeSource(fps=200).read_jpeg()
+    assert plain.startswith(b"\xff\xd8") and len(plain) < 2000
+    assert frame_number(plain) == 1
