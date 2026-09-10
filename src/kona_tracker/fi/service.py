@@ -16,7 +16,7 @@ from __future__ import annotations
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass, replace
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 
 from kona_tracker.fi.client import FiClient, FiError, FiGraphQLError
 from kona_tracker.fi.parse import (
@@ -68,6 +68,10 @@ class FiSnapshot:
     status: CollarStatus | None = None
     problem: str | None = None
     stale: bool = False
+    #: First date whose collar measurements belong to this setup. Older
+    #: aggregates can belong to a replaced or unworn collar.
+    data_start: date | None = None
+    historical_totals_hidden: bool = False
 
     @property
     def sleep_hours(self) -> float | None:
@@ -134,7 +138,11 @@ def _explain(error: FiError) -> str:
 
 
 def fetch_snapshot(
-    client: FiClient, email: str, password: str, now: datetime | None = None
+    client: FiClient,
+    email: str,
+    password: str,
+    now: datetime | None = None,
+    data_start: date | None = None,
 ) -> FiSnapshot:
     """One full round trip: log in, find the pet, read rest and activity.
 
@@ -160,6 +168,8 @@ def fetch_snapshot(
     try:
         windows = rest_from(client.graphql(pet_rest(pet.id, limit=2)), "dailyStat")
         window, today = split_windows(windows, now)
+        if data_start and window and (window.start is None or window.start.date() < data_start):
+            window = None
         if window is None and today is None:
             problems.append("Fi returned no rest windows yet.")
     except FiError as e:
@@ -168,6 +178,11 @@ def fetch_snapshot(
         data = client.graphql(pet_activity(pet.id))
         activity = activity_from(data, "dailyStat")
         week = activity_from(data, "weeklyStat")
+        # Fi does not tell us the weekly bucket's start. Seven full days
+        # after the cutoff is the first point where none of that aggregate
+        # can belong to the previous collar.
+        if data_start and now.date() < data_start + timedelta(days=7):
+            week = None
     except FiError as e:
         problems.append(f"Steps: {_explain(e)}")
     try:
@@ -188,6 +203,8 @@ def fetch_snapshot(
         profile=profile,
         status=status,
         problem=" ".join(problems) or None,
+        data_start=data_start,
+        historical_totals_hidden=bool(data_start and now.date() < data_start + timedelta(days=7)),
     )
 
 
@@ -201,12 +218,14 @@ class FiService:
         refresh_seconds: float = DEFAULT_REFRESH_SECONDS,
         client_factory=FiClient,
         clock: Callable[[], datetime] = _now,
+        data_start: date | None = None,
     ):
         self._email = email
         self._password = password
         self._ttl = max(refresh_seconds, 1.0)
         self._client_factory = client_factory
         self._clock = clock
+        self._data_start = data_start
         self._lock = threading.Lock()
         self._snapshot: FiSnapshot | None = None
         self._refreshing = False
@@ -218,7 +237,13 @@ class FiService:
     def _fetch(self) -> FiSnapshot:
         client = self._client_factory()
         try:
-            return fetch_snapshot(client, self._email, self._password, now=self._clock())
+            return fetch_snapshot(
+                client,
+                self._email,
+                self._password,
+                now=self._clock(),
+                data_start=self._data_start,
+            )
         finally:
             client.close()
 
@@ -234,6 +259,20 @@ class FiService:
         with self._lock:
             self._attempted_at = self._clock()
             if fresh is not None:
+                # OngoingRest has no coordinates. Preserve the last fix seen
+                # by this process and let its own timestamp say how old it is;
+                # never relabel it as a current location.
+                previous_status = self._snapshot.status if self._snapshot else None
+                if (
+                    fresh.status is not None
+                    and not fresh.status.positions
+                    and previous_status is not None
+                    and previous_status.positions
+                ):
+                    fresh = replace(
+                        fresh,
+                        status=replace(fresh.status, positions=previous_status.positions),
+                    )
                 self._snapshot = fresh
             elif self._snapshot is not None:
                 # Keep the data, stamp the failure; `fetched_at` stays at the
@@ -242,7 +281,9 @@ class FiService:
                 # and only here.
                 self._snapshot = replace(self._snapshot, problem=problem, stale=True)
             else:
-                self._snapshot = FiSnapshot(fetched_at=self._clock(), problem=problem)
+                self._snapshot = FiSnapshot(
+                    fetched_at=self._clock(), problem=problem, data_start=self._data_start
+                )
             self._refreshing = False
 
     def _stale(self) -> bool:

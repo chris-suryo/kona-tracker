@@ -1,3 +1,5 @@
+from datetime import date
+
 import pytest
 
 from kona_tracker.web.settings import SettingsError, load_settings
@@ -64,4 +66,15 @@ def test_scheme_less_rtsp_url_is_refused_before_it_can_leak(tmp_path, monkeypatc
     monkeypatch.setenv("KONA_CAMERA_SOURCE", "rtsp")
     monkeypatch.setenv("KONA_RTSP_URL", "192.168.1.10:554/stream1")
     with pytest.raises(SettingsError, match="scheme"):
+        load_settings(tmp_path / "none.env")
+
+
+def test_fi_data_start_is_an_iso_date(tmp_path, monkeypatch):
+    monkeypatch.setenv("KONA_PASSCODE", "123456")
+    monkeypatch.setenv("KONA_SECRET", "s")
+    monkeypatch.setenv("KONA_CAMERA_SOURCE", "usb")
+    monkeypatch.setenv("KONA_FI_DATA_START", "2026-09-10")
+    assert load_settings(tmp_path / "none.env").fi_data_start == date(2026, 9, 10)
+    monkeypatch.setenv("KONA_FI_DATA_START", "09/10/2026")
+    with pytest.raises(SettingsError, match="YYYY-MM-DD"):
         load_settings(tmp_path / "none.env")

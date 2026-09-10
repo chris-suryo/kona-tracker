@@ -79,6 +79,8 @@ def activity_context(snapshot: FiSnapshot | None, configured: bool) -> dict[str,
     profile = snapshot.profile if snapshot else None
     status = snapshot.status if snapshot else None
     sleep_hours = snapshot.sleep_hours if snapshot else None
+    positions = status.positions if status else ()
+    last_position = positions[-1] if positions else None
 
     return {
         # Who she is and what the collar says, for the template to use when
@@ -101,6 +103,29 @@ def activity_context(snapshot: FiSnapshot | None, configured: bool) -> dict[str,
         "distance_m": _count(activity.distance if activity else None),
         "walk_distance_m": _count(status.walk_distance) if status else None,
         "led_on": status.led_on if status else None,
+        "area_name": status.area_name if status else None,
+        "map_points": [
+            {
+                "lat": point.latitude,
+                "lon": point.longitude,
+                "accuracy": point.accuracy_m,
+            }
+            for point in positions
+        ],
+        "location_updated": (
+            last_position.recorded_at.astimezone().strftime("%H:%M")
+            if last_position and last_position.recorded_at
+            else None
+        ),
+        "location_live": bool(
+            positions and status and status.activity == "walk" and not snapshot.stale
+        ),
+        "data_start_label": (
+            "today"
+            if snapshot and snapshot.data_start == snapshot.fetched_at.date()
+            else _day(snapshot.data_start) if snapshot and snapshot.data_start else None
+        ),
+        "historical_totals_hidden": bool(snapshot and snapshot.historical_totals_hidden),
         "tab": "activity",
         "configured": configured,
         "has_data": bool(snapshot and snapshot.has_data),
@@ -167,6 +192,22 @@ def activity_json(snapshot: FiSnapshot | None, configured: bool) -> dict[str, An
         "led_on": status.led_on if status else None,
         "led_color": status.led_color if status else None,
         "mode": status.mode if status else None,
+        "area_name": status.area_name if status else None,
+        "positions": (
+            [
+                {
+                    "latitude": point.latitude,
+                    "longitude": point.longitude,
+                    "recorded_at": point.recorded_at.isoformat() if point.recorded_at else None,
+                    "accuracy_m": point.accuracy_m,
+                }
+                for point in status.positions
+            ]
+            if status
+            else None
+        ),
+        "data_start": snapshot.data_start.isoformat() if snapshot and snapshot.data_start else None,
+        "historical_totals_hidden": snapshot.historical_totals_hidden if snapshot else None,
         "fetched_at": snapshot.fetched_at.isoformat() if snapshot else None,
         "pet_name": snapshot.pet_name if snapshot else None,
         "sleep_seconds": window.sleep if window else None,

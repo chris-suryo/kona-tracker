@@ -7,6 +7,7 @@ import os
 import secrets
 import sys
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 
 from kona_tracker.camera.capabilities import Capabilities, for_model
@@ -43,6 +44,7 @@ class Settings:
     fi_email: str = ""
     fi_password: str = ""
     fi_refresh_seconds: float = 300.0
+    fi_data_start: date | None = None
 
     @property
     def fi_configured(self) -> bool:
@@ -120,6 +122,12 @@ def load_settings(env_file: Path | None = Path(".env"), fake_camera: bool = Fals
         # shape a credential redactor can get wrong; refuse early.
         raise SettingsError("KONA_RTSP_URL must start with a scheme, e.g. rtsp://<ip>:554/stream1")
 
+    data_start_raw = get("KONA_FI_DATA_START").strip()
+    try:
+        data_start = date.fromisoformat(data_start_raw) if data_start_raw else None
+    except ValueError as exc:
+        raise SettingsError("KONA_FI_DATA_START must be YYYY-MM-DD") from exc
+
     return Settings(
         passcode=passcode,
         secret=secret,
@@ -138,4 +146,5 @@ def load_settings(env_file: Path | None = Path(".env"), fake_camera: bool = Fals
         fi_email=get("FI_EMAIL"),
         fi_password=get("FI_PASSWORD"),
         fi_refresh_seconds=float(get("KONA_FI_REFRESH_SECONDS", "300")),
+        fi_data_start=data_start,
     )

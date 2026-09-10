@@ -84,7 +84,12 @@ def default_fi_service(s: Settings) -> FiService | None:
     """
     if not s.fi_configured:
         return None
-    return FiService(s.fi_email, s.fi_password, s.fi_refresh_seconds)
+    return FiService(
+        s.fi_email,
+        s.fi_password,
+        s.fi_refresh_seconds,
+        data_start=s.fi_data_start,
+    )
 
 
 def default_source_factory(s: Settings, control: CameraControl | None = None):

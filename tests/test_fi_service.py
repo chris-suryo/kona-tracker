@@ -6,7 +6,7 @@ data are each a distinct visible state, and each is pinned below.
 """
 
 import json
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import httpx
 import pytest
@@ -109,6 +109,16 @@ def test_fetch_snapshot_reads_last_night_not_today():
     assert snap.nap_hours == pytest.approx(1290 / 3600), "naps so far today"
     assert snap.activity.steps == 4210 and snap.week.steps == 31000
     assert snap.problem is None and snap.has_data and not snap.unit_suspect
+
+
+def test_new_collar_cutoff_hides_old_night_and_week_without_hiding_today():
+    with make_client() as client:
+        snap = fetch_snapshot(client, EMAIL, PASSWORD, now=NOW, data_start=date(2026, 9, 10))
+    assert snap.window is None and snap.today is not None
+    assert snap.activity.steps == 4210, "today belongs to the new setup"
+    assert snap.week is None and snap.historical_totals_hidden
+    ctx = activity_context(snap, configured=True)
+    assert ctx["night_pending"] and ctx["data_start_label"] == "today"
 
 
 def test_a_collar_paired_today_has_no_night_yet():
@@ -427,6 +437,63 @@ def test_status_when_she_is_out_on_a_walk():
     status = status_from(data)
     assert status.on_base is False and status.signal_percent == 72
     assert status.activity == "walk" and status.walk_distance == 420
+
+
+def test_walk_positions_are_validated_sorted_and_exposed_behind_auth():
+    from kona_tracker.fi.parse import status_from
+
+    data = json.loads(json.dumps(fixture("status")["data"]))
+    walk = fixture("location")["data"]["pet"]["ongoingActivity"]
+    walk["positions"].extend(
+        [
+            {"date": "2026-09-10T19:20:00Z", "errorRadius": -2,
+             "position": {"latitude": 30.26, "longitude": -97.74}},
+            {"date": "2026-09-10T19:30:00Z", "errorRadius": 4,
+             "position": {"latitude": 999, "longitude": -97.74}},
+        ]
+    )
+    data["pet"]["ongoingActivity"] = walk
+    status = status_from(data)
+    assert [(p.latitude, p.longitude) for p in status.positions] == [
+        (30.26, -97.74),
+        (30.2672, -97.7431),
+    ]
+    assert status.positions[0].accuracy_m is None
+
+    def walking(request):
+        if request.url.path == "/graphql" and "KonaStatus" in json.loads(request.content)["query"]:
+            return httpx.Response(200, json={"data": data})
+        return fake_fi_handler(request)
+
+    with web_client(service(walking)) as c:
+        page = c.get("/activity").text
+        api = c.get("/activity.json").json()
+        assert 'id="kona-map"' in page and "tile.openstreetmap.org" in page
+        assert "30.2672" in page and len(api["positions"]) == 2
+
+
+def test_last_gps_fix_survives_when_fi_returns_to_rest():
+    status_calls = 0
+
+    def handler(request):
+        nonlocal status_calls
+        if request.url.path == "/graphql" and "KonaStatus" in json.loads(request.content)["query"]:
+            status_calls += 1
+            data = json.loads(json.dumps(fixture("status")["data"]))
+            if status_calls == 1:
+                data["pet"]["ongoingActivity"] = fixture("location")["data"]["pet"][
+                    "ongoingActivity"
+                ]
+            return httpx.Response(200, json={"data": data})
+        return fake_fi_handler(request)
+
+    svc = service(handler)
+    first = svc.snapshot()
+    assert first.status.positions
+    svc._refresh()
+    second = svc.snapshot()
+    assert second.status.activity == "rest" and second.status.positions == first.status.positions
+    assert activity_context(second, configured=True)["location_live"] is False
 
 
 def test_absent_status_fields_are_none_and_bad_photo_urls_are_dropped():
