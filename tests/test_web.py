@@ -93,6 +93,13 @@ def test_snapshot_and_stream_with_cookie(client):
     assert r.content.count(b"--kona-frame\r\nContent-Type: image/jpeg") == 3
 
 
+def test_usb_camera_offers_capture_and_share_but_no_motion_controls(client):
+    login(client)
+    page = client.get("/camera").text
+    assert 'id="capture"' in page and "navigator.share" in page
+    assert 'class="ptz"' not in page and "Left corner" not in page
+
+
 def test_logout_clears_cookie(client):
     login(client)
     r = client.post("/logout", follow_redirects=False)

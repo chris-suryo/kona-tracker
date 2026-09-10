@@ -1,6 +1,12 @@
 {% extends "base.html" %}
 {% block title %}Kona · activity{% endblock %}
 {% block pageclass %}activity-page{% endblock %}
+{% block head %}
+{% if map_points %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="anonymous">
+{% endif %}
+{% endblock %}
 {% block hdrright %}
 {% if battery %}
 <span class="battery" aria-label="Collar battery {{ battery }} percent">
@@ -46,6 +52,31 @@
   </div>
 </section>
 
+{% if configured %}
+<section class="location-card {{ 'urgent' if escaped or lost else '' }}" aria-labelledby="location-title">
+  <div class="location-heading">
+    <div>
+      <span class="eyebrow">Location</span>
+      <strong id="location-title">
+        {% if location_live %}Live route
+        {% elif map_points %}Last GPS fix
+        {% elif activity == 'rest' and area_name %}{{ area_name }}
+        {% else %}Waiting for GPS{% endif %}
+      </strong>
+    </div>
+    {% if location_updated %}<span>{{ 'Updated' if location_live else 'Last seen' }} {{ location_updated }}</span>{% endif %}
+  </div>
+  {% if map_points %}
+  <div id="kona-map" class="map" aria-label="Map showing Kona's {{ 'live route' if location_live else 'last reported location' }}"></div>
+  {% else %}
+  <div class="map-empty">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s6-5.2 6-11a6 6 0 1 0-12 0c0 5.8 6 11 6 11Z"/><circle cx="12" cy="10" r="2"/></svg>
+    <span>Fi sends map points during an active walk or escape. No location is being guessed.</span>
+  </div>
+  {% endif %}
+</section>
+{% endif %}
+
 <section class="steps-hero {{ 'dimmed' if stale else '' }}" aria-label="Steps today">
   <div class="hero-copy">
     <span class="eyebrow">Steps today</span>
@@ -83,8 +114,13 @@
 </section>
 
 <section class="week-row {{ 'dimmed' if stale else '' }}">
+  {% if historical_totals_hidden %}
+  <span><span class="eyebrow">This week</span><strong>Building a clean baseline</strong></span>
+  <span>from {{ data_start_label }}</span>
+  {% else %}
   <span><span class="eyebrow">This week</span><strong class="d {{ '' if week_steps else 'empty' }}">{{ week_steps or '&ndash;'|safe }}</strong></span>
   <span>steps</span>
+  {% endif %}
 </section>
 
 <div class="freshness">
@@ -107,8 +143,41 @@ what's missing is missing. {{ problem }}</p>
 {% elif problem %}
 <p class="note warn">Couldn't reach Fi: {{ problem }}</p>
 {% else %}
-<p class="note">Last night is the most recent full day on Kona's collar, midnight
-to midnight. Naps count from midnight today.</p>
+<p class="note">{% if historical_totals_hidden %}Only measurements from the new collar setup
+({{ data_start_label }}) are shown. Weekly totals will appear after they can no longer include
+the previous collar. {% endif %}Last night is the most recent full day on Kona's collar,
+midnight to midnight. Naps count from midnight today.</p>
 {% endif %}
 <form method="post" action="/logout"><button class="logout" type="submit">Sign out on this phone</button></form>
+{% if map_points %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"></script>
+<script>
+  (function () {
+    var points = {{ map_points|tojson }};
+    var latlngs = points.map(function (p) { return [p.lat, p.lon]; });
+    var map = L.map('kona-map', { zoomControl: false, scrollWheelZoom: false });
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    }).addTo(map);
+    if (latlngs.length > 1) {
+      L.polyline(latlngs, { color: '#5F8A48', weight: 5, opacity: .9 }).addTo(map);
+      map.fitBounds(latlngs, { padding: [28, 28], maxZoom: 17 });
+    } else {
+      map.setView(latlngs[0], 16);
+    }
+    var last = points[points.length - 1];
+    if (last.accuracy) {
+      L.circle([last.lat, last.lon], {
+        radius: last.accuracy, color: '#5F8A48', weight: 1, fillOpacity: .12
+      }).addTo(map);
+    }
+    L.marker([last.lat, last.lon], {
+      icon: L.divIcon({ className: 'kona-map-marker', html: '<span>K</span>', iconSize: [34, 34], iconAnchor: [17, 17] })
+    }).addTo(map);
+    L.control.zoom({ position: 'bottomright' }).addTo(map);
+  })();
+</script>
+{% endif %}
 {% endblock %}

@@ -9,14 +9,14 @@
     <span class="live"><span class="dot" id="dot"></span><span id="livetxt">LIVE</span></span>
   </div>
   <div class="frame-actions">
-    <a class="shutter" href="/snapshot.jpg" target="_blank" rel="noopener" aria-label="Open a current snapshot">
+    <button class="shutter" id="capture" type="button" aria-label="Capture and share a current snapshot">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h3l1.5-2h5L16 7h3a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2Z"/><circle cx="12" cy="13" r="3.5"/></svg>
-    </a>
+    </button>
   </div>
 </figure>
 <div class="cam-meta">
   <div><div class="d">Home</div><div class="s" id="cap">Opening the camera…</div></div>
-  <span class="cam-hint">Tap the shutter for a still</span>
+  <span class="cam-hint" id="capture-hint">Capture and share a still</span>
 </div>
 {% if caps.ptz %}
 {# Only rendered when the camera actually has motors. A fixed camera such as
@@ -63,6 +63,34 @@
       }).catch(function () { set('off', 'OFFLINE', 'No connection to the server'); });
     }
     poll(); setInterval(poll, 2000);
+
+    // Share a real JPEG when the browser permits file sharing (iPhone over
+    // HTTPS or localhost). On an ordinary LAN HTTP address, save the same
+    // image instead; the camera action still completes honestly.
+    var capture = document.getElementById('capture');
+    var captureHint = document.getElementById('capture-hint');
+    capture.addEventListener('click', function () {
+      capture.disabled = true;
+      captureHint.textContent = 'Capturing…';
+      fetch('/snapshot.jpg?t=' + Date.now(), { cache: 'no-store' })
+        .then(function (r) { if (!r.ok) throw new Error('capture failed'); return r.blob(); })
+        .then(function (blob) {
+          var file = new File([blob], 'kona-' + new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-') + '.jpg', { type: 'image/jpeg' });
+          if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+            return navigator.share({ title: 'Kona right now', files: [file] }).then(function () {
+              captureHint.textContent = 'Photo shared';
+            });
+          }
+          var url = URL.createObjectURL(blob), link = document.createElement('a');
+          link.href = url; link.download = file.name; link.click();
+          setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+          captureHint.textContent = 'Photo saved';
+        })
+        .catch(function (e) {
+          captureHint.textContent = e.name === 'AbortError' ? 'Capture and share a still' : 'Could not capture—try again';
+        })
+        .finally(function () { capture.disabled = false; });
+    });
 
     // Pan/tilt. Press and hold to keep moving; release to stop. Pointer
     // events cover touch and mouse with one code path, and losing the
