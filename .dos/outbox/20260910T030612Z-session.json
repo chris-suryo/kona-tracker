@@ -1,0 +1,52 @@
+{
+  "goal": "Close chapter 1: review Astro's PR #1, ship the Meadow design shell, add RTSP + reconnect + honest live state, answer the how-do-I-run-it confusion, and sync everything to main for tomorrow.",
+  "completed": [
+    "Reviewed PR #1 on GitHub (regex fix requested), then absorbed it into the slice branch by merge and applied the fix myself (Astro out of credit): multi-suggestion 'Did you mean' hints now survive the allowlist; test added.",
+    "Slice 2b: RtspSource via OpenCV/FFmpeg, camera/redact.py, NO SIGNAL placeholder, supervisor/reader hub with backoff and hang abandonment, /status.json, kona camera-test, Meadow-independent status label. Security review found one MEDIUM (scheme-less URL leaked the password) and it was fixed at three layers. Windows CI race fixed by waking viewers on reader death.",
+    "Meadow design shell (Claude Design round 3) implemented in templates/CSS only, light + dark, screenshots verified with Playwright and sent to Chris. Mock data deliberately left out.",
+    "Camera advice: Blink Mini 2K+ and Wyze v4 have no local stream (return them); Tapo C120 approved and ordered.",
+    "docs/first-run.md: plain-language laptop + iPhone walkthrough for Windows and Mac, Tapo and collar steps, why-not-Vercel paragraph. PROJECT.md close-out with chapter-2 next steps.",
+    "PR opened: claude/nice-bohr-6tnfn0 -> main with the whole chapter; 54 tests green; CI green on both OSes."
+  ],
+  "discovered": [
+    "Blink and Wyze v4 are cloud-only; only community bridges (docker-wyze-bridge, blink-rtsp-mqtt-bridge) expose RTSP, and they need account credentials and break on firmware updates.",
+    "Claude Design's export is a 3-round exploration canvas (Ledger/Dial/Reel; Ember/Meadow/Lab; Meadow taken further with a Log tab). Almost every number on the screens is invented; only the shell is implementable today.",
+    "The DesignSync MCP cannot authorize from a claude.ai/code session (/design-login is interactive-only); the zip export is the working path.",
+    "Google Fonts is blocked from the sandbox, so screenshots use the fallback font; on the phone Bricolage Grotesque loads normally.",
+    "Chris's confusion was about the model, not the commands: nothing appears anywhere until one machine at home downloads and runs the code. first-run.md now says this in plain words."
+  ],
+  "decisions": [
+    "Meadow (round 3) is the design direction; templates/CSS carry it; Python untouched.",
+    "The camera server lives at home (laptop/PC now, Pi later); Vercel is not used for it. Remote access = Tailscale later.",
+    "PR #1 absorbed by merge, not rebase; Astro's history preserved.",
+    "Astro is paused; Chris runs the local steps using docs/first-run.md.",
+    "Stale-frame honesty is enforced server-side with placeholder frames; the status label is a second layer."
+  ],
+  "lessons": [
+    "When a collaborator's PR targets your branch and they go offline, merge it and apply the requested fix yourself; leaving it open costs the user a confusing branch tangle.",
+    "A user asking 'why local, can't we Vercel' needs the mental model (where code lives vs where it runs) before any command; commands alone don't unconfuse.",
+    "Design exploration canvases need a direction question before implementation; implementing 'the file' is not a task.",
+    "Windows CI is slower; thread-timing tests must assert on state classes, not exact states, and waits should wake on state changes."
+  ],
+  "files_changed": [
+    "docs/first-run.md", "PROJECT.md", "src/kona_tracker/fi/client.py", "src/kona_tracker/cli.py", "tests/test_client.py",
+    "src/kona_tracker/web/templates/base.html", "src/kona_tracker/web/templates/login.html", "src/kona_tracker/web/templates/camera.html", "src/kona_tracker/web/templates/activity.html", "src/kona_tracker/web/static/app.css",
+    "src/kona_tracker/camera/*", "src/kona_tracker/web/settings.py", "src/kona_tracker/web/app.py", "tests/*", "docs/slice-2b-rtsp-plan.md"
+  ],
+  "open_questions": [
+    "Does the Tapo C120's RTSP work first try with a camera account (some firmware needs RTSP enabled)?",
+    "What does Fi's API actually expose for Kona (sleep quality? behaviors?) -> decides slice 3 and whether Meadow's charts can be real.",
+    "Does Chris want to keep Meadow after seeing it on the phone?",
+    "Pi 5 setup: when, and Tailscale for the sister?"
+  ],
+  "intent": "Chapter closed at the hardware boundary with everything synced: one PR to main, one plain-language doc, one next step. Nothing can be verified further without the camera and collar in the house.",
+  "next_task": "Chris: merge the PR to main on GitHub, then follow docs/first-run.md on the laptop (uv install, clone, .env passcode, `uv run kona serve --fake-camera`, open on laptop and iPhone). When the Tapo arrives: camera account, .env keys, `uv run kona camera-test`. When the collar arrives: FI_* in .env, `uv run kona probe`, share probe-out/summary.md.",
+  "blockers": "Real camera and real Fi API both unverified until hardware is in the house; nothing else blocks.",
+  "resume_minutes": 10,
+  "dont_retry": [
+    "Do not try DesignSync / /design-login from a cloud session; ask for the zip export.",
+    "Do not propose Vercel for the camera server; the stream originates at home.",
+    "Do not test uncapped /stream.mjpg through Starlette's TestClient; use ?frames=N or a real uvicorn."
+  ],
+  "session_id": "session_01NMZqcnk7yb11RWeh9hJvRa"
+}
