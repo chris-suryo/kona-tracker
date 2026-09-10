@@ -14,11 +14,16 @@ kit: 3e06b156508b881bef26345c0bb7a63c90db4824 · stamped by dos new
   API field, redacted. See `docs/slice-1-probe-plan.md`. Astro's follow-up
   fixes are in PR #1 (reviewed; one regex fix requested before merge).
 - **Slice 2 (in-repo, verified with fake camera only):** `kona serve` = passcode
-  gate + live webcam (MJPEG) + Activity placeholder. See
+  gate + live camera (MJPEG) + Activity placeholder. See
   `docs/slice-2-camera-plan.md`.
-- **next:** Chris plugs in the webcam and runs the app (commands below); then,
-  when the collar arrives, runs the probe. Then `/plan` slice 3: Activity hero
-  on confirmed Fi fields, and Pi + Tailscale for remote viewing.
+- **Slice 2b (in-repo, verified with simulated streams):** RTSP network camera
+  source (Tapo TC73 is the leading option), reconnect supervisor, "NO SIGNAL"
+  placeholder + status label so frozen video never looks live, `kona
+  camera-test`. See `docs/slice-2b-rtsp-plan.md`.
+- **next:** Astro runs `uv run kona camera-test` then `kona serve` against the
+  real camera on the Windows PC and reports; when the collar arrives, the
+  probe. Then `/plan` slice 3: Activity hero on confirmed Fi fields, and
+  Pi + Tailscale for remote viewing.
 
 ## Ownership
 
@@ -62,10 +67,11 @@ app is env-var configured only, so nothing locks that in.
 uv sync                         # install (first run pulls the OpenCV wheel, ~50 MB)
 uv run pytest -q                # tests
 uv run ruff check . ; uv run ruff format .
-Copy-Item .env.example .env     # then fill KONA_PASSCODE (and FI_* when the collar arrives)
-uv run kona cameras             # which webcam indexes open -> KONA_CAMERA_INDEX
+Copy-Item .env.example .env     # then fill KONA_PASSCODE, camera keys (and FI_* when the collar arrives)
+uv run kona cameras             # usb only: which webcam indexes open -> KONA_CAMERA_INDEX
+uv run kona camera-test         # open the configured camera once: size, fps, redacted URL, exact error
 uv run kona serve               # http://0.0.0.0:8000 ; allow the Windows Firewall prompt
-uv run kona serve --fake-camera # no webcam needed; test pattern
+uv run kona serve --fake-camera # no camera needed; test pattern
 uv run kona probe               # Fi API discovery -> probe-out\summary.md
 ipconfig                        # IPv4 of the PC; iPhone opens http://<that-ip>:8000
 ```
@@ -76,9 +82,9 @@ ipconfig                        # IPv4 of the PC; iPhone opens http://<that-ip>:
 
 - `src/kona_tracker/fi/` — Fi API client + GraphQL documents
 - `src/kona_tracker/probe/` — probe orchestration, redaction, schema scan
-- `src/kona_tracker/camera/` — frame sources (OpenCV, fake) + the one-capture-thread hub
+- `src/kona_tracker/camera/` — sources (USB, RTSP, fake), credential redaction, placeholder frame, the supervisor/reader hub
 - `src/kona_tracker/web/` — FastAPI app, passcode auth, settings, templates, CSS
-- `src/kona_tracker/cli.py` — `kona probe | serve | cameras`; `cli_env.py` reads `.env`
+- `src/kona_tracker/cli.py` — `kona probe | serve | cameras | camera-test`; `cli_env.py` reads `.env`
 - `tests/` + `tests/fixtures/` — mocked Fi responses; fake camera
 - `docs/` — per-slice plans; `fi-api-fields.md` once the probe has run
 - `.dos/outbox/` — session artifacts (wrap)
@@ -92,3 +98,9 @@ ipconfig                        # IPv4 of the PC; iPhone opens http://<that-ip>:
 - Starlette's TestClient runs the ASGI app to completion, so an endless
   MJPEG stream cannot be tested through it; `/stream.mjpg?frames=N` caps it.
 - A USB webcam opens once per process; the hub is what lets two phones watch.
+- An MJPEG `<img>` freezes on the last frame when frames stop; the hub streams
+  a placeholder when stale so "frozen" can never pass for "live".
+- RTSP credentials must live inside the URL for OpenCV/FFmpeg; `redact_url()`
+  runs on every string that could carry it. Keep it that way.
+- No RTSP server exists in the cloud sandbox; the network path is proven via
+  an in-process HTTP MJPEG server. Real RTSP auth/decode = Astro's step.
