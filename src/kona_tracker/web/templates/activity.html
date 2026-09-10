@@ -1,71 +1,141 @@
 {% extends "base.html" %}
 {% block title %}Kona · activity{% endblock %}
+{% block pageclass %}activity-page{% endblock %}
+{% block head %}
+{% if map_points %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="anonymous">
+{% endif %}
+{% endblock %}
+{% block hdrright %}
+{% if battery %}
+<span class="battery" aria-label="Collar battery {{ battery }} percent">
+  <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="7" width="16" height="10" rx="2"/><path d="M21 10v4"/><path d="M6 10v4"/></svg>
+  {{ battery }}%
+</span>
+{% endif %}
+{% endblock %}
 {% block body %}
-<div class="lead">
-  <b>Last night</b>
-  {% if as_of and stale %}<span class="warn">last seen {{ as_of }}</span>
-  {% elif as_of %}<span>as of {{ as_of }}</span>
-  {% elif not configured %}<span>collar not connected</span>
-  {% elif problem %}<span class="warn">no answer from Fi</span>
-  {% endif %}
-</div>
-{#- The dial. Two arcs: a static track, and a value arc revealed by
-    stroke-dashoffset. 603 is the track length and 12 h is a full ring —
-    our scale, not Fi's, which is why the note underneath says so. -#}
-<div class="dial" aria-label="{% if sleep_hours %}Slept {{ sleep_hours }} hours{% else %}Rest: no data{% endif %}">
-  <svg viewBox="0 0 300 300" aria-hidden="true">
-    <circle cx="150" cy="150" r="128" fill="none" stroke="var(--t1)" stroke-width="18"
-            stroke-dasharray="603 830" stroke-linecap="round" transform="rotate(135 150 150)"/>
-    <circle class="val" cx="150" cy="150" r="128" fill="none" stroke="var(--t4)" stroke-width="18"
-            stroke-dasharray="603 830" stroke-dashoffset="{{ dial_offset }}"
-            stroke-linecap="round" transform="rotate(135 150 150)"/>
-  </svg>
-  <div class="mid">
+{% if preview %}
+<aside class="preview-banner" aria-label="Sample data preview">
+  <div><strong>Sample preview</strong><span>This is not Kona's live collar data.</span></div>
+  <a href="/activity">Return to live</a>
+</aside>
+{% endif %}
+{% set steps_value = steps|replace(',', '')|float if steps else 0 %}
+{% set goal_value = step_goal|replace(',', '')|float if step_goal else 0 %}
+{% set step_percent = (steps_value / goal_value * 100) if goal_value else 0 %}
+{% if step_percent > 100 %}{% set step_percent = 100 %}{% endif %}
+
+{% if lost %}
+<section class="safety-alert danger" role="alert">
+  <span class="alert-mark" aria-hidden="true">!</span>
+  <div><strong>Lost Dog Mode is active</strong><span{% if stale %} class="muted"{% endif %}>{% if stale %}Reported in the last Fi update{% else %}Open Fi now to locate Kona{% endif %}</span></div>
+</section>
+{% elif escaped %}
+<section class="safety-alert" role="alert">
+  <span class="alert-mark" aria-hidden="true">!</span>
+  <div><strong>Kona left the safe zone</strong><span{% if stale %} class="muted"{% endif %}>{% if stale %}Reported in the last Fi update{% else %}Check the Fi app for her live location{% endif %}</span></div>
+</section>
+{% endif %}
+
+<section class="collar-summary" aria-label="Kona's current collar status">
+  <div>
+    <span class="eyebrow">Right now</span>
+    <strong>
+      {% if activity == 'walk' %}On a walk
+      {% elif activity == 'rest' %}Resting
+      {% elif not configured %}Collar not connected
+      {% else %}Status unavailable{% endif %}
+    </strong>
+    {% if activity == 'walk' and walk_distance_m %}<span>{{ walk_distance_m }} m so far</span>{% endif %}
+  </div>
+  <div class="connection">
+    {% if on_base is sameas true %}<span class="status-dot live"></span>On charger
+    {% elif on_base is sameas false and signal %}<span class="status-dot live"></span>Cellular {{ signal }}%
+    {% elif configured and has_data %}<span class="status-dot"></span>Connection unknown
+    {% endif %}
+  </div>
+</section>
+
+<section class="steps-hero {{ 'dimmed' if stale else '' }}" aria-label="Steps today">
+  <div class="hero-copy">
+    <span class="eyebrow">Steps today</span>
+    <span class="d hero-number {{ '' if steps else 'empty' }}">{{ steps or '&ndash;'|safe }}</span>
+    <span class="hero-note">{% if step_goal %}of {{ step_goal }}{% else %}No goal available{% endif %}</span>
+  </div>
+  <div class="goal-ring" aria-label="{{ step_percent|round|int }} percent of today's step goal">
+    <svg viewBox="0 0 120 120" aria-hidden="true">
+      <circle class="track" cx="60" cy="60" r="46" pathLength="100"/>
+      <circle class="value" cx="60" cy="60" r="46" pathLength="100" stroke-dasharray="100" stroke-dashoffset="{{ 100 - step_percent }}"/>
+    </svg>
+    <strong>{{ step_percent|round|int }}%</strong>
+  </div>
+</section>
+
+<section class="rest-grid {{ 'dimmed' if stale else '' }}" aria-label="Rest">
+  <div class="metric">
+    <span class="eyebrow">Naps today</span>
+    <span class="d metric-value {{ '' if nap_hours else 'empty' }}">{{ nap_hours or '&ndash;'|safe }}<small>h</small></span>
+    <span>so far today</span>
+  </div>
+  <div class="metric">
+    <span class="eyebrow">Asleep last night</span>
     {% if sleep_hours %}
-    <div class="score"><div class="d">{{ sleep_hours }}</div><div class="u d">h</div></div>
-    <div class="sub">asleep · {{ dial_scale }} h ring</div>
+    <span class="d metric-value">{{ sleep_hours }}<small>h</small></span>
+    <span>{% if window_from and window_to %}{{ window_from }} to {{ window_to }}{% else %}Most recent full night{% endif %}</span>
     {% elif sleep_raw is not none %}
-    {#- Fi returned a duration seconds cannot explain. Show the raw number
-        rather than a confident wrong one. -#}
-    <div class="score"><div class="d">{{ sleep_raw }}</div><div class="u d">raw</div></div>
-    <div class="sub warn">unrecognised unit</div>
+    <span class="d metric-value">{{ sleep_raw }}<small>raw</small></span>
+    <span class="warn">Unrecognised unit</span>
     {% else %}
-    <div class="score"><div class="d empty">&ndash;</div><div class="u d">h</div></div>
-    {#- Three different silences. "No rest data" when Fi refused the query
-        would be a lie, and so would "couldn't reach the collar" when the
-        steps beside it arrived fine. -#}
-    {% if partial %}
-    <div class="sub warn">sleep didn't come through</div>
-    {% elif night_pending %}
-    <div class="sub">first full night still to come</div>
-    {% elif problem %}
-    <div class="sub warn">couldn't reach the collar</div>
-    {% elif configured %}
-    <div class="sub">no rest data yet</div>
-    {% else %}
-    <div class="sub">waiting for the collar</div>
-    {% endif %}
+    <span class="d metric-value empty">&ndash;<small>h</small></span>
+    <span>{% if partial %}Sleep didn't come through{% elif night_pending %}First full night still to come{% elif problem %}couldn't reach the collar{% elif configured %}No rest data yet{% else %}waiting for the collar{% endif %}</span>
     {% endif %}
   </div>
-  <div class="end l"><div class="cap">From</div><b class="{{ '' if window_from else 'empty' }}">{{ window_from or '&ndash;'|safe }}</b></div>
-  <div class="end r"><div class="cap">To</div><b class="{{ '' if window_to else 'empty' }}">{{ window_to or '&ndash;'|safe }}</b></div>
-</div>
-<div class="stats">
-  <div class="stat">
-    <span class="l">Steps</span>
-    <span class="v {{ '' if steps else 'empty' }}">{{ steps or '&ndash;'|safe }}</span>
-    <span class="n">{% if step_goal %}of {{ step_goal }}{% else %}today{% endif %}</span>
+</section>
+
+{% if configured %}
+<section class="location-card {{ 'urgent' if escaped or lost else '' }}" aria-labelledby="location-title">
+  <div class="location-heading">
+    <div>
+      <span class="eyebrow">Location</span>
+      <strong id="location-title">
+        {% if map_kind == 'current' %}Current walk
+        {% elif map_kind == 'last' %}Last GPS fix
+        {% elif map_kind == 'home' %}Home
+        {% elif area_name %}{{ area_name }}
+        {% else %}Waiting for GPS{% endif %}
+      </strong>
+    </div>
+    {% if location_updated %}<span>{{ 'Updated' if map_kind == 'current' else 'Last seen' }} {{ location_updated }}</span>{% endif %}
   </div>
-  <div class="stat">
-    <span class="l">Naps</span>
-    <span class="v {{ '' if nap_hours else 'empty' }}">{{ nap_hours or '&ndash;'|safe }}<small>h</small></span>
-    <span class="n">so far today</span>
+  {% if map_points %}
+  <div id="kona-map" class="map" aria-label="Map showing Kona's {% if map_kind == 'current' %}current walk route{% elif map_kind == 'home' %}Home location{% else %}last reported location{% endif %}"></div>
+  {% else %}
+  <div class="map-empty">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s6-5.2 6-11a6 6 0 1 0-12 0c0 5.8 6 11 6 11Z"/><circle cx="12" cy="10" r="2"/></svg>
+    <span>{% if area_name %}Fi identifies this resting place as {{ area_name }}, but only sends map coordinates during a walk or escape.{% else %}Fi sends map coordinates during an active walk or escape. No location is being guessed.{% endif %}</span>
   </div>
-  <div class="stat">
-    <span class="l">This week</span>
-    <span class="v {{ '' if week_steps else 'empty' }}">{{ week_steps or '&ndash;'|safe }}</span>
-    <span class="n">steps</span>
-  </div>
+  {% endif %}
+</section>
+{% endif %}
+
+<section class="week-row {{ 'dimmed' if stale else '' }}">
+  {% if historical_totals_hidden %}
+  <span><span class="eyebrow">This week</span><strong>Building a clean baseline</strong></span>
+  <span>from {{ data_start_label }}</span>
+  {% else %}
+  <span><span class="eyebrow">This week</span><strong class="d {{ '' if week_steps else 'empty' }}">{{ week_steps or '&ndash;'|safe }}</strong></span>
+  <span>steps</span>
+  {% endif %}
+</section>
+
+<div class="freshness">
+  {% if as_of and stale %}<span class="status-dot warn-dot"></span>Last successful update {{ as_of }}
+  {% elif as_of %}<span class="status-dot live"></span>Updated {{ as_of }}
+  {% elif not configured %}<span class="status-dot"></span>Waiting for setup
+  {% elif problem %}<span class="status-dot bad-dot"></span>No answer from Fi
+  {% endif %}
 </div>
 {% if not configured %}
 <p class="note">Kona's collar isn't connected yet. Add <code>FI_EMAIL</code> and
@@ -80,8 +150,40 @@ what's missing is missing. {{ problem }}</p>
 {% elif problem %}
 <p class="note warn">Couldn't reach Fi: {{ problem }}</p>
 {% else %}
-<p class="note">Last night is the most recent full day on Kona's collar, midnight
-to midnight. Naps count from midnight today.</p>
+<p class="note">{% if historical_totals_hidden %}Only measurements from the new collar setup
+({{ data_start_label }}) are shown. Weekly totals will appear after they can no longer include
+the previous collar. {% endif %}Last night is the most recent full day on Kona's collar,
+midnight to midnight. Naps count from midnight today.</p>
 {% endif %}
-<form method="post" action="/logout"><button class="logout" type="submit">Sign out on this phone</button></form>
+{% if map_points %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"></script>
+<script>
+  (function () {
+    var points = {{ map_points|tojson }};
+    var latlngs = points.map(function (p) { return [p.lat, p.lon]; });
+    var map = L.map('kona-map', { zoomControl: false, scrollWheelZoom: false });
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    }).addTo(map);
+    if (latlngs.length > 1) {
+      L.polyline(latlngs, { color: '#5F8A48', weight: 5, opacity: .9 }).addTo(map);
+      map.fitBounds(latlngs, { padding: [28, 28], maxZoom: 17 });
+    } else {
+      map.setView(latlngs[0], 16);
+    }
+    var last = points[points.length - 1];
+    if (last.accuracy) {
+      L.circle([last.lat, last.lon], {
+        radius: last.accuracy, color: '#5F8A48', weight: 1, fillOpacity: .12
+      }).addTo(map);
+    }
+    L.marker([last.lat, last.lon], {
+      icon: L.divIcon({ className: 'kona-map-marker', html: '<span>K</span>', iconSize: [34, 34], iconAnchor: [17, 17] })
+    }).addTo(map);
+    L.control.zoom({ position: 'bottomright' }).addTo(map);
+  })();
+</script>
+{% endif %}
 {% endblock %}

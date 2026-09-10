@@ -268,6 +268,7 @@ def pet_status(pet_id: str) -> str:
     return (
         f'query KonaStatus {{ pet(id: "{pet_id}") {{ __typename name '
         "breed { __typename name } yearOfBirth monthOfBirth dayOfBirth "
+        "homeLocation { __typename position { __typename latitude longitude } } "
         "photos { __typename first { __typename id date image { __typename fullSize } } } "
         "device { __typename info nextLocationUpdateExpectedBy "
         "lastConnectionState { __typename date "
@@ -276,7 +277,9 @@ def pet_status(pet_id: str) -> str:
         "ledColor { __typename name hexCode } "
         "operationParams { __typename mode ledEnabled } } "
         "ongoingActivity { __typename start lastReportTimestamp areaName "
-        "... on OngoingWalk { distance } } "
+        "... on OngoingRest { place { __typename id name } } "
+        "... on OngoingWalk { distance positions { __typename date errorRadius "
+        "position { __typename latitude longitude } } } } "
         "} }"
     )
 

@@ -1,7 +1,7 @@
 # Handoff — kona-tracker, 2026-09-10
 
 Everything another assistant (or a future session) needs to pick this up.
-Written at the end of the day the collar and the camera both went live.
+Written at the end of the first day with the real collar and USB camera.
 
 ---
 
@@ -19,17 +19,20 @@ from "mocked everything" to real collar data and real video on a phone.
 | Piece | State |
 |---|---|
 | Passcode gate, signed-cookie sessions, lockout | Working |
-| Camera over USB (Logitech C270), live on the phone | **Verified on real hardware** |
-| Camera over RTSP (Tapo C120) | Code written, **never run against a real camera**. C120 arrives 2026-09-11 |
-| Pan/tilt capability model | Working; correctly showed **no** pad for the fixed C270 |
+| Camera over USB (Logitech C230 HD) | Opens at index 0, but currently returns black frames; app now says CHECK CAMERA instead of LIVE |
+| Camera over RTSP (future Tapo) | Code written; exact production model not chosen yet |
+| Pan/tilt capability model | Working; correctly shows **no** pad for the fixed C230 |
 | Activity: last night's sleep, naps today, steps, weekly steps | **Real Fi data** |
-| Four honest page states: configured / partial / stale / failing | Working, tested |
-| Her photo, collar battery, charge state, signal, escape flag | **Fetched and in `/activity.json`; deliberately not rendered yet** |
+| Five honest page states: fresh / partial / stale / unconfigured / failing | Working, tested |
+| Her photo, battery, charge state, signal, activity, escape flag | **Rendered from real Fi data** |
+| Home / current-walk / last-fix map | **Built** with verified Fi coordinates, Leaflet, and free OpenStreetMap tiles; no API key |
+| New-collar cutoff | **Built**; local `.env` has `KONA_FI_DATA_START=2026-09-10` |
+| Fixed-camera capture/share | **Built**; Web Share where supported, download fallback |
+| Profile/settings + complete-data preview | **Built** behind Kona's photo; preview is conspicuously sample-only |
 | `kona probe` — Fi API discovery, redacted | Four rounds run against the real API |
-| Design pass | In flight in a separate session. `web/templates/` and `web/static/app.css` were left untouched all day so it cannot collide |
+| Design pass | Complete on `chatgpt/ui-pass`; map/camera follow-up is on `chatgpt/map-camera-pass` |
 
-155 tests. `main` and `claude/nice-bohr-6tnfn0` are both at the same commit.
-CI is a ubuntu + windows matrix and is green.
+165 tests locally. CI is an ubuntu + windows matrix.
 
 ## How to run it
 
@@ -40,7 +43,7 @@ Python directly.
 git clone https://github.com/chris-suryo/kona-tracker.git
 cd kona-tracker
 uv sync
-uv run pytest -q                       # expect 155 passed
+uv run pytest -q                       # expect 165 passed on the follow-up branch
 Copy-Item .env.example .env            # then fill it in, see below
 uv run kona serve                      # http://localhost:8000
 uv run kona serve --fake-camera        # no camera needed, test pattern
@@ -48,11 +51,13 @@ uv run kona probe --out probe-out\NAME # Fi API discovery
 uv run ruff check . ; uv run ruff format .
 ```
 
-`.env` needs four values. `FI_EMAIL`/`FI_PASSWORD` are Chris's own Fi app
+`.env` needs the four credentials/settings below. `FI_EMAIL`/`FI_PASSWORD` are Chris's own Fi app
 login. `KONA_PASSCODE` is what he and his sister type into this app — a
 different thing, and confusing the two lines has already cost an hour.
 `KONA_SECRET` is any long random string. `KONA_CAMERA_SOURCE=usb` with
-`KONA_CAMERA_INDEX=0` for the webcam, or `fake`.
+`KONA_CAMERA_INDEX=0` for the webcam, or `fake`. Also set
+`KONA_FI_DATA_START=2026-09-10`; this is not a secret, but it is what keeps
+the earlier unworn collar out of the visible history.
 
 `.env` and `probe-out/` are gitignored. **Never commit either.**
 
@@ -109,25 +114,50 @@ device. Only today onward is Kona.
 
 ## The next tasks, in priority order
 
-1. **Fold in the UI.** This is the ChatGPT-shaped task: it touches only
-   `web/templates/*.html` and `web/static/app.css`, needs no hardware, and
-   those files were deliberately left alone. The data it should render is
-   already in the page context and in `/activity.json` — see
-   `docs/design-brief.md`, whose paste-able block carries real sample values.
-   Things worth surfacing that are fetched but unrendered: her photo (an
-   `<img src="/avatar.jpg">` with the existing initial as fallback), battery
-   percent, on-charger vs out-with-signal, resting vs walking, and the
-   **escape state**, which is the one alert an owner actually cares about.
-2. **Probe round 4.** `uv run kona probe --out probe-out\round4`. The
+1. **Review the two stacked branches.** `chatgpt/ui-pass` is the isolated
+   visual redesign. `chatgpt/map-camera-pass` adds the approved Python/data
+   work, free map, cutoff, and camera capture/share on top. Do not merge the
+   second without the first.
+2. **Physically check the C230.** Open its privacy cover, aim it into a lit
+   room, and retry. The only camera index is 0; DirectShow and the automatic
+   backend both returned an essentially black frame at SD and HD sizes, so
+   changing the index, resolution or exposure in code is not the fix.
+3. **Probe round 4.** `uv run kona probe --out probe-out\round4`. The
    allowlist fix means the required-argument messages will finally name the
    arguments for `overnightRestSummary` (Fi's own "last night", better than
    the current heuristic) and the three history feeds.
-3. **The Tapo C120** when it arrives — `docs/first-run.md` step 4. Turn on
+4. **The eventual Tapo** when the exact model is chosen — `docs/first-run.md` step 4. Turn on
    **Third-Party Compatibility** in the Tapo app first or nothing connects.
    This is the first real RTSP test.
-4. **Host it properly** — the spare laptop as a dedicated always-on machine,
+5. **Host it properly** — the spare laptop as a dedicated always-on machine,
    then a permanent URL. The Raspberry Pi is bought but unopened; add it
    only after the C120 is proven on a machine that already works.
+
+### Map tradeoff to remember
+
+The MVP deliberately uses Leaflet 1.9.4 from its official CDN and the
+standard OpenStreetMap raster endpoint. That costs nothing and fits a
+two-person private app, with visible attribution and ordinary browser
+caching. It is best-effort, has no SLA, and the tile server necessarily sees
+which small map area the browser requests. Do not add offline download,
+prefetching, or a tile proxy. Before wider distribution, switch the tile URL
+to a supported provider or self-hosted PMTiles.
+
+### Current activity-page order and location privacy
+
+The phone hierarchy is now: current safety/state, steps, naps + last night,
+location, weekly baseline. This follows the useful part of the round-nine
+reference without reviving unsupported Log or Training tabs. While resting,
+Fi's verified `homeLocation.position` supplies the Home map point and
+`OngoingRest.place` supplies the saved place. The real place name is
+street-address-shaped, so the page and `/activity.json` normalize it to
+`Home`; the raw address must not reach either surface. During a walk, the
+map changes to the current route, then retains the last GPS fix.
+
+Kona's photo is now the settings entry point. That page holds her confirmed
+profile/collar summary, sign-out, and a complete-dashboard preview. Preview
+values are constructed locally, clearly labelled as sample data, and never
+enter the Fi cache or `/activity.json`.
 
 ## House rules for whoever picks this up
 

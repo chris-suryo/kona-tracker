@@ -10,6 +10,14 @@
       "yearOfBirth": 2025,
       "monthOfBirth": 8,
       "dayOfBirth": 15,
+      "homeLocation": {
+        "__typename": "PetHomeLocation",
+        "position": {
+          "__typename": "Position",
+          "latitude": 30.2672,
+          "longitude": -97.7431
+        }
+      },
       "photos": {
         "__typename": "PhotoFeed",
         "first": {
@@ -55,6 +63,11 @@
       "ongoingActivity": {
         "__typename": "OngoingRest",
         "areaName": null,
+        "place": {
+          "__typename": "Place",
+          "id": "home-1",
+          "name": "Home"
+        },
         "lastReportTimestamp": "2026-09-10T20:24:44.315Z",
         "start": "2026-09-10T12:00:00.000Z"
       }

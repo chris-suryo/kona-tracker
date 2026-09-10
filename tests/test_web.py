@@ -34,6 +34,7 @@ def test_unauthenticated_stream_is_401_not_redirect(client):
     assert client.get("/status.json", follow_redirects=False).status_code == 303
     # Kona's data is behind the same gate as her camera.
     assert client.get("/activity", follow_redirects=False).status_code == 303
+    assert client.get("/settings", follow_redirects=False).status_code == 303
     assert client.get("/activity.json", follow_redirects=False).status_code == 303
 
 
@@ -91,6 +92,13 @@ def test_snapshot_and_stream_with_cookie(client):
     assert r.status_code == 200
     assert r.headers["content-type"].startswith("multipart/x-mixed-replace")
     assert r.content.count(b"--kona-frame\r\nContent-Type: image/jpeg") == 3
+
+
+def test_usb_camera_offers_capture_and_share_but_no_motion_controls(client):
+    login(client)
+    page = client.get("/camera").text
+    assert 'id="capture"' in page and "navigator.share" in page
+    assert 'class="ptz"' not in page and "Left corner" not in page
 
 
 def test_logout_clears_cookie(client):

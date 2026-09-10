@@ -12,7 +12,7 @@ from __future__ import annotations
 import os
 import struct
 import time
-from typing import Protocol
+from typing import Any, Protocol
 
 from kona_tracker.camera.redact import redact_url, with_credentials
 
@@ -27,6 +27,15 @@ class FrameSource(Protocol):
 
 class CameraOpenError(RuntimeError):
     """The camera (USB index or network URL) could not be opened."""
+
+
+class CameraFrameError(RuntimeError):
+    """The camera opened, but its frames cannot be presented as a picture."""
+
+
+def frame_is_unusable(frame: Any) -> bool:
+    """True for an effectively all-black image, including a few hot pixels."""
+    return float(frame.mean()) <= 0.25
 
 
 def _import_cv2():
@@ -59,6 +68,7 @@ class OpenCVSource:
 
         self._cv2 = cv2
         self._quality = quality
+        self._black_frames = 0
         cap = None
         backends = [getattr(cv2, "CAP_DSHOW", None), None]
         for backend in backends:
@@ -73,11 +83,22 @@ class OpenCVSource:
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
         cap.set(cv2.CAP_PROP_FPS, fps)
         self._cap = cap
+        self.width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        self.height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
     def read_jpeg(self) -> bytes | None:
         ok, frame = self._cap.read()
         if not ok or frame is None:
             return None
+        # DirectShow can successfully deliver a stream of all-zero pixels
+        # when a webcam privacy shutter is closed. That is transport-live but
+        # not a usable picture, and must never earn the green LIVE badge.
+        if frame_is_unusable(frame):
+            self._black_frames += 1
+            if self._black_frames >= 3:
+                raise CameraFrameError("camera image is fully black")
+            return None
+        self._black_frames = 0
         ok, buf = self._cv2.imencode(
             ".jpg", frame, [int(self._cv2.IMWRITE_JPEG_QUALITY), self._quality]
         )

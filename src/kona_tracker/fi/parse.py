@@ -25,6 +25,7 @@ MAX_PLAUSIBLE_HOURS = 24.0
 
 SLEEP = "SLEEP"
 NAP = "NAP"
+MAX_LOCATION_POINTS = 250
 
 
 def _dict(value: Any) -> dict[str, Any]:
@@ -80,6 +81,16 @@ class PetProfile:
 
 
 @dataclass(frozen=True)
+class LocationPoint:
+    """One bounded, validated GPS fix from the collar."""
+
+    latitude: float
+    longitude: float
+    recorded_at: datetime | None = None
+    accuracy_m: int | float | None = None
+
+
+@dataclass(frozen=True)
 class CollarStatus:
     """The collar right now. Measured shapes only; `None` is "not reported".
 
@@ -109,6 +120,12 @@ class CollarStatus:
     #: Only while `activity == "walk"`.
     walk_distance: int | float | None = None
     next_update: datetime | None = None
+    area_name: str | None = None
+    place_name: str | None = None
+    home_location: LocationPoint | None = None
+    #: Fi currently returns positions only on OngoingWalk. Keep a bounded
+    #: route so an unexpectedly long activity cannot grow the page forever.
+    positions: tuple[LocationPoint, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -244,6 +261,39 @@ def status_from(data: Any) -> CollarStatus:
     activity_kind = {"OngoingRest": "rest", "OngoingWalk": "walk"}.get(ongoing.get("__typename"))
     led_name = led.get("name")
     mode = params.get("mode")
+    positions: list[LocationPoint] = []
+    for raw in ongoing.get("positions") or []:
+        item = _dict(raw)
+        position = _dict(item.get("position"))
+        latitude = _num(position.get("latitude"))
+        longitude = _num(position.get("longitude"))
+        accuracy = _num(item.get("errorRadius"))
+        if latitude is None or longitude is None:
+            continue
+        if not (-90 <= latitude <= 90 and -180 <= longitude <= 180):
+            continue
+        positions.append(
+            LocationPoint(
+                latitude=float(latitude),
+                longitude=float(longitude),
+                recorded_at=_moment(item.get("date")),
+                accuracy_m=accuracy if accuracy is not None and accuracy >= 0 else None,
+            )
+        )
+    positions.sort(key=lambda point: point.recorded_at or datetime.min.replace(tzinfo=UTC))
+    area_name = ongoing.get("areaName")
+    place_name = _dict(ongoing.get("place")).get("name")
+    home_position = _dict(_dict(pet.get("homeLocation")).get("position"))
+    home_latitude = _num(home_position.get("latitude"))
+    home_longitude = _num(home_position.get("longitude"))
+    home_location = None
+    if (
+        home_latitude is not None
+        and home_longitude is not None
+        and -90 <= home_latitude <= 90
+        and -180 <= home_longitude <= 180
+    ):
+        home_location = LocationPoint(float(home_latitude), float(home_longitude))
     return CollarStatus(
         battery_percent=_num(info.get("batteryPercent")),
         time_to_empty_s=_num(_dict(info.get("max77658Info")).get("timeToEmptyS")),
@@ -261,4 +311,8 @@ def status_from(data: Any) -> CollarStatus:
         last_report=_moment(ongoing.get("lastReportTimestamp")),
         walk_distance=_num(ongoing.get("distance")) if activity_kind == "walk" else None,
         next_update=_moment(device.get("nextLocationUpdateExpectedBy")),
+        area_name=area_name if isinstance(area_name, str) and area_name else None,
+        place_name=place_name if isinstance(place_name, str) and place_name else None,
+        home_location=home_location,
+        positions=tuple(positions[-MAX_LOCATION_POINTS:]),
     )

@@ -6,7 +6,7 @@ data are each a distinct visible state, and each is pinned below.
 """
 
 import json
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import httpx
 import pytest
@@ -25,7 +25,7 @@ from kona_tracker.fi.parse import (
 from kona_tracker.fi.service import FiService, FiSnapshot, fetch_snapshot
 from kona_tracker.web.app import create_app
 from kona_tracker.web.settings import Settings
-from kona_tracker.web.views import TRACK, activity_context, dial_offset
+from kona_tracker.web.views import TRACK, activity_context, activity_json, dial_offset
 
 EMAIL, PASSWORD = "chris@example.com", "correct"
 
@@ -109,6 +109,16 @@ def test_fetch_snapshot_reads_last_night_not_today():
     assert snap.nap_hours == pytest.approx(1290 / 3600), "naps so far today"
     assert snap.activity.steps == 4210 and snap.week.steps == 31000
     assert snap.problem is None and snap.has_data and not snap.unit_suspect
+
+
+def test_new_collar_cutoff_hides_old_night_and_week_without_hiding_today():
+    with make_client() as client:
+        snap = fetch_snapshot(client, EMAIL, PASSWORD, now=NOW, data_start=date(2026, 9, 10))
+    assert snap.window is None and snap.today is not None
+    assert snap.activity.steps == 4210, "today belongs to the new setup"
+    assert snap.week is None and snap.historical_totals_hidden
+    ctx = activity_context(snap, configured=True)
+    assert ctx["night_pending"] and ctx["data_start_label"] == "today"
 
 
 def test_a_collar_paired_today_has_no_night_yet():
@@ -312,6 +322,10 @@ def test_activity_page_renders_real_numbers():
         assert data["steps"] == 4210 and data["problem"] is None
         assert "password" not in json.dumps(data).lower()
 
+        assert body.index("Steps today") < body.index("Naps today")
+        assert body.index("Naps today") < body.index("Location") < body.index("This week")
+        assert 'id="kona-map"' in body and "Home" in body
+
 
 def test_activity_page_without_credentials_explains_the_two_env_lines():
     with web_client(None) as c:
@@ -376,6 +390,9 @@ def test_profile_and_status_parse_the_measured_shapes():
     assert status.time_to_empty_s == 368634
     assert status.on_base is True and status.signal_percent is None
     assert status.activity == "rest" and status.walk_distance is None
+    assert status.area_name is None and status.place_name == "Home"
+    assert status.home_location is not None
+    assert (status.home_location.latitude, status.home_location.longitude) == (30.2672, -97.7431)
     assert status.led_on is False and status.led_color == "White" and status.mode == "NORMAL"
     assert status.next_update is not None and status.last_report is not None
 
@@ -429,6 +446,64 @@ def test_status_when_she_is_out_on_a_walk():
     assert status.activity == "walk" and status.walk_distance == 420
 
 
+def test_walk_positions_are_validated_sorted_and_exposed_behind_auth():
+    from kona_tracker.fi.parse import status_from
+
+    data = json.loads(json.dumps(fixture("status")["data"]))
+    walk = fixture("location")["data"]["pet"]["ongoingActivity"]
+    walk["positions"].extend(
+        [
+            {"date": "2026-09-10T19:20:00Z", "errorRadius": -2,
+             "position": {"latitude": 30.26, "longitude": -97.74}},
+            {"date": "2026-09-10T19:30:00Z", "errorRadius": 4,
+             "position": {"latitude": 999, "longitude": -97.74}},
+        ]
+    )
+    data["pet"]["ongoingActivity"] = walk
+    status = status_from(data)
+    assert [(p.latitude, p.longitude) for p in status.positions] == [
+        (30.26, -97.74),
+        (30.2672, -97.7431),
+    ]
+    assert status.positions[0].accuracy_m is None
+
+    def walking(request):
+        if request.url.path == "/graphql" and "KonaStatus" in json.loads(request.content)["query"]:
+            return httpx.Response(200, json={"data": data})
+        return fake_fi_handler(request)
+
+    with web_client(service(walking)) as c:
+        page = c.get("/activity").text
+        api = c.get("/activity.json").json()
+        assert 'id="kona-map"' in page and "tile.openstreetmap.org" in page
+        assert "Current walk" in page and "Updated" in page
+        assert "30.2672" in page and len(api["positions"]) == 2
+
+
+def test_last_gps_fix_survives_when_fi_returns_to_rest():
+    status_calls = 0
+
+    def handler(request):
+        nonlocal status_calls
+        if request.url.path == "/graphql" and "KonaStatus" in json.loads(request.content)["query"]:
+            status_calls += 1
+            data = json.loads(json.dumps(fixture("status")["data"]))
+            if status_calls == 1:
+                data["pet"]["ongoingActivity"] = fixture("location")["data"]["pet"][
+                    "ongoingActivity"
+                ]
+            return httpx.Response(200, json={"data": data})
+        return fake_fi_handler(request)
+
+    svc = service(handler)
+    first = svc.snapshot()
+    assert first.status.positions
+    svc._refresh()
+    second = svc.snapshot()
+    assert second.status.activity == "rest" and second.status.positions == first.status.positions
+    assert activity_context(second, configured=True)["location_live"] is False
+
+
 def test_absent_status_fields_are_none_and_bad_photo_urls_are_dropped():
     from kona_tracker.fi.parse import profile_from, status_from
 
@@ -440,6 +515,9 @@ def test_absent_status_fields_are_none_and_bad_photo_urls_are_dropped():
     )
     http_only = {"pet": {"photos": {"first": {"image": {"fullSize": "http://x/kona.jpg"}}}}}
     assert profile_from(http_only).photo_url is None, "only https reaches the proxy"
+
+    bad_home = {"pet": {"homeLocation": {"position": {"latitude": 999, "longitude": 0}}}}
+    assert status_from(bad_home).home_location is None
 
 
 @pytest.mark.parametrize(
@@ -482,7 +560,42 @@ def test_activity_json_exposes_the_collar_without_the_photo_url():
     assert data["battery_percent"] == 57 and data["on_base"] is True
     assert data["activity"] == "rest" and data["breed"] == "Labrador Retriever"
     assert data["birthday"] == "2025-08-15" and data["has_photo"] is True
+    assert data["home_position"] == {"latitude": 30.2672, "longitude": -97.7431}
     assert "cdn.example.invalid" not in json.dumps(data), "the URL stays server-side"
+
+
+def test_a_saved_home_address_is_never_exposed_to_the_page_or_json():
+    from kona_tracker.fi.parse import CollarStatus
+
+    private = "86 Norfolk"
+    snap = FiSnapshot(
+        fetched_at=NOW,
+        pet_name="Kona",
+        status=CollarStatus(activity="rest", place_name=private),
+    )
+    assert activity_context(snap, configured=True)["area_name"] == "Home"
+    payload = activity_json(snap, configured=True)
+    assert payload["area_name"] == "Home" and private not in json.dumps(payload)
+
+
+def test_preview_is_obviously_sample_data_and_never_changes_live_json():
+    with web_client(service()) as c:
+        preview = c.get("/activity?preview=1").text
+        live = c.get("/activity.json").json()
+    assert "Sample preview" in preview and "not Kona's live collar data" in preview
+    assert "18,240" in preview and "8.2" in preview and 'id="kona-map"' in preview
+    assert live["steps"] == 4210, "preview mode must not enter Fi's cache or API"
+
+
+def test_profile_page_holds_personal_actions_and_real_collar_summary():
+    with web_client(service()) as c:
+        activity = c.get("/activity").text
+        profile = c.get("/settings").text
+    assert 'href="/settings"' in activity
+    assert "Sign out on this phone" not in activity
+    assert "Labrador Retriever" in profile and "Battery" in profile and "57%" in profile
+    assert 'href="/activity?preview=1"' in profile
+    assert 'action="/logout"' in profile
 
 
 # --------------------------------------------------------------------------

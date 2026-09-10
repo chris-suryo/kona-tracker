@@ -22,7 +22,7 @@ from kona_tracker.camera.source import FakeSource, FrameSource, OpenCVSource, Rt
 from kona_tracker.fi.service import FiService
 from kona_tracker.web.auth import COOKIE_NAME, Lockout, PasscodeAuth
 from kona_tracker.web.settings import Settings
-from kona_tracker.web.views import activity_context, activity_json
+from kona_tracker.web.views import activity_context, activity_json, preview_activity_context
 
 HERE = Path(__file__).parent
 PUBLIC_PATHS = {"/login", "/healthz"}
@@ -84,7 +84,12 @@ def default_fi_service(s: Settings) -> FiService | None:
     """
     if not s.fi_configured:
         return None
-    return FiService(s.fi_email, s.fi_password, s.fi_refresh_seconds)
+    return FiService(
+        s.fi_email,
+        s.fi_password,
+        s.fi_refresh_seconds,
+        data_start=s.fi_data_start,
+    )
 
 
 def default_source_factory(s: Settings, control: CameraControl | None = None):
@@ -203,11 +208,23 @@ def create_app(
         )
 
     @app.get("/activity", response_class=HTMLResponse)
-    def activity(request: Request):
-        snapshot = fi.snapshot() if fi else None
-        return templates.TemplateResponse(
-            request, "activity.html", activity_context(snapshot, configured=fi is not None)
+    def activity(request: Request, preview: bool = False):
+        snapshot = fi.snapshot() if fi and not preview else None
+        context = (
+            preview_activity_context()
+            if preview
+            else activity_context(snapshot, configured=fi is not None)
         )
+        return templates.TemplateResponse(
+            request, "activity.html", context
+        )
+
+    @app.get("/settings", response_class=HTMLResponse)
+    def profile_settings(request: Request):
+        snapshot = fi.snapshot() if fi else None
+        context = activity_context(snapshot, configured=fi is not None)
+        context["tab"] = "settings"
+        return templates.TemplateResponse(request, "settings.html", context)
 
     @app.get("/avatar.jpg")
     def avatar():

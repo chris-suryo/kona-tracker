@@ -16,6 +16,16 @@ level; [pyatv](https://pyatv.dev/) for Apple TV.
 
 ## 1. Camera models
 
+The camera connected today is a **Logitech C230 HD USB webcam** at index 0.
+Windows and OpenCV both open it, but it currently returns an effectively
+all-black image at both 640×480 and 1280×720, even after an exposure test.
+That points to the lens cover/orientation, an unlit room, or the hardware —
+not the web layout. The app detects repeated black frames and shows CHECK
+CAMERA instead of calling transport-only activity LIVE. Once the device
+returns a visible frame, it supplies live video and still JPEGs. It has no
+motors or presets, so the UI intentionally shows capture/share and no
+directional controls.
+
 Abilities are **data**, not assumptions in a template. `KONA_CAMERA_MODEL`
 picks the set; `src/kona_tracker/camera/capabilities.py` holds it. A model
 we do not recognise gets video only, because showing too few controls beats
@@ -53,11 +63,12 @@ Deliberately dropped. `Capabilities.talk` is `False` everywhere and a test
 pins it, so it cannot be switched on hopefully — only by someone who proved
 it against real hardware.
 
-### The plan across two cameras
+### The likely next camera
 
-The C120 already ordered is not wasted: fixed cameras make good second
-angles. A C225 added later becomes the one you steer. The app renders each
-correctly from the same code, so both can be plugged in and compared.
+A Tapo is still a reasonable always-on replacement for the temporary USB
+webcam. Pick its capability row only after the exact model is in hand. The
+app renders controls from the connected driver, so even a pan/tilt model
+does not advertise motion until a real driver can move it.
 
 ### Setup gotcha
 
@@ -192,8 +203,10 @@ Asked for the fields Fi had named. What came back:
   **`activityFeed` takes `limit`, not `cursor`.** All three still want a
   required argument. History is real; the pagination differs per feed.
 - **`OngoingRest { place { id name } }` is accepted.** So is
-  `homeLocation`, `places { id name }` and `timezone`. Both queries wrote
-  files. This is the "she's at Home" answer.
+  `homeLocation { position { latitude longitude } }`, `places { id name
+  position { latitude longitude } }` and `timezone`. These are verified
+  shapes. `homeLocation.position` is the privacy-safe source for drawing the
+  Home map; the saved place's street-address-shaped name stays server-side.
 - `heatmap`, `activity`, `packs` and one of the `device` extras each need a
   required argument.
 
@@ -225,8 +238,7 @@ their shapes do not. Each needs a subfield guess and another correction.
 - `overnightRestSummary` on `Pet` — Fi's own "last night". Should replace
   the previous-completed-window heuristic once its shape is known.
 - `restFeed`, `activityFeed`, `stepFeed` — history feeds.
-- `OngoingRest { place }` — where she is resting. `homeLocation`, `places`,
-  `timezone` on `Pet`.
+- `timezone` on `Pet`; `homeLocation.position` and resting `place` are now shaped.
 - `heatmap`, `packs`, `packFeed`, `activity` on `Pet`.
 - `carrier`, `hardwareRevision`, `firmwareUpdate` on `Device`;
   `uncertaintyInfo` on `OngoingActivity`.
@@ -302,10 +314,16 @@ Controls that **may** appear, gated on the connected camera's capabilities:
 - motion detection toggle and sensitivity
 - speaker volume, microphone mute
 - snapshot (already working)
+- capture/share on fixed USB cameras (working; save-to-device fallback when
+  Web Share is unavailable)
 
 Controls that **must not** appear:
 
 - hold-to-talk — impossible on Tapo, on any model
 - pan/tilt on a fixed camera — the page must ask, never assume
 
-Still undecided, pending the probe: everything on the Activity tab.
+The Activity tab now uses only the confirmed fields above. Its free MVP map
+uses Leaflet 1.9.4 and OpenStreetMap's standard raster tiles. At rest it uses
+the verified `homeLocation.position`; on a walk it switches to Fi's live
+route, then preserves and labels the last fix. It never geocodes or invents
+a coordinate.

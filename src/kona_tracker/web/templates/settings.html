@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Kona · profile{% endblock %}
+{% block pageclass %}settings-page{% endblock %}
+{% block body %}
+<section class="profile-hero">
+  <div class="profile-photo">K<img src="/avatar.jpg" alt="Kona" onerror="this.remove()"></div>
+  <div>
+    <span class="eyebrow">Profile</span>
+    <h1>{{ pet_name }}</h1>
+    <p>{% if breed %}{{ breed }}{% endif %}{% if breed and age %}<span aria-hidden="true"> · </span>{% endif %}{% if age %}{{ age }}{% endif %}</p>
+  </div>
+</section>
+
+<section class="settings-group" aria-labelledby="collar-settings-title">
+  <h2 id="collar-settings-title">Collar</h2>
+  <div class="settings-row"><span>Battery</span><strong>{{ battery ~ '%' if battery else 'Unavailable' }}</strong></div>
+  <div class="settings-row"><span>Connection</span><strong>{% if on_base is sameas true %}On charger{% elif on_base is sameas false and signal %}Cellular {{ signal }}%{% elif configured %}Unknown{% else %}Not connected{% endif %}</strong></div>
+</section>
+
+<section class="settings-group" aria-labelledby="display-settings-title">
+  <h2 id="display-settings-title">Dashboard</h2>
+  <a class="settings-link" href="/activity?preview=1">
+    <span><strong>Preview a complete week</strong><small>Clearly labelled sample data; live data stays untouched.</small></span>
+    <span aria-hidden="true">›</span>
+  </a>
+</section>
+
+<div class="settings-actions">
+  <a class="pill" href="/activity">Back to Activity</a>
+  <form method="post" action="/logout"><button class="logout" type="submit">Sign out on this phone</button></form>
+</div>
+{% endblock %}

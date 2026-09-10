@@ -8,9 +8,11 @@ as `None`, and the template renders the muted dash for it.
 
 from __future__ import annotations
 
-from datetime import date, datetime
+import re
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
+from kona_tracker.fi.parse import ActivityStats, CollarStatus, LocationPoint, PetProfile, RestWindow
 from kona_tracker.fi.service import FiSnapshot
 
 # The dial's visible track is a 270 degree arc; 603 is its length in user
@@ -21,6 +23,19 @@ TRACK = 603.0
 # What a full ring means. Fi publishes no target for sleep the way it does
 # for steps, so this is our scale, not Fi's, and the page says so.
 DIAL_SCALE_HOURS = 12.0
+
+
+def _location_label(status: Any) -> str | None:
+    """A useful place label that does not publish a street address."""
+    if status is None:
+        return None
+    if status.area_name:
+        return status.area_name
+    if not status.place_name:
+        return None
+    if status.activity == "rest" and re.match(r"^\s*\d+\s+\S", status.place_name):
+        return "Home"
+    return status.place_name
 
 
 def _hours(value: float | None) -> str | None:
@@ -79,6 +94,20 @@ def activity_context(snapshot: FiSnapshot | None, configured: bool) -> dict[str,
     profile = snapshot.profile if snapshot else None
     status = snapshot.status if snapshot else None
     sleep_hours = snapshot.sleep_hours if snapshot else None
+    positions = status.positions if status else ()
+    last_position = positions[-1] if positions else None
+    home_position = status.home_location if status else None
+    map_positions = positions or ((home_position,) if home_position else ())
+    map_kind = (
+        "current"
+        if positions and status and status.activity == "walk" and not snapshot.stale
+        else "last"
+        if positions
+        else "home"
+        if home_position
+        else None
+    )
+    location_label = _location_label(status)
 
     return {
         # Who she is and what the collar says, for the template to use when
@@ -101,6 +130,30 @@ def activity_context(snapshot: FiSnapshot | None, configured: bool) -> dict[str,
         "distance_m": _count(activity.distance if activity else None),
         "walk_distance_m": _count(status.walk_distance) if status else None,
         "led_on": status.led_on if status else None,
+        "area_name": location_label,
+        "map_points": [
+            {
+                "lat": point.latitude,
+                "lon": point.longitude,
+                "accuracy": point.accuracy_m,
+            }
+            for point in map_positions
+        ],
+        "map_kind": map_kind,
+        "location_updated": (
+            last_position.recorded_at.astimezone().strftime("%H:%M")
+            if last_position and last_position.recorded_at
+            else None
+        ),
+        "location_live": bool(
+            positions and status and status.activity == "walk" and not snapshot.stale
+        ),
+        "data_start_label": (
+            "today"
+            if snapshot and snapshot.data_start == snapshot.fetched_at.date()
+            else _day(snapshot.data_start) if snapshot and snapshot.data_start else None
+        ),
+        "historical_totals_hidden": bool(snapshot and snapshot.historical_totals_hidden),
         "tab": "activity",
         "configured": configured,
         "has_data": bool(snapshot and snapshot.has_data),
@@ -139,6 +192,47 @@ def activity_context(snapshot: FiSnapshot | None, configured: bool) -> dict[str,
     }
 
 
+def preview_activity_context() -> dict[str, Any]:
+    """A clearly labelled, local-only complete state for reviewing the UI.
+
+    This never enters the Fi cache or the JSON endpoint. It exists so a new
+    collar does not force the owner to wait a week before checking whether
+    every part of the dashboard reads well.
+    """
+    now = datetime.now(UTC)
+    start = (now - timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    snapshot = FiSnapshot(
+        fetched_at=now,
+        pet_name="Kona",
+        window=RestWindow(start, start + timedelta(days=1), 8 * 3600 + 12 * 60, 0),
+        today=RestWindow(
+            start + timedelta(days=1),
+            start + timedelta(days=2),
+            0,
+            1 * 3600 + 24 * 60,
+        ),
+        activity=ActivityStats(18_240, 28_000, 2100),
+        week=ActivityStats(142_300, 196_000, None),
+        profile=PetProfile(name="Kona", breed="Labrador Retriever", birthday=date(2025, 8, 15)),
+        status=CollarStatus(
+            battery_percent=57,
+            on_base=False,
+            signal_percent=78,
+            activity="walk",
+            walk_distance=420,
+            area_name="Sample walk",
+            positions=(
+                LocationPoint(30.2672, -97.7431, now - timedelta(minutes=4), 12),
+                LocationPoint(30.2680, -97.7418, now - timedelta(minutes=2), 9),
+                LocationPoint(30.2690, -97.7405, now, 8),
+            ),
+        ),
+    )
+    context = activity_context(snapshot, configured=True)
+    context["preview"] = True
+    return context
+
+
 def activity_json(snapshot: FiSnapshot | None, configured: bool) -> dict[str, Any]:
     """The same data as the page, for polling later. Never the credentials."""
     window = snapshot.window if snapshot else None
@@ -147,6 +241,7 @@ def activity_json(snapshot: FiSnapshot | None, configured: bool) -> dict[str, An
     week = snapshot.week if snapshot else None
     profile = snapshot.profile if snapshot else None
     status = snapshot.status if snapshot else None
+    home_position = status.home_location if status else None
     return {
         "configured": configured,
         "breed": profile.breed if profile else None,
@@ -167,6 +262,27 @@ def activity_json(snapshot: FiSnapshot | None, configured: bool) -> dict[str, An
         "led_on": status.led_on if status else None,
         "led_color": status.led_color if status else None,
         "mode": status.mode if status else None,
+        "area_name": _location_label(status),
+        "positions": (
+            [
+                {
+                    "latitude": point.latitude,
+                    "longitude": point.longitude,
+                    "recorded_at": point.recorded_at.isoformat() if point.recorded_at else None,
+                    "accuracy_m": point.accuracy_m,
+                }
+                for point in status.positions
+            ]
+            if status
+            else None
+        ),
+        "home_position": (
+            {"latitude": home_position.latitude, "longitude": home_position.longitude}
+            if home_position
+            else None
+        ),
+        "data_start": snapshot.data_start.isoformat() if snapshot and snapshot.data_start else None,
+        "historical_totals_hidden": snapshot.historical_totals_hidden if snapshot else None,
         "fetched_at": snapshot.fetched_at.isoformat() if snapshot else None,
         "pet_name": snapshot.pet_name if snapshot else None,
         "sleep_seconds": window.sleep if window else None,
