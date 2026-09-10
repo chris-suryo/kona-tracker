@@ -144,12 +144,15 @@ running the app must be on the same network.
 
 
 1. Set it up in the Tapo app on the same Wi-Fi.
-2. In the Tapo app: the camera > Settings > **Advanced Settings** >
-   **Camera Account**. Create a username and password. This is what the app
-   uses; it is not your TP-Link login.
-3. In your router, give the camera a fixed IP (DHCP reservation). The Tapo
+2. In the Tapo app, turn on **Third-Party Compatibility** (camera >
+   Settings > Advanced Settings). Recent firmware refuses the camera
+   account entirely without this, and the video will simply never connect.
+3. In the same Advanced Settings, open **Camera Account** and create a
+   username and password. This is what the app uses; it is not your
+   TP-Link login.
+4. In your router, give the camera a fixed IP (DHCP reservation). The Tapo
    app shows the camera's IP under Device Info.
-4. Edit `.env`:
+5. Edit `.env`:
 
    ```
    KONA_CAMERA_SOURCE=rtsp
@@ -159,7 +162,7 @@ running the app must be on the same network.
    ```
 
    (`/stream2` is a lighter stream if the picture stutters on the Pi.)
-5. Test the camera once, then run for real:
+6. Test the camera once, then run for real:
 
    ```
    uv run kona camera-test

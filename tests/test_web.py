@@ -123,3 +123,82 @@ def test_pages_link_the_manifest_and_apple_icon(client):
     assert '<meta name="apple-mobile-web-app-title" content="Kona">' in html
     # The standalone launch depends on this one; it predates the manifest.
     assert 'name="apple-mobile-web-app-capable" content="yes"' in html
+
+
+def _app_with(model, source="fake"):
+    """A client whose camera model decides which controls exist."""
+    from kona_tracker.web.app import default_control
+
+    settings = Settings(passcode="4242", secret="s", camera_source=source, camera_model=model)
+    control = default_control(settings)
+    app = create_app(settings, source_factory=lambda: FakeSource(fps=100), control=control)
+    return app, control
+
+
+def test_the_pad_appears_only_when_something_can_actually_move_the_camera():
+    """The invariant: a control appears when the *connected driver* can do
+    it, not when the model could in principle. A C225 over RTSP can pan,
+    but until TapoControl exists we cannot make it, so no pad — otherwise
+    every press 409s and the user gets a dead button."""
+    cases = [
+        ("c225", "fake", True),  # simulated motors: really movable
+        ("c225", "rtsp", False),  # model can pan, no driver written yet
+        ("c120", "rtsp", False),  # fixed camera, never
+    ]
+    for model, source, expected in cases:
+        app, _ = _app_with(model, source=source)
+        with TestClient(app) as c:
+            login(c)
+            html = c.get("/camera").text
+            assert ('class="ptz"' in html) is expected, (model, source)
+            assert ('data-preset="1"' in html) is expected, (model, source)
+            assert c.get("/status.json").json()["capabilities"]["ptz"] is expected
+        app.state.hub.stop()
+
+
+def test_an_undriveable_camera_advertises_nothing_but_remembers_the_model():
+    from kona_tracker.camera.capabilities import TAPO_PAN_TILT
+    from kona_tracker.camera.control import NoControl
+
+    c = NoControl(TAPO_PAN_TILT)
+    assert c.capabilities.ptz is False and c.capabilities.presets is False
+    assert c.model_capabilities.ptz is True  # kept for status and docs
+
+
+def test_moving_a_pan_tilt_camera_updates_the_reported_position():
+    app, _ = _app_with("c225", source="fake")
+    with TestClient(app) as c:
+        login(c)
+        assert c.get("/status.json").json()["position"] == {"pan": 0.0, "tilt": 0.0}
+        moved = c.post("/control/move", data={"pan": "0.4", "tilt": "-0.1"})
+        assert moved.status_code == 200 and moved.json() == {"pan": 0.4, "tilt": -0.1}
+
+        status = c.get("/status.json").json()
+        assert status["position"]["pan"] == 0.4
+        assert status["capabilities"]["ptz"] is True
+        assert status["capabilities"]["talk"] is False
+
+        preset = c.post("/control/preset", data={"number": "3"})
+        assert preset.status_code == 200 and preset.json()["pan"] == 0.8
+    app.state.hub.stop()
+
+
+def test_a_fixed_camera_refuses_to_move_instead_of_pretending():
+    app, _ = _app_with("c120", source="rtsp")
+    with TestClient(app) as c:
+        login(c)
+        r = c.post("/control/move", data={"pan": "0.4"})
+        assert r.status_code == 409
+        assert "pan or tilt" in r.json()["error"]
+        assert c.get("/status.json").json()["capabilities"]["ptz"] is False
+    app.state.hub.stop()
+
+
+def test_control_endpoints_are_behind_the_passcode(client):
+    assert (
+        client.post("/control/move", data={"pan": "0.4"}, follow_redirects=False).status_code == 303
+    )
+    assert (
+        client.post("/control/preset", data={"number": "1"}, follow_redirects=False).status_code
+        == 303
+    )

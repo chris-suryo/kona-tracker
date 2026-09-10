@@ -13,6 +13,26 @@
   <div><div class="d">Home</div><div class="s" id="cap"></div></div>
   <a class="pill" href="/snapshot.jpg" target="_blank" rel="noopener">Snapshot</a>
 </div>
+{% if caps.ptz %}
+{# Only rendered when the camera actually has motors. A fixed camera such as
+   the C120 must never grow a pad that does nothing. #}
+<section class="ptz" aria-label="Move the camera">
+  <div class="pad">
+    <button class="nub up"    data-pan="0"      data-tilt="-0.12" aria-label="Tilt up">{% include "_chevron.svg" %}</button>
+    <button class="nub left"  data-pan="-0.12"  data-tilt="0"     aria-label="Pan left">{% include "_chevron.svg" %}</button>
+    <button class="nub home"  data-preset="1"   aria-label="Centre the camera"><span></span></button>
+    <button class="nub right" data-pan="0.12"   data-tilt="0"     aria-label="Pan right">{% include "_chevron.svg" %}</button>
+    <button class="nub down"  data-pan="0"      data-tilt="0.12"  aria-label="Tilt down">{% include "_chevron.svg" %}</button>
+  </div>
+  {% if caps.presets %}
+  <div class="presets">
+    <button class="pill" data-preset="2">Left corner</button>
+    <button class="pill" data-preset="1">Centre</button>
+    <button class="pill" data-preset="3">Right corner</button>
+  </div>
+  {% endif %}
+</section>
+{% endif %}
 <script>
   // MJPEG in Safari sometimes stalls after sleep/wake or a network blip;
   // a cache-busted reload of the <img> is the whole recovery story. The
@@ -38,6 +58,41 @@
       }).catch(function () { set('off', 'OFFLINE', 'No connection to the server'); });
     }
     poll(); setInterval(poll, 2000);
+
+    // Pan/tilt. Press and hold to keep moving; release to stop. Pointer
+    // events cover touch and mouse with one code path, and losing the
+    // pointer (drag off the button, phone call) must stop the motor.
+    var pad = document.querySelector('.ptz');
+    if (pad) {
+      var held = null;
+      function send(url, body) {
+        return fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: body
+        }).then(function (r) { return r.ok ? r.json() : null; });
+      }
+      function nudge(btn) {
+        send('/control/move', 'pan=' + btn.dataset.pan + '&tilt=' + btn.dataset.tilt);
+      }
+      function release() { if (held) { clearInterval(held); held = null; } }
+      pad.querySelectorAll('.nub, .presets .pill').forEach(function (btn) {
+        btn.addEventListener('pointerdown', function (e) {
+          e.preventDefault();
+          if (btn.dataset.preset) {
+            send('/control/preset', 'number=' + btn.dataset.preset);
+            return;
+          }
+          nudge(btn);
+          release();
+          held = setInterval(function () { nudge(btn); }, 220);
+        });
+        ['pointerup', 'pointerleave', 'pointercancel'].forEach(function (ev) {
+          btn.addEventListener(ev, release);
+        });
+      });
+      window.addEventListener('blur', release);
+    }
   })();
 </script>
 {% endblock %}

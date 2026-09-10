@@ -177,22 +177,102 @@ _BASE_JPEG = bytes.fromhex(
 )
 
 
-class FakeSource:
-    """Deterministic frames, no hardware."""
+# Synthetic scene for the steerable fake. Wider than the viewport so there
+# is somewhere to pan to, with landmarks at intervals so movement is
+# obvious at a glance.
+SCENE_SIZE = (1600, 700)  # width, height
+VIEW_SIZE = (480, 270)  # 16:9 viewport cropped out of the scene
 
-    def __init__(self, fps: int = 15, fail_after: int | None = None):
+
+def _render_scene():
+    """The room the fake camera looks at. Built once, deterministic."""
+    import cv2
+    import numpy as np
+
+    w, h = SCENE_SIZE
+    scene = np.zeros((h, w, 3), np.uint8)
+
+    # Wall: vertical gradient. Floor: flat, below the horizon.
+    horizon = int(h * 0.62)
+    for y in range(horizon):
+        shade = 78 + int(52 * (y / horizon))
+        scene[y, :] = (shade - 12, shade - 6, shade)
+    scene[horizon:, :] = (62, 80, 100)
+    cv2.line(scene, (0, horizon), (w, horizon), (95, 110, 125), 2, cv2.LINE_AA)
+
+    # Landmarks along the wall so panning is unmistakable.
+    marks = [
+        (200, (74, 122, 201), "window"),
+        (520, (120, 190, 140), "plant"),
+        (900, (150, 150, 160), "door"),
+        (1300, (90, 170, 220), "shelf"),
+    ]
+    for x, color, kind in marks:
+        if kind == "window":
+            cv2.rectangle(scene, (x - 90, 90), (x + 90, 300), color, -1, cv2.LINE_AA)
+            cv2.line(scene, (x, 90), (x, 300), (30, 40, 55), 3, cv2.LINE_AA)
+        elif kind == "plant":
+            cv2.circle(scene, (x, horizon - 90), 62, color, -1, cv2.LINE_AA)
+            cv2.rectangle(scene, (x - 14, horizon - 40), (x + 14, horizon), (60, 80, 110), -1)
+        elif kind == "door":
+            cv2.rectangle(scene, (x - 80, 60), (x + 80, horizon), color, -1, cv2.LINE_AA)
+        else:
+            for i in range(3):
+                y = 140 + i * 70
+                cv2.rectangle(scene, (x - 100, y), (x + 100, y + 16), color, -1, cv2.LINE_AA)
+
+    # A dog bed on the floor, because that is what we are all here for.
+    cv2.ellipse(scene, (760, horizon + 46), (150, 58), 0, 0, 360, (70, 95, 165), -1, cv2.LINE_AA)
+    cv2.ellipse(scene, (760, horizon + 40), (112, 40), 0, 0, 360, (95, 125, 200), -1, cv2.LINE_AA)
+    return scene
+
+
+class FakeSource:
+    """Deterministic frames, no hardware.
+
+    With no `control` this returns the same tiny embedded JPEG it always
+    has, needing neither OpenCV nor a font. Given a control, it renders a
+    viewport onto a wider synthetic scene offset by the control's pan and
+    tilt, so the on-screen pad actually moves the picture and the control
+    surface can be judged before hardware exists.
+    """
+
+    def __init__(self, fps: int = 15, fail_after: int | None = None, control=None):
         self._n = 0
         self._interval = 1.0 / fps
         self._fail_after = fail_after
+        self._control = control
+        self._scene = None
         self.closed = False
+
+    def _steered_jpeg(self) -> bytes | None:
+        import cv2
+
+        if self._scene is None:
+            self._scene = _render_scene()
+        pan, tilt = self._control.position()
+        vw, vh = VIEW_SIZE
+        sh, sw = self._scene.shape[:2]
+        # -1..1 maps across the slack between the scene and the viewport.
+        x = int(round((pan + 1) / 2 * (sw - vw)))
+        y = int(round((tilt + 1) / 2 * (sh - vh)))
+        view = self._scene[y : y + vh, x : x + vw]
+        ok, buf = cv2.imencode(".jpg", view, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
+        return buf.tobytes() if ok else None
 
     def read_jpeg(self) -> bytes | None:
         if self._fail_after is not None and self._n >= self._fail_after:
             return None
         self._n += 1
+        if self._control is not None:
+            frame = self._steered_jpeg()
+            if frame is None:
+                return None
+        else:
+            frame = _BASE_JPEG
         comment = f"kona-fake-frame-{self._n}".encode()
         seg = b"\xff\xfe" + struct.pack(">H", len(comment) + 2) + comment
-        frame = _BASE_JPEG[:2] + seg + _BASE_JPEG[2:]  # COM right after SOI
+        frame = frame[:2] + seg + frame[2:]  # COM right after SOI
         time.sleep(self._interval)
         return frame
 

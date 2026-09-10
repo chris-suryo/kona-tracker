@@ -96,7 +96,7 @@ ipconfig                        # IPv4 of the PC; iPhone opens http://<that-ip>:
 
 - `src/kona_tracker/fi/` — Fi API client + GraphQL documents
 - `src/kona_tracker/probe/` — probe orchestration, redaction, schema scan
-- `src/kona_tracker/camera/` — sources (USB, RTSP, fake), credential redaction, placeholder frame, the supervisor/reader hub
+- `src/kona_tracker/camera/` — sources (USB, RTSP, steerable fake), capabilities, control protocol, credential redaction, placeholder frame, the supervisor/reader hub
 - `src/kona_tracker/web/` — FastAPI app, passcode auth, settings, templates, CSS
 - `src/kona_tracker/cli.py` — `kona probe | serve | cameras | camera-test`; `cli_env.py` reads `.env`
 - `tests/` + `tests/fixtures/` — mocked Fi responses; fake camera
@@ -121,4 +121,16 @@ ipconfig                        # IPv4 of the PC; iPhone opens http://<that-ip>:
 - RTSP credentials must live inside the URL for OpenCV/FFmpeg; `redact_url()`
   runs on every string that could carry it. Keep it that way.
 - No RTSP server exists in the cloud sandbox; the network path is proven via
-  an in-process HTTP MJPEG server. Real RTSP auth/decode = Astro's step.
+  an in-process HTTP MJPEG server. Real RTSP auth/decode needs the hardware.
+- **`docs/device-capabilities.md` is the source of truth for what the
+  hardware can do.** Read it before designing any control. Short version:
+  the C120 is fixed and the C225/C220/C210 pan and tilt, so abilities are
+  data (`KONA_CAMERA_MODEL` -> `camera/capabilities.py`), never assumed in
+  a template. Two-way talk is impossible on every Tapo: TP-Link implements
+  ONVIF Profile S and the audio backchannel is Profile T. Night vision,
+  privacy mode, alarm, LED and motion settings are all available over the
+  camera's local API using the same credentials as the video. Recent
+  firmware needs **Third-Party Compatibility** enabled in the Tapo app or
+  nothing connects.
+- Scope line: camera control belongs in this app; Apple TV and general home
+  automation belong in Home Assistant on the same Pi. See the doc for why.
