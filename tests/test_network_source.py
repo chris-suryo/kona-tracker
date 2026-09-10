@@ -9,9 +9,12 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 
-from kona_tracker.camera.source import FakeSource
+from kona_tracker.camera.source import FakeSource, _import_cv2
 
-cv2 = pytest.importorskip("cv2")
+try:
+    _import_cv2()  # sets the FFmpeg env (tcp, timeout, quiet logs) before the import
+except ImportError:  # pragma: no cover - wheel unavailable on this platform
+    pytest.skip("OpenCV wheel unavailable", allow_module_level=True)
 
 
 class MjpegHandler(BaseHTTPRequestHandler):

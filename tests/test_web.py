@@ -46,7 +46,7 @@ def test_snapshot_shows_placeholder_with_honest_state_when_camera_fails():
         login(c)
         snap = c.get("/snapshot.jpg")
         assert snap.status_code == 200 and snap.content == NO_SIGNAL_JPEG
-        assert snap.headers["x-kona-state"] == "disconnected"
+        assert snap.headers["x-kona-state"] in ("disconnected", "connecting")  # never 'live'
         status = c.get("/status.json").json()
         assert "hunter2" not in status["last_error"] and "***@10.0.0.9" in status["last_error"]
     app.state.hub.stop()

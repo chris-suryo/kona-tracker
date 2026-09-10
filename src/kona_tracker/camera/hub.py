@@ -78,6 +78,7 @@ class CameraHub:
         self._reader_alive = False
         self._reader_started_at = 0.0
         self._backoff = backoff_base
+        self._fails = 0  # bumps whenever a reader dies; wakes waiting viewers
 
         self.opens = 0  # successful source opens (tests, status)
         self.reconnects = 0  # reconnect attempts after the first connection
@@ -163,6 +164,8 @@ class CameraHub:
                         with self._lock:
                             self._reader_alive = False  # abandon; reader sees gen != current
                             self.last_error = f"no frames for {self._hang_after:.0f}s; reconnecting"
+                            self._fails += 1
+                            self._lock.notify_all()
                         break
                     time.sleep(0.1)
         finally:
@@ -184,6 +187,7 @@ class CameraHub:
                 if gen == self._generation:
                     self.last_error = redact_url(f"{type(e).__name__}: {e}")
                     self._reader_alive = False
+                    self._fails += 1
                     self._lock.notify_all()
             return
         self.opens += 1
@@ -225,6 +229,7 @@ class CameraHub:
             with self._lock:
                 if gen == self._generation:
                     self._reader_alive = False
+                    self._fails += 1
                     self._lock.notify_all()
 
     def stop(self) -> None:
@@ -249,18 +254,21 @@ class CameraHub:
                 self._last_viewer_left = time.monotonic()
 
     def _wait_frame(self, after_seq: int, timeout: float) -> tuple[bytes | None, int]:
-        """Block until a frame numbered above `after_seq` exists, or timeout.
-        Frames are numbered from 1, so `after_seq=0` means any frame."""
+        """Block until a frame numbered above `after_seq` exists, the reader
+        dies, or timeout. Frames are numbered from 1, so `after_seq=0` means
+        any frame. Returning on reader death keeps a viewer from sitting on a
+        dead camera for the whole timeout."""
         deadline = time.monotonic() + timeout
         with self._lock:
-            while self._seq <= after_seq and not self._stop.is_set():
+            fails = self._fails
+            while self._seq <= after_seq and not self._stop.is_set() and self._fails == fails:
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
                     return None, after_seq
                 self._lock.wait(remaining)
             if self._seq > after_seq:
                 return self._frame, self._seq
-            return None, after_seq
+            return None, after_seq  # stopped, or the reader died: caller shows the placeholder
 
     def snapshot(self, timeout: float = 3.0) -> tuple[bytes, str]:
         """(jpeg, state). A fresh frame if there is one within `timeout`,

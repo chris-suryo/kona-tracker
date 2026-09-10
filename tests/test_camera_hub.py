@@ -187,7 +187,8 @@ def test_hung_read_is_abandoned_and_replaced():
 
 
 def test_stale_placeholder_carries_state_and_real_frame_returns():
-    hub, _ = make_hub([[1, None, None, ("block", 0.5), 3]], max_misses=10)
+    # A stall (0.5 s), not a hang: hang_after is raised so the reader is kept.
+    hub, _ = make_hub([[1, None, None, ("block", 0.5), 3]], max_misses=10, hang_after=2.0)
     chunks = collect(hub, 4)
     states = [part_state(c) for c in chunks]
     assert states[0] == LIVE
