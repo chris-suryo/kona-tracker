@@ -10,7 +10,8 @@
     "39 tests green incl. scripted-source hub tests (dropped reads, mid-stream exception, hung read abandoned+replaced, stale->live, status transitions, backoff, stop) and a real OpenCV+FFmpeg network read against an in-process HTTP MJPEG server.",
     "Live check: uvicorn with a source that dies after 3 s and is refused for 4 s showed live -> disconnected -> stale -> live on /stream.mjpg; 3 reconnects reported; the password appeared nowhere in the stream or log.",
     "docs/slice-2b-rtsp-plan.md with Tapo setup steps; PROJECT.md updated; 4 commits pushed to claude/nice-bohr-6tnfn0.",
-    "/security-review found one MEDIUM: a scheme-less KONA_RTSP_URL (e.g. 192.168.1.10:554/stream1) or a raw '/' in an embedded password slipped past the redactor and put the password in /status.json and camera-test output. Fixed at three layers (errors built from the bare URL only; shape-agnostic redactor; settings refuse scheme-less URLs) with tests for each reproduced input. 45 tests green after the fix."
+    "/security-review found one MEDIUM: a scheme-less KONA_RTSP_URL (e.g. 192.168.1.10:554/stream1) or a raw '/' in an embedded password slipped past the redactor and put the password in /status.json and camera-test output. Fixed at three layers (errors built from the bare URL only; shape-agnostic redactor; settings refuse scheme-less URLs) with tests for each reproduced input. 45 tests green after the fix.",
+    "Windows CI caught a race in the snapshot-on-dead-camera test; root cause was real (a viewer waited its full timeout on a dead camera). _wait_frame now wakes on reader death; suite stable 3/3 locally, CI green on ubuntu + windows at 5dad045."
   ],
   "discovered": [
     "OpenCV 5.0 wheel's FFmpeg opens HTTP MJPEG URLs fine in the sandbox, which gives a hardware-free test of the network capture path; RTSP itself still needs a real server/camera.",
@@ -30,7 +31,8 @@
     "When applying multi-file edits via a script, run ruff format first or anchor on post-format text; one reformatted line silently aborted half the edits.",
     "Assert on behaviour the design promises (reconnected, resumed, redacted) rather than on timing-dependent intermediate states unless the timing is pinned in the test.",
     "Generate binary fixtures with the real encoder and embed the bytes; never hand-write JPEG hex.",
-    "A credential redactor keyed on URL shape fails exactly on the malformed inputs users type; build messages from a string that never held the secret, and make the matcher shape-agnostic. Have the security review try the typo cases, not just the happy path."
+    "A credential redactor keyed on URL shape fails exactly on the malformed inputs users type; build messages from a string that never held the secret, and make the matcher shape-agnostic. Have the security review try the typo cases, not just the happy path.",
+    "Windows runners are slower and expose timing assumptions in thread tests; assert on 'not live' rather than on which non-live state, and make waits wake on state changes instead of relying on timeouts."
   ],
   "files_changed": [
     ".env.example",
