@@ -52,6 +52,22 @@ SENSITIVE_KEY_PARTS = (
     # The key survives, so the probe still proves the field exists.
     "fullsize",
     "url",
+    # Found the hard way on 2026-09-10: once the collar went on cellular,
+    # `device.info` grew a `cell` block and Wi-Fi scan results, and none of
+    # these matched anything above. The home network name, the modem's
+    # IMEI, the SIM ICCIDs, the eUICC EID and the serving cell id (which
+    # geolocates to a tower) all reached summary.md and were pasted into a
+    # chat. Blanking the whole `cell` and `wifi*` blocks is deliberate:
+    # nothing the page needs lives in them -- signal comes from
+    # `lastConnectionState.signalStrengthPercent`.
+    "ssid",
+    "wifi",
+    "imei",
+    "iccid",
+    "imsi",
+    "eid",
+    "cell",
+    "credential",
 )
 # Deliberately NOT here: a bare "state". It would match `lastConnectionState`
 # and blank the whole nested object -- including the charge and signal fields

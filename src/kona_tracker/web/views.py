@@ -58,10 +58,6 @@ def age_label(birthday: date | None, on: datetime) -> str | None:
     return label
 
 
-def _days(seconds: int | float | None) -> str | None:
-    return f"{seconds / 86400:.1f}" if seconds is not None else None
-
-
 def dial_offset(hours: float | None) -> float:
     """`stroke-dashoffset` that reveals `hours` of the ring.
 
@@ -91,10 +87,19 @@ def activity_context(snapshot: FiSnapshot | None, configured: bool) -> dict[str,
         "breed": profile.breed if profile else None,
         "age": age_label(profile.birthday, snapshot.fetched_at) if profile and snapshot else None,
         "battery": _count(status.battery_percent) if status else None,
-        "days_left": _days(status.time_to_empty_s) if status else None,
+        # No "days left" here on purpose. `timeToEmptyS` read 4.3 days on
+        # the charger and 12 hours once cellular and GPS were running: it is
+        # a live power estimate, not a fact about the battery. It stays in
+        # the JSON; the percentage is the number for the page.
         "on_base": status.on_base if status else None,
         "signal": _count(status.signal_percent) if status else None,
         "activity": status.activity if status else None,
+        "escaped": status.escaped if status else None,
+        "lost": status.lost if status else None,
+        # Metres, walk-only, verified 2026-09-10: a 285.8 m OngoingWalk
+        # became totalDistance 286 for the day. A true 0 is a real "no walk".
+        "distance_m": _count(activity.distance if activity else None),
+        "walk_distance_m": _count(status.walk_distance) if status else None,
         "led_on": status.led_on if status else None,
         "tab": "activity",
         "configured": configured,
@@ -156,7 +161,9 @@ def activity_json(snapshot: FiSnapshot | None, configured: bool) -> dict[str, An
         "activity_since": (
             status.activity_since.isoformat() if status and status.activity_since else None
         ),
-        "walk_distance_raw": status.walk_distance if status else None,
+        "escaped": status.escaped if status else None,
+        "lost": status.lost if status else None,
+        "walk_distance_m": status.walk_distance if status else None,
         "led_on": status.led_on if status else None,
         "led_color": status.led_color if status else None,
         "mode": status.mode if status else None,
@@ -171,10 +178,10 @@ def activity_json(snapshot: FiSnapshot | None, configured: bool) -> dict[str, An
         "steps": activity.steps if activity else None,
         "step_goal": activity.step_goal if activity else None,
         "week_steps": week.steps if week else None,
-        # Raw and unexplained: 0 on a day with thousands of steps. Not on the
-        # page until somebody knows what it measures.
-        "distance_raw": activity.distance if activity else None,
-        "week_distance_raw": week.distance if week else None,
+        # Metres, and only walks count -- verified on a real walk. A day
+        # with thousands of steps and 0 here is a day with no walk.
+        "distance_m": activity.distance if activity else None,
+        "week_distance_m": week.distance if week else None,
         "problem": snapshot.problem if snapshot else None,
         "stale": bool(snapshot and snapshot.stale),
     }

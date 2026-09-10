@@ -127,13 +127,33 @@ Nothing in the UI may assume a 0-100 score or a behaviour count.
 
 ### Not trustworthy yet
 
-`totalDistance` returned **0 for the day against 3,383 steps**, and 93 for
-the week — and did not move on the second run while steps rose to 3,538.
-Whatever the unit is, it is not tracking steps. Now near-certain: it only
-accrues on walks. `ongoingActivity` has been `OngoingRest` since 2026-09-07
-18:51 — no walk has been logged since the collar went on — and distance is
-~0 to match. It is **off the page** (weekly steps took its tile) and stays in
-`/activity.json` marked raw until a real walk confirms the unit.
+**Distance is metres, and only walks count. Verified on a real walk,
+2026-09-10 20:53-20:57.** `OngoingWalk.distance` read 285.8; `totalDistance`
+for the day read 286 and the week 379 (= the earlier 93 + 286). 286 m in
+4 min 38 s is walking pace. A day with thousands of steps and 0 here is a
+day with no walk, which is a true statement rather than a broken field. It is
+in `/activity.json` as `distance_m` / `week_distance_m`; whether it gets a
+tile back is the design's call.
+
+### What a walk looks like, measured
+
+Fi detects the walk with a **2-3 minute lag**: a probe at 20:55 still said
+`OngoingRest`; one at 20:57 said `OngoingWalk` started 20:53:00. During it:
+`ConnectedToCellular` with `signalStrengthPercent` 71 falling to 29 as they
+moved off; a `cell` block in `device.info`; `gnssLiveTrackingEnabled: true`;
+`positions` at one per second with `errorRadius` from 65 m (cold fix) down
+to 4-7 m. Steps rose 3,579 → 5,795 across the walk.
+
+**Escape and walk are independent flags.** The walkers had no phone with the
+Fi app, so `operationParams.mode` went `NORMAL` → `POST_ESCAPE_NOTIFICATION`
+— and stayed there while the walk was detected. `CollarStatus.escaped`
+carries it; the page must be able to show it, because it is exactly the
+state a worried owner wants to know about.
+
+**`timeToEmptyS` is a live power estimate, not a battery fact.** 368,634 s
+(4.3 d) on the charger; 43,987 s (12 h) on cellular + GPS; 105,969 s a few
+minutes later. Battery *percent* is stable (57 → 56.5). Percent is the
+number for the page; "days left" is deliberately not exposed to templates.
 
 Introspection is **disabled** on the production API, so the schema cannot be
 dumped. Field names come from asking and reading the errors.
@@ -172,6 +192,16 @@ their shapes do not. Each needs a subfield guess and another correction.
 - `heatmap`, `packs`, `packFeed`, `activity` on `Pet`.
 - `carrier`, `hardwareRevision`, `firmwareUpdate` on `Device`;
   `uncertaintyInfo` on `OngoingActivity`.
+
+### The redaction gap the walk exposed
+
+Once on cellular, `device.info` carried the home Wi-Fi SSID, the modem
+IMEI, SIM ICCIDs, the eUICC EID and the serving cell id (which geolocates to
+a tower). None matched the redactor's key list, and they reached
+`summary.md` — a file that gets pasted into chats. The key families are now
+blanked (`ssid`, `wifi`, `imei`, `iccid`, `imsi`, `eid`, `cell`,
+`credential`), whole blocks where nothing the page needs lives inside. What
+was already pasted cannot be un-pasted; it is identifiers, not credentials.
 
 ### Confirmed absent, second round
 

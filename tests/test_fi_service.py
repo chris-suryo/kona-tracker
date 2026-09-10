@@ -308,7 +308,7 @@ def test_activity_page_renders_real_numbers():
         data = c.get("/activity.json").json()
         assert data["sleep_seconds"] == 30600 and data["sleep_hours"] == 8.5
         assert data["today_nap_seconds"] == 1290 and data["week_steps"] == 31000
-        assert data["distance_raw"] == 3120.5, "still in the JSON, just not on the page"
+        assert data["distance_m"] == 3120.5, "metres, in the JSON; the tile is the design's call"
         assert data["steps"] == 4210 and data["problem"] is None
         assert "password" not in json.dumps(data).lower()
 
@@ -378,6 +378,34 @@ def test_profile_and_status_parse_the_measured_shapes():
     assert status.activity == "rest" and status.walk_distance is None
     assert status.led_on is False and status.led_color == "White" and status.mode == "NORMAL"
     assert status.next_update is not None and status.last_report is not None
+
+
+def test_escape_and_walk_are_independent_flags():
+    """Measured 2026-09-10: mode went POST_ESCAPE_NOTIFICATION when she left
+    without an owner's phone, and stayed there while Fi also detected a
+    walk. Both must be readable at once."""
+    from kona_tracker.fi.parse import status_from
+
+    data = json.loads(json.dumps(fixture("status")["data"]))
+    data["pet"]["device"]["operationParams"]["mode"] = "POST_ESCAPE_NOTIFICATION"
+    data["pet"]["ongoingActivity"] = {"__typename": "OngoingWalk", "distance": 285.8}
+    st = status_from(data)
+    assert st.escaped and not st.lost and st.activity == "walk"
+    assert st.walk_distance == 285.8
+
+    data["pet"]["device"]["operationParams"]["mode"] = "LOST_DOG"
+    assert status_from(data).lost and not status_from(data).escaped
+    assert not status_from(fixture("status")["data"]).escaped
+
+
+def test_json_carries_metres_and_flags_but_no_days_left_on_the_page():
+    with web_client(service()) as c:
+        data = c.get("/activity.json").json()
+        page = c.get("/activity").text
+    assert data["distance_m"] == 3120.5 and data["week_distance_m"] == 22000.0
+    assert data["escaped"] is False and data["lost"] is False
+    assert data["time_to_empty_s"] == 368634, "kept in the JSON"
+    assert "4.3" not in page and "days" not in page, "never a headline: it swung 4 d -> 12 h"
 
 
 def test_status_when_she_is_out_on_a_walk():

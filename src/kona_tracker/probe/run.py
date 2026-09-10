@@ -55,12 +55,49 @@ def _safe_name(name: str) -> str:
     return "".join(c if c.isalnum() else "-" for c in name.lower()).strip("-") or "pet"
 
 
+def _msg(entry: dict[str, str]) -> str:
+    """A redacted error plus its value-free shape, when one could be made."""
+    message = str(entry.get("message", entry))
+    shape = entry.get("shape")
+    return f"{message} (shape: {shape})" if shape else message
+
+
+def _collapse_positions(obj: Any) -> Any:
+    """GPS tracks are one row per second; the shape is the point, not the list.
+
+    `positions` becomes a count, first and last timestamps, and the error
+    radius range. Coordinates are already gone by the time this runs.
+    """
+    if isinstance(obj, dict):
+        out = {}
+        for k, v in obj.items():
+            if k == "positions" and isinstance(v, list):
+                dates = [p.get("date") for p in v if isinstance(p, dict) and p.get("date")]
+                radii = [
+                    p["errorRadius"]
+                    for p in v
+                    if isinstance(p, dict) and type(p.get("errorRadius")) in (int, float)
+                ]
+                out[k] = {
+                    "count": len(v),
+                    "first": min(dates) if dates else None,
+                    "last": max(dates) if dates else None,
+                    "errorRadius": [min(radii), max(radii)] if radii else None,
+                }
+            else:
+                out[k] = _collapse_positions(v)
+        return out
+    if isinstance(obj, list):
+        return [_collapse_positions(v) for v in obj]
+    return obj
+
+
 def _try(report: ProbeReport, step: str, fn):
     """Run a step; record its error instead of raising. Returns None on failure."""
     try:
         return fn()
     except FiGraphQLError as e:
-        report.errors[step] = "; ".join(str(x.get("message", x)) for x in e.errors)
+        report.errors[step] = "; ".join(_msg(x) for x in e.errors)
         return e.data  # partial data, if any
     except FiError as e:
         report.errors[step] = str(e)
@@ -111,7 +148,7 @@ def run_probe(client: FiClient, out_dir: Path) -> ProbeReport:
                 path = out_dir / f"pet-{slug}-{label}.json"
                 _write_json(path, data)
                 report.files.append(path)
-                report.extras[f"{label}:{slug}"] = redact(data)
+                report.extras[f"{label}:{slug}"] = _collapse_positions(redact(data))
 
         # Speculative: the errors are the data. One query per known type, so
         # each rejection names the type it was checked against.
@@ -126,9 +163,7 @@ def run_probe(client: FiClient, out_dir: Path) -> ProbeReport:
                     "availability."
                 )
             except FiGraphQLError as e:
-                report.speculative_hints.extend(
-                    f"[{label}] {x.get('message', x)}" for x in e.errors
-                )
+                report.speculative_hints.extend(f"[{label}] {_msg(x)}" for x in e.errors)
             except FiError as e:
                 report.errors[f"speculative-{label}:{slug}"] = str(e)
 

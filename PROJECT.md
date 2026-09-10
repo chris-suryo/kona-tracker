@@ -141,6 +141,13 @@ ipconfig                        # IPv4 of the PC; iPhone opens http://<that-ip>:
   operation name alone. Mocks must refuse what the server refuses.
 - **Fi's day is midnight-to-midnight local, and the newest daily rest window
   is today, in progress.** "Last night" is the window before it. Fetch two.
+- **Distance is metres, walks only; walks are detected with a 2-3 min lag;
+  escape and walk are independent flags; `timeToEmptyS` is a live power
+  estimate, not a battery fact.** All measured on a real walk 2026-09-10.
+- **`device.info` is an arbitrary blob and grows when the collar changes
+  state.** It carried the home SSID, IMEI, ICCIDs and cell id once on
+  cellular. The redactor blanks those key families now; assume the next new
+  block will need a look too.
 - **Never redact the error that names the fix.** `FiGraphQLError` keeps
   graphql-js validation messages verbatim (they contain schema identifiers
   only) and redacts everything else, including `Expected type "X", found

@@ -96,6 +96,12 @@ class CollarStatus:
     led_on: bool | None = None
     led_color: str | None = None
     mode: str | None = None
+    #: Measured 2026-09-10: `mode` went NORMAL -> POST_ESCAPE_NOTIFICATION
+    #: when she left the safe zone without an owner's phone, and stayed
+    #: there through the walk that followed. LOST_DOG is pytryfi's name for
+    #: the mode its mutation sets; not yet seen from the API.
+    escaped: bool = False
+    lost: bool = False
     #: "rest" | "walk" | None, from `ongoingActivity.__typename`.
     activity: str | None = None
     activity_since: datetime | None = None
@@ -248,6 +254,8 @@ def status_from(data: Any) -> CollarStatus:
         led_on=params.get("ledEnabled") if isinstance(params.get("ledEnabled"), bool) else None,
         led_color=led_name if isinstance(led_name, str) and led_name else None,
         mode=mode if isinstance(mode, str) and mode else None,
+        escaped=mode == "POST_ESCAPE_NOTIFICATION",
+        lost=mode == "LOST_DOG",
         activity=activity_kind,
         activity_since=_moment(ongoing.get("start")),
         last_report=_moment(ongoing.get("lastReportTimestamp")),

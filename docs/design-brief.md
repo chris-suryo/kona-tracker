@@ -51,22 +51,29 @@ design we cannot ship.
 > *Activity*
 > - Today `3579` steps of a `28000` goal. This week `5370` of `196000`.
 >   Monthly exists too.
-> - Distance is **walk distance only** and she has not been logged on a walk
->   yet (today `0`, week `93`). Do not headline it. `stepFeed` and
->   `activityFeed` exist for history.
+> - Distance is **metres, walks only** — verified on a real walk: 286 m in
+>   4½ minutes. A day with steps and 0 m is a day without a walk, which is
+>   true, not broken. Small number most days; do not make it the hero.
+>   `stepFeed` and `activityFeed` exist for history.
 >
 > *The collar itself*
-> - battery `57`%, with an estimated `4.3 days` to empty
-> - **on the charger right now** (`ConnectedToBase`); when she is out it
->   reports cellular `signalStrengthPercent` instead
-> - LED colour `White`, LED currently off; lost-dog mode `NORMAL` (off)
+> - battery `57`%. (There is a "time to empty" too, but it swung from 4 days
+>   to 12 hours the moment GPS came on — it is not a number to show.)
+> - **on the charger** (`ConnectedToBase`) or **out** with a cellular
+>   signal `71`% → `29`% as she moves away
+> - LED colour `White`, LED currently off
+> - **mode**: `NORMAL`, or `POST_ESCAPE_NOTIFICATION` — measured today when
+>   she left the safe zone without an owner's phone. That is a state the
+>   page must be able to show prominently; it is the thing an owner most
+>   wants to know. Fi's lost-dog mode is a third value.
 > - next update expected in ~3 minutes — a "live" affordance is honest
 >
 > *Where she is*
 > - status is either **resting** or **on a walk** (`OngoingRest` /
->   `OngoingWalk`). Resting since 7 Sep 18:51 — i.e. home.
-> - a resting place name and a home location exist and arrive next round;
->   on a walk there is live distance and GPS with an error radius.
+>   `OngoingWalk`). Fi calls the walk 2-3 minutes after it starts.
+> - on a walk: live distance in metres and a GPS track at one point per
+>   second, accuracy 4-7 m once it locks. A map is realistic to design for.
+> - a resting place name and a home location exist and arrive next round.
 >
 > *Does not exist — confirmed at every level, do not design for it*
 > - no sleep quality, score, restfulness or wake-ups, on the pet or on any

@@ -88,21 +88,68 @@ ALLOWED_GRAPHQL_ERRORS: tuple[str, ...] = (
 
 REDACTED = "GraphQL error (server details omitted for privacy)."
 
+#: graphql-js validation and parse messages begin with one of these. A
+#: message that does not is server prose and gets no skeleton at all.
+_GRAPHQL_JS_OPENERS = (
+    "Cannot ",
+    "Unknown ",
+    "Field ",
+    "Fragment ",
+    "Variable ",
+    "Value ",
+    "Expected ",
+    "Syntax Error",
+    "Argument ",
+    "Directive ",
+    "Operation ",
+    "Anonymous ",
+    "Subscription ",
+    "The ",
+)
+
 
 def allowlisted(message: str) -> bool:
     """True if this is a schema-validation message safe to repeat verbatim."""
     return any(re.fullmatch(p, message) for p in ALLOWED_GRAPHQL_ERRORS)
 
 
+def skeleton(message: str) -> str | None:
+    """The shape of a message the allowlist rejected, with no values in it.
+
+    One `[pet]` speculative error had been redacted for three probe runs,
+    and there was no way to extend the allowlist without seeing what shape
+    it had. This is the safe way to see: every quoted string becomes "…",
+    and the remainder must be graphql-js template prose -- letters and
+    punctuation only, no digits, opening like a graphql-js message. Anything
+    else (server prose, ids, addresses, an email outside quotes) yields
+    None. The value can never survive because values are what get blanked
+    and digits are what get refused.
+    """
+    if not message.startswith(_GRAPHQL_JS_OPENERS) or len(message) > 300:
+        return None
+    shape = re.sub(r'"[^"]*"', '"…"', message)
+    # Letters, spaces, the blanked-quote marker and graphql-js punctuation.
+    # No digits: an id, a count or a street number cannot get through.
+    if not re.fullmatch(r'[A-Za-z "…\.,?;:!(){}\[\]$-]*', shape):
+        return None
+    return shape
+
+
 class FiGraphQLError(FiError):
     """GraphQL errors with only allowlisted schema-validation text retained."""
 
     def __init__(self, errors: list[dict[str, Any]], data: Any = None):
-        self.errors = [
-            {"message": message if allowlisted(message) else REDACTED}
-            for error in errors
-            for message in [str(error.get("message", ""))]
-        ]
+        self.errors = []
+        for error in errors:
+            message = str(error.get("message", ""))
+            if allowlisted(message):
+                self.errors.append({"message": message})
+                continue
+            entry: dict[str, str] = {"message": REDACTED}
+            shape = skeleton(message)
+            if shape:
+                entry["shape"] = shape
+            self.errors.append(entry)
         self.data = data
         messages = "; ".join(e["message"] for e in self.errors)
         super().__init__(f"Fi GraphQL error: {messages}")

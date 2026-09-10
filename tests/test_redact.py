@@ -154,3 +154,55 @@ def test_an_exception_must_not_reopen_a_leak():
     for key in ("position", "location", "latitude", "longitude", "homeCityState", "areaName"):
         assert is_sensitive_key(key), key
     assert redact({"position": {"latitude": 1.0}})["position"] == REDACTED
+
+
+def test_the_cellular_block_and_wifi_scan_never_reach_the_summary():
+    """Found on the walk probe: once the collar was on cellular, `device.info`
+    grew a `cell` block and Wi-Fi scan results, and none of the keys matched.
+    Home SSID, IMEI, ICCIDs, the eUICC EID and the serving cell id all went
+    into a file that gets pasted into chats."""
+    import json
+
+    from kona_tracker.probe.redact import redact
+
+    info = {
+        "batteryPercent": 57,
+        "cell": {
+            "imei": "355025938471560",
+            "iccid": "89011701324691489154",
+            "serviceCellId": 15936785,
+            "serviceMcc": 310,
+            "serviceMnc": 410,
+            "snr": 22,
+        },
+        "wifiNetworkNames": ["2101 (2.4 Ghz)"],
+        "wifiStats": {"key": 996575936, "ssidStats": [{"ssid": "2101 (2.4 Ghz)"}]},
+        "euiccInfo": {
+            "eid": "89044045930000000000001582691347",
+            "profiles": [{"iccid": "89148000013280779376", "serviceProvider": "Verizon"}],
+        },
+        "credentialPackHash": "rXDZTa4Dga0SX5UW0Sjed5svwqnD/eGsJdwUbG0aCBE=",
+        "max77658Info": {"timeToEmptyS": 105969, "rcellMohm": 2371584},
+    }
+    device = {
+        "info": info,
+        "lastConnectionState": {"__typename": "ConnectedToCellular", "signalStrengthPercent": 29},
+        "operationParams": {"mode": "POST_ESCAPE_NOTIFICATION"},
+    }
+    out = redact({"pet": {"device": device}})
+    flat = json.dumps(out)
+    for secret in (
+        "355025938471560",
+        "89011701324691489154",
+        "15936785",
+        "2101 (2.4 Ghz)",
+        "89044045930000000000001582691347",
+        "89148000013280779376",
+        "rXDZTa4D",
+    ):
+        assert secret not in flat, secret
+    kept = out["pet"]["device"]
+    assert kept["info"]["batteryPercent"] == 57
+    assert kept["info"]["max77658Info"]["timeToEmptyS"] == 105969
+    assert kept["lastConnectionState"]["signalStrengthPercent"] == 29
+    assert kept["operationParams"]["mode"] == "POST_ESCAPE_NOTIFICATION"

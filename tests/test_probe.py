@@ -42,3 +42,57 @@ def test_probe_end_to_end_writes_redacted_files(fake_client, tmp_path):
     assert "Austin" not in summary and "30.2672" not in summary
     for f in report.files:
         assert "chris@example.com" not in f.read_text(encoding="utf-8")
+
+
+def test_round_three_queries_are_all_speculative_and_the_overnight_one_is_shaped_right():
+    from kona_tracker.fi.queries import speculative_queries
+
+    labelled = dict(speculative_queries("pet-1"))
+    for label in (
+        "overnight",
+        "restFeed",
+        "activityFeed",
+        "stepFeed",
+        "place",
+        "home",
+        "extras",
+        "device2",
+    ):
+        assert label in labelled, label
+    for query in labelled.values():
+        assert query.lstrip().startswith("query KonaSpeculative"), (
+            "so the mock routes them together"
+        )
+    assert "... on ConcreteRestSummaryData" in labelled["overnight"], (
+        "same lesson as the sleep query"
+    )
+    assert "... on OngoingRest { place" in labelled["place"]
+
+
+def test_gps_tracks_collapse_to_their_shape_in_the_summary():
+    """The walk probe inlined ~190 one-per-second positions. The shape is the
+    point; the list was noise -- and it is what the redactor already turned
+    the coordinates into."""
+    from kona_tracker.probe.run import _collapse_positions
+
+    track = {
+        "ongoingActivity": {
+            "__typename": "OngoingWalk",
+            "distance": 285.8,
+            "positions": [
+                {"date": "2026-09-10T20:51:43Z", "errorRadius": 0.1, "position": "<redacted>"},
+                {"date": "2026-09-10T20:53:00Z", "errorRadius": 65, "position": "<redacted>"},
+                {"date": "2026-09-10T20:57:38Z", "errorRadius": 6, "position": "<redacted>"},
+                "junk",
+            ],
+        }
+    }
+    out = _collapse_positions(track)["ongoingActivity"]
+    assert out["distance"] == 285.8
+    assert out["positions"] == {
+        "count": 4,
+        "first": "2026-09-10T20:51:43Z",
+        "last": "2026-09-10T20:57:38Z",
+        "errorRadius": [0.1, 65],
+    }
+    assert _collapse_positions({"positions": []})["positions"]["count"] == 0

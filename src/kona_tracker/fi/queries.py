@@ -189,6 +189,50 @@ def speculative_queries(pet_id: str) -> list[tuple[str, str]]:
             "type kind name place uncertainty totalSteps duration "
             "} } }",
         ),
+        # Round 3: every one of these was named by a "did you mean" on
+        # 2026-09-10. The shapes are guesses; the corrections name the truth.
+        (
+            "overnight",
+            f'query KonaSpeculativeOvernight {{ pet(id: "{pet_id}") {{ '
+            "overnightRestSummary { __typename start end data { __typename "
+            "... on ConcreteRestSummaryData { sleepAmounts { __typename type duration } } } } "
+            "} }",
+        ),
+        (
+            "restFeed",
+            f'query KonaSpeculativeRestFeed {{ pet(id: "{pet_id}") {{ '
+            "restFeed(cursor: null, limit: 3) { __typename } } }",
+        ),
+        (
+            "activityFeed",
+            f'query KonaSpeculativeActivityFeed {{ pet(id: "{pet_id}") {{ '
+            "activityFeed(cursor: null, limit: 3) { __typename } } }",
+        ),
+        (
+            "stepFeed",
+            f'query KonaSpeculativeStepFeed {{ pet(id: "{pet_id}") {{ '
+            "stepFeed(cursor: null, limit: 3) { __typename } } }",
+        ),
+        (
+            "place",
+            f'query KonaSpeculativePlace {{ pet(id: "{pet_id}") {{ ongoingActivity {{ '
+            "__typename ... on OngoingRest { place { __typename id name } } } } }",
+        ),
+        (
+            "home",
+            f'query KonaSpeculativeHome {{ pet(id: "{pet_id}") {{ '
+            "homeLocation { __typename } places { __typename id name } timezone } }",
+        ),
+        (
+            "extras",
+            f'query KonaSpeculativeExtras {{ pet(id: "{pet_id}") {{ '
+            "heatmap { __typename } activity { __typename } packs { __typename } } }",
+        ),
+        (
+            "device2",
+            f'query KonaSpeculativeDevice2 {{ pet(id: "{pet_id}") {{ device {{ '
+            "__typename carrier hardwareRevision firmwareUpdate { __typename } } } }",
+        ),
     ]
 
 

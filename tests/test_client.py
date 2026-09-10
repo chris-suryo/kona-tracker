@@ -158,3 +158,50 @@ def test_everything_else_is_still_redacted(message):
     from kona_tracker.fi.client import REDACTED, FiGraphQLError
 
     assert FiGraphQLError([{"message": message}]).errors[0]["message"] == REDACTED
+
+
+# --------------------------------------------------------------------------
+# skeleton: the shape of a redacted message, never its values
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "message,expected",
+    [
+        # A graphql-js shape the allowlist does not know: exactly what we need
+        # to see in order to extend it.
+        (
+            'Variable "$id" is never used in operation "KonaX".',
+            'Variable "…" is never used in operation "…".',
+        ),
+        # A value inside the quotes is blanked with the quotes.
+        ('Unknown type "chris@example.com".', 'Unknown type "…".'),
+        # A value outside the quotes: no skeleton at all.
+        ('Unknown type "X". Contact chris@example.com', None),
+        ('Field "a" argument "b" got 12345.', None),
+        ("User 5K5j1NIYBjwOD3PotTdvhh is not authorized for pet", None),
+        ("Internal server error at 12 Elm Street", None),
+        ("", None),
+    ],
+)
+def test_skeleton_keeps_template_prose_and_nothing_else(message, expected):
+    from kona_tracker.fi.client import skeleton
+
+    assert skeleton(message) == expected
+
+
+def test_a_redacted_error_carries_its_shape_when_one_is_safe():
+    from kona_tracker.fi.client import REDACTED, FiGraphQLError
+
+    err = FiGraphQLError(
+        [
+            {"message": 'Variable "$id" is never used in operation "KonaX".'},
+            {"message": "User chris@example.com is not authorized"},
+        ]
+    )
+    assert err.errors[0] == {
+        "message": REDACTED,
+        "shape": 'Variable "…" is never used in operation "…".',
+    }
+    assert err.errors[1] == {"message": REDACTED}, "no shape for server prose"
+    assert "chris@example.com" not in str(err)
