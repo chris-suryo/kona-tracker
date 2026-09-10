@@ -1,34 +1,41 @@
 {% extends "base.html" %}
 {% block title %}Kona · camera{% endblock %}
+{% block pageclass %}cam-page{% endblock %}
 {% block body %}
-<header class="bar"><span class="label">Live</span><span class="dot" id="dot"></span></header>
 <figure class="cam">
   <img id="cam" src="/stream.mjpg" alt="Live view of Kona">
-  <figcaption id="cap" class="label"></figcaption>
+  <div class="top">
+    <span class="name">Kona</span>
+    <span class="live"><span class="dot" id="dot"></span><span id="livetxt">LIVE</span></span>
+  </div>
 </figure>
+<div class="cam-meta">
+  <div><div class="d">Home</div><div class="s" id="cap"></div></div>
+  <a class="pill" href="/snapshot.jpg" target="_blank" rel="noopener">Snapshot</a>
+</div>
 <script>
   // MJPEG in Safari sometimes stalls after sleep/wake or a network blip;
-  // a cache-busted reload of the <img> is the whole recovery story.
+  // a cache-busted reload of the <img> is the whole recovery story. The
+  // server already swaps in a "NO SIGNAL" frame when the picture is not
+  // fresh; the label below just says so in words.
   (function () {
     var img = document.getElementById('cam'), cap = document.getElementById('cap'),
-        dot = document.getElementById('dot'), tries = 0;
+        dot = document.getElementById('dot'), txt = document.getElementById('livetxt'), tries = 0;
     function reload() {
-      tries += 1; cap.textContent = tries > 1 ? 'Reconnecting…' : '';
-      dot.className = 'dot';
+      tries += 1;
       img.src = '/stream.mjpg?t=' + Date.now();
     }
     img.addEventListener('load', function () { tries = 0; });
     img.addEventListener('error', function () { setTimeout(reload, Math.min(1000 * tries, 5000)); });
     document.addEventListener('visibilitychange', function () { if (!document.hidden) { reload(); poll(); } });
-    // The server already swaps in a "NO SIGNAL" frame when the picture is not
-    // fresh; this label just says so in words. Classes: on / stale / off.
+    function set(cls, label, sub) { dot.className = 'dot ' + cls; txt.textContent = label; cap.textContent = sub; }
     function poll() {
       fetch('/status.json', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (s) {
-        if (s.state === 'live') { dot.className = 'dot on'; cap.textContent = ''; }
-        else if (s.state === 'stale') { dot.className = 'dot stale'; cap.textContent = 'Stale ' + Math.round(s.last_frame_age) + ' s'; }
-        else if (s.state === 'connecting') { dot.className = 'dot stale'; cap.textContent = 'Connecting\u2026'; }
-        else { dot.className = 'dot off'; cap.textContent = 'Disconnected, reconnecting\u2026'; }
-      }).catch(function () { dot.className = 'dot off'; cap.textContent = 'No connection to the server'; });
+        if (s.state === 'live') set('on', 'LIVE', '');
+        else if (s.state === 'stale') set('stale', 'STALE', 'No new frames for ' + Math.round(s.last_frame_age) + ' s');
+        else if (s.state === 'connecting') set('stale', 'CONNECTING', 'Opening the camera…');
+        else set('off', 'OFFLINE', 'Camera disconnected, reconnecting…');
+      }).catch(function () { set('off', 'OFFLINE', 'No connection to the server'); });
     }
     poll(); setInterval(poll, 2000);
   })();
