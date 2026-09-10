@@ -68,6 +68,11 @@ def activity_context(snapshot: FiSnapshot | None, configured: bool) -> dict[str,
         "sleep_raw": window.sleep if window else None,
         "nap_raw": window.nap if window else None,
         "unit_suspect": bool(snapshot and snapshot.unit_suspect),
+        # Two different failures that must not share a sentence: "stale"
+        # means these numbers are old, "partial" means they are current
+        # but one query did not come back.
+        "stale": bool(snapshot and snapshot.stale),
+        "partial": bool(snapshot and snapshot.partial),
         "window_from": _day(window.start if window else None),
         "window_to": _day(window.end if window else None),
         "steps": _count(activity.steps if activity else None),
@@ -104,4 +109,5 @@ def activity_json(snapshot: FiSnapshot | None, configured: bool) -> dict[str, An
         "step_goal": activity.step_goal if activity else None,
         "distance_raw": activity.distance if activity else None,
         "problem": snapshot.problem if snapshot else None,
+        "stale": bool(snapshot and snapshot.stale),
     }

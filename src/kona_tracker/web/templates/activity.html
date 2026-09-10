@@ -3,7 +3,8 @@
 {% block body %}
 <div class="lead">
   <b>Last night</b>
-  {% if as_of %}<span>as of {{ as_of }}</span>
+  {% if as_of and stale %}<span class="warn">last seen {{ as_of }}</span>
+  {% elif as_of %}<span>as of {{ as_of }}</span>
   {% elif not configured %}<span>collar not connected</span>
   {% elif problem %}<span class="warn">no answer from Fi</span>
   {% endif %}
@@ -30,8 +31,12 @@
     <div class="sub warn">unrecognised unit</div>
     {% else %}
     <div class="score"><div class="d empty">&ndash;</div><div class="u d">h</div></div>
-    {#- Never say "no rest data" when the truth is "we could not ask". -#}
-    {% if problem %}
+    {#- Three different silences. "No rest data" when Fi refused the query
+        would be a lie, and so would "couldn't reach the collar" when the
+        steps beside it arrived fine. -#}
+    {% if partial %}
+    <div class="sub warn">sleep didn't come through</div>
+    {% elif problem %}
     <div class="sub warn">couldn't reach the collar</div>
     {% elif configured %}
     <div class="sub">no rest data yet</div>
@@ -64,8 +69,12 @@
 <p class="note">Kona's collar isn't connected yet. Add <code>FI_EMAIL</code> and
 <code>FI_PASSWORD</code> &mdash; your own Fi app login &mdash; to <code>.env</code>
 and restart. See <code>docs/first-run.md</code>, step 5.</p>
-{% elif problem and has_data %}
-<p class="note warn">Showing the last good reading. Fi didn't answer just now: {{ problem }}</p>
+{% elif stale and has_data %}
+<p class="note warn">Fi didn't answer just now, so these are the numbers from
+{{ as_of }}, not from this moment. {{ problem }}</p>
+{% elif partial %}
+<p class="note warn">Part of this didn't come back. Everything shown is current;
+what's missing is missing. {{ problem }}</p>
 {% elif problem %}
 <p class="note warn">Couldn't reach Fi: {{ problem }}</p>
 {% else %}

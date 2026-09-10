@@ -17,7 +17,7 @@ import threading
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 
-from kona_tracker.fi.client import FiClient, FiError
+from kona_tracker.fi.client import FiClient, FiError, FiGraphQLError
 from kona_tracker.fi.parse import (
     ActivityStats,
     RestWindow,
@@ -35,9 +35,16 @@ DEFAULT_REFRESH_SECONDS = 300.0
 class FiSnapshot:
     """Everything the Activity page is allowed to say, and when we learned it.
 
-    `problem` is set whenever the most recent attempt failed. It can coexist
-    with real data — that is the "stale but honest" state — so the template
-    must check the data, not the absence of a problem.
+    `problem` can coexist with real data, and there are two different ways
+    that happens. They must not be described the same way:
+
+    - **partial** (`stale=False`): this reading is current, but one of the
+      queries failed. Steps arrived, sleep did not. Nothing here is old.
+    - **stale** (`stale=True`): a whole refresh failed, so the numbers are
+      from the last time Fi answered and `fetched_at` says when that was.
+
+    Calling the first one "the last good reading" is a lie, which is why the
+    flag exists rather than the template guessing from `problem` alone.
     """
 
     fetched_at: datetime
@@ -46,6 +53,7 @@ class FiSnapshot:
     window: RestWindow | None = None
     activity: ActivityStats | None = None
     problem: str | None = None
+    stale: bool = False
 
     @property
     def sleep_hours(self) -> float | None:
@@ -58,6 +66,11 @@ class FiSnapshot:
     @property
     def has_data(self) -> bool:
         return self.window is not None or self.activity is not None
+
+    @property
+    def partial(self) -> bool:
+        """Fresh, but something in it is missing because a query failed."""
+        return bool(self.problem) and self.has_data and not self.stale
 
     @property
     def unit_suspect(self) -> bool:
@@ -76,6 +89,24 @@ class FiSnapshot:
 
 def _now() -> datetime:
     return datetime.now(UTC)
+
+
+def _explain(error: FiError) -> str:
+    """Say what a failure means, not just that one happened.
+
+    A GraphQL error on a query that used to work almost always means Fi
+    renamed or removed a field: these documents came from pytryfi, which has
+    not shipped since Dec 2023. The client strips the server's message before
+    it reaches here (it can carry account data), so the page cannot show the
+    field name — but `kona probe` keeps the allowlisted schema-validation
+    text, which names it. Point at the probe rather than at a dead end.
+    """
+    if isinstance(error, FiGraphQLError):
+        return (
+            "Fi rejected the query, which usually means it renamed a field. "
+            "Run `kona probe` to see what Fi calls it now."
+        )
+    return str(error)
 
 
 def fetch_snapshot(client: FiClient, email: str, password: str) -> FiSnapshot:
@@ -100,11 +131,11 @@ def fetch_snapshot(client: FiClient, email: str, password: str) -> FiSnapshot:
         if window is None:
             problems.append("Fi returned no rest windows yet.")
     except FiError as e:
-        problems.append(f"Rest unavailable: {e}")
+        problems.append(f"Sleep: {_explain(e)}")
     try:
         activity = activity_from(client.graphql(pet_activity(pet.id)))
     except FiError as e:
-        problems.append(f"Activity unavailable: {e}")
+        problems.append(f"Steps: {_explain(e)}")
 
     return FiSnapshot(
         fetched_at=_now(),
@@ -161,7 +192,9 @@ class FiService:
             elif self._snapshot is not None:
                 # Keep the data, stamp the failure; `fetched_at` stays at the
                 # moment the data was true, which is what "as of" must mean.
-                self._snapshot = replace(self._snapshot, problem=problem)
+                # `stale` is what lets the page say "last good reading" here
+                # and only here.
+                self._snapshot = replace(self._snapshot, problem=problem, stale=True)
             else:
                 self._snapshot = FiSnapshot(fetched_at=_now(), problem=problem)
             self._refreshing = False

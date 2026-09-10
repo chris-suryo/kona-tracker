@@ -117,7 +117,34 @@ def test_rest_failure_still_leaves_the_steps():
     snap = service(handler).snapshot()
     assert snap.window is None and snap.sleep_hours is None
     assert snap.activity.steps == 4210
-    assert "Rest unavailable" in snap.problem
+    # This is what Chris hit on first contact with the real API: steps fine,
+    # sleep query rejected. It is a fresh reading missing a piece, NOT an old
+    # reading, and the message has to send him somewhere useful.
+    assert snap.partial and not snap.stale
+    assert snap.problem.startswith("Sleep:")
+    assert "kona probe" in snap.problem
+
+
+def test_partial_and_stale_are_not_described_the_same_way():
+    """The bug the real collar exposed.
+
+    Steps arriving while sleep fails is a *current* reading with a hole in
+    it. Calling that "the last good reading" tells Chris the numbers are old
+    when they are not, and the two states need different words on the page.
+    """
+
+    def rest_fails(request):
+        if request.url.path == "/graphql" and "KonaRest" in json.loads(request.content)["query"]:
+            return httpx.Response(200, json={"errors": [{"message": "boom"}]})
+        return fake_fi_handler(request)
+
+    with web_client(service(rest_fails)) as c:
+        body = c.get("/activity").text
+        assert "4,210" in body, "the half that worked still shows"
+        assert "last good reading" not in body
+        assert "not from this moment" not in body
+        assert "didn&#39;t come through" in body or "didn't come through" in body
+        assert c.get("/activity.json").json()["stale"] is False
 
 
 def test_a_failed_refresh_keeps_the_last_good_reading():
@@ -140,6 +167,7 @@ def test_a_failed_refresh_keeps_the_last_good_reading():
     assert stale.sleep_hours == 8.5, "data must survive a failed refresh"
     assert stale.problem and "connection failed" in stale.problem
     assert stale.fetched_at == good.fetched_at, "'as of' must mean when the data was true"
+    assert stale.stale and not stale.partial, "this one really is old data"
 
 
 def test_cached_snapshot_is_reused_rather_than_logging_in_per_request():
@@ -241,8 +269,10 @@ def test_activity_page_without_credentials_explains_the_two_env_lines():
         assert "FI_EMAIL" in body and "FI_PASSWORD" in body
         assert "waiting for the collar" in body
         data = c.get("/activity.json").json()
-        assert data["configured"] is False
-        assert all(value is None for key, value in data.items() if key != "configured")
+        assert data["configured"] is False and data["stale"] is False
+        assert all(
+            value is None for key, value in data.items() if key not in ("configured", "stale")
+        )
 
 
 def test_activity_page_says_what_went_wrong_without_leaking_the_password():

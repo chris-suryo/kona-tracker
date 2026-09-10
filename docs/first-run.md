@@ -223,6 +223,26 @@ uv run kona serve
 ## If something goes wrong
 
 - `uv: command not found` → reopen the terminal after installing.
+- **Windows: `uv run pytest` gives errors like `PermissionError: [WinError 5]
+  Access is denied: ...\AppData\Local\Temp\pytest-of-<you>`.** Hit on the
+  home PC on 2026-09-10. Every failing test is one that needs a scratch
+  directory; pytest keeps its own under `%LOCALAPPDATA%\Temp` and Windows
+  refuses to list it. Deleting the folder did not help, which points at
+  Controlled Folder Access (Windows Security > Virus & threat protection >
+  Ransomware protection) or a policy rather than stale permissions.
+
+  **The app is not affected.** Nothing under `src/` uses a temp directory, so
+  this can only ever break the test run, never `kona serve` or `kona probe`.
+
+  Point pytest somewhere else, once:
+
+  ```powershell
+  [Environment]::SetEnvironmentVariable('PYTEST_ADDOPTS', "--basetemp=$env:USERPROFILE\.pytest-tmp", 'User')
+  ```
+
+  Reopen PowerShell; `uv run pytest -q` then works normally. Note that pytest
+  **wipes whatever `--basetemp` points at** on every run, so give it a folder
+  of its own and never a folder you keep things in.
 - `KONA_PASSCODE is not set` → step 2 was skipped, or `.env` is in the wrong
   folder (it belongs next to `pyproject.toml`).
 - Phone can't reach the laptop → both on the same Wi-Fi? Firewall allowed?
