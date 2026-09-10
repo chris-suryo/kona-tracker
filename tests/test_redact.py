@@ -109,3 +109,48 @@ def test_redaction_does_not_eat_the_answer_the_probe_exists_to_find():
         }
     )
     assert out["device"]["lastConnectionState"]["signalStrengthPercent"] == 72
+
+
+def test_the_exceptions_keep_shape_without_leaking_coordinates():
+    """Caught in security review: two rules were eating the answer.
+
+    `nextLocationUpdateExpectedBy` matched "location" but is a timestamp, and
+    `positions` matched "position" but is the array whose `date` and
+    `errorRadius` we specifically queried for. Both now survive -- while the
+    coordinates one level down still do not.
+    """
+    from kona_tracker.probe.redact import REDACTED, redact
+
+    out = redact(
+        {
+            "device": {"nextLocationUpdateExpectedBy": "2026-09-10T20:00:00Z"},
+            "ongoingActivity": {
+                "positions": [
+                    {
+                        "date": "2026-09-10T19:25:00Z",
+                        "errorRadius": 8,
+                        "position": {"latitude": 30.2672, "longitude": -97.7431},
+                    }
+                ]
+            },
+        }
+    )
+    assert out["device"]["nextLocationUpdateExpectedBy"] == "2026-09-10T20:00:00Z"
+
+    point = out["ongoingActivity"]["positions"][0]
+    assert point["date"] == "2026-09-10T19:25:00Z", "the shape is the point of the probe"
+    assert point["errorRadius"] == 8
+    assert point["position"] == REDACTED, "where she actually is, is not"
+
+
+def test_an_exception_must_not_reopen_a_leak():
+    """The exceptions are containers and timestamps only.
+
+    A key that is itself private must never be listed, so the singular
+    `position` and the plain location keys stay redacted.
+    """
+    from kona_tracker.probe.redact import REDACTED, is_sensitive_key, redact
+
+    for key in ("position", "location", "latitude", "longitude", "homeCityState", "areaName"):
+        assert is_sensitive_key(key), key
+    assert redact({"position": {"latitude": 1.0}})["position"] == REDACTED

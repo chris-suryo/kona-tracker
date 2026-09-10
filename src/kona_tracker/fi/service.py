@@ -96,10 +96,21 @@ def _explain(error: FiError) -> str:
 
     A GraphQL error on a query that used to work almost always means Fi
     renamed or removed a field: these documents came from pytryfi, which has
-    not shipped since Dec 2023. The client strips the server's message before
-    it reaches here (it can carry account data), so the page cannot show the
-    field name — but `kona probe` keeps the allowlisted schema-validation
-    text, which names it. Point at the probe rather than at a dead end.
+    not shipped since Dec 2023. So say that, and point at the probe, rather
+    than surfacing "Fi GraphQL error: GraphQL error".
+
+    Note what this deliberately does *not* do: it replaces Fi's own text
+    rather than repeating it. The text would be safe — `FiGraphQLError`
+    already restricts it to schema identifiers — but "Cannot query field
+    \"sleepAmounts\" on type \"RestSummaryData\"" is not a sentence to put
+    in front of someone checking on their dog. `kona probe` is where the
+    field names belong.
+
+    (A failure in `login` or the pets query skips this function entirely:
+    `FiService._refresh` catches those and uses `str(e)`, so allowlisted
+    text *can* reach the page by that path. That is fine — it is schema
+    identifiers only — but it is why the allowlist is tested as hard as it
+    is, and why it must never be widened casually.)
     """
     if isinstance(error, FiGraphQLError):
         return (

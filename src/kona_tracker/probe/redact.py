@@ -57,9 +57,31 @@ SENSITIVE_KEY_PARTS = (
 # and blank the whole nested object -- including the charge and signal fields
 # the probe exists to discover. Redaction must not eat the answer.
 
+# ...which it then did anyway, twice, caught in review. Both of these match a
+# rule above but carry nothing private themselves, and blanking them destroys
+# the shape the probe exists to learn:
+#
+#   nextLocationUpdateExpectedBy  matches "location", but is a timestamp.
+#   positions                     matches "position", but is the ARRAY. Its
+#                                 elements' `date` and `errorRadius` are what
+#                                 we queried for; the coordinates inside are
+#                                 still blanked by the `position`, `lat` and
+#                                 `lon` rules one level down.
+#
+# Anything added here must be a container or a non-private scalar whose
+# sensitive leaves are individually covered above. Check that before adding.
+NOT_SENSITIVE_KEYS = frozenset(
+    {
+        "nextlocationupdateexpectedby",
+        "positions",
+    }
+)
+
 
 def is_sensitive_key(key: str) -> bool:
     k = key.lower()
+    if k in NOT_SENSITIVE_KEYS:
+        return False
     return any(part in k for part in SENSITIVE_KEY_PARTS)
 
 
