@@ -8,10 +8,15 @@
     <span class="name">Kona</span>
     <span class="live"><span class="dot" id="dot"></span><span id="livetxt">LIVE</span></span>
   </div>
+  <div class="frame-actions">
+    <a class="shutter" href="/snapshot.jpg" target="_blank" rel="noopener" aria-label="Open a current snapshot">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h3l1.5-2h5L16 7h3a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2Z"/><circle cx="12" cy="13" r="3.5"/></svg>
+    </a>
+  </div>
 </figure>
 <div class="cam-meta">
-  <div><div class="d">Home</div><div class="s" id="cap"></div></div>
-  <a class="pill" href="/snapshot.jpg" target="_blank" rel="noopener">Snapshot</a>
+  <div><div class="d">Home</div><div class="s" id="cap">Opening the camera…</div></div>
+  <span class="cam-hint">Tap the shutter for a still</span>
 </div>
 {% if caps.ptz %}
 {# Only rendered when the camera actually has motors. A fixed camera such as

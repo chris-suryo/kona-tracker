@@ -105,8 +105,8 @@ body { min-height: 100dvh; display: flex; flex-direction: column; -webkit-font-s
 
 /* camera */
 .cam-page { padding: 0; }
-.cam-page .hdr { padding-left: 24px; padding-right: 24px; }
-.cam { position: relative; margin: 18px 0 0; background: #0b0e0c; }
+.cam-page .hdr { padding-left: 20px; padding-right: 20px; }
+.cam { position: relative; margin: 12px 0 0; overflow: hidden; background: #0b0e0c; }
 .cam img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; }
 .cam .top { position: absolute; left: 16px; right: 16px; top: 14px; display: flex; justify-content: space-between; align-items: center; color: #fff; }
 .cam .name { font-family: var(--disp); font-weight: 700; letter-spacing: -.03em; font-size: 22px; text-shadow: 0 1px 6px rgba(0,0,0,.5); }
@@ -117,9 +117,16 @@ body { min-height: 100dvh; display: flex; flex-direction: column; -webkit-font-s
 .dot.stale { background: var(--warn); }
 .dot.off { background: var(--bad); }
 @keyframes pulse { 0%,100% { opacity: .35; } 50% { opacity: 1; } }
-.cam-meta { padding: 18px 24px 0; display: flex; justify-content: space-between; align-items: center; }
-.cam-meta .d { font-size: 34px; letter-spacing: -.04em; }
+.frame-actions { position: absolute; right: 14px; bottom: 14px; display: flex; }
+.shutter { width: 48px; height: 48px; display: grid; place-items: center; border-radius: 50%;
+           background: #fff; color: #171A15; box-shadow: 0 5px 18px rgba(0,0,0,.28);
+           -webkit-tap-highlight-color: transparent; transition: transform .12s ease; }
+.shutter:active { transform: scale(.93); }
+.shutter svg { width: 23px; height: 23px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.cam-meta { padding: 18px 20px 0; display: flex; justify-content: space-between; align-items: end; gap: 20px; }
+.cam-meta .d { font-size: 30px; letter-spacing: -.04em; }
 .cam-meta .s { font-size: 12px; color: var(--ink2); margin-top: 4px; min-height: 1.2em; }
+.cam-hint { max-width: 112px; color: var(--ink3); font-size: 11px; line-height: 1.35; text-align: right; }
 .pill { height: 40px; padding: 0 16px; border-radius: 999px; border: 1px solid var(--line); color: var(--ink);
         font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; text-decoration: none; }
 
@@ -192,5 +199,5 @@ body { min-height: 100dvh; display: flex; flex-direction: column; -webkit-font-s
   /* Kept as a compatibility guard for the previous template and its test. */
   .dial .val, .stat { animation: none; }
   .dot.on { animation: none; opacity: 1; }
-  .nub { transition: none; }
+  .nub, .shutter { transition: none; }
 }
