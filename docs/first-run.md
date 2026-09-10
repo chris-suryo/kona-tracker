@@ -3,14 +3,19 @@
 This is the plain-language version. Ten minutes, one time. After this,
 updating is two commands.
 
-## Why it runs at home and not on Vercel
+## Why the camera runs at home and not on Vercel
 
 The app's job is to show a camera that is in your house. Video goes from
 the camera to a computer on your home Wi-Fi, and from there to your phone.
 Vercel is a computer in a data center; it cannot see your camera, and its
 functions cut off long-running video streams anyway. So *one machine at
-home* runs the app: your laptop or PC now, the Raspberry Pi later. The Fi
-collar part could live on Vercel someday, but nothing needs that yet.
+home* serves the camera: your laptop or PC now, the Raspberry Pi later.
+
+**Only the camera is tied to home.** Steps 1 to 3 below run on any machine
+with internet, sitting anywhere — the app with a test pattern works on a
+laptop in a coffee shop. So does the Fi collar probe in step 5, because Fi's
+API is a normal internet service. It is step 4, the real camera, that needs
+you and the machine on the same Wi-Fi as the camera.
 
 "Clone" just means "download the code to this machine." GitHub is where the
 code lives; your machine is where it runs.
@@ -66,7 +71,7 @@ Set `KONA_PASSCODE=` to whatever you and your sister will type (e.g. `4242`),
 and put any long random string after `KONA_SECRET=`. Save and close. This
 file is private to the machine and is never uploaded.
 
-## 3. Run it (no camera needed)
+## 3. Run it (no camera needed, anywhere)
 
 ```
 uv run kona serve --fake-camera
@@ -77,7 +82,8 @@ to **http://localhost:8000**. You should see the Kona Tracker login. Enter
 the passcode. The Camera tab shows a test pattern; the Activity tab shows
 the dial waiting for the collar.
 
-**On your iPhone** (same Wi-Fi): find the laptop's address, then open it.
+**On your iPhone** (joined to the same network as the laptop, whichever
+network that is): find the laptop's address, then open it.
 
 ```powershell
 # Windows: look for "IPv4 Address" under your Wi-Fi adapter
@@ -96,7 +102,11 @@ and it behaves like an app.
 
 To stop the server, press Ctrl+C in the terminal.
 
-## 4. When the Tapo C120 arrives
+## 4. When the Tapo C120 arrives (this one needs you at home)
+
+This is the only step that needs the home Wi-Fi: the camera and the machine
+running the app must be on the same network.
+
 
 1. Set it up in the Tapo app on the same Wi-Fi.
 2. In the Tapo app: the camera > Settings > **Advanced Settings** >
@@ -124,7 +134,11 @@ To stop the server, press Ctrl+C in the terminal.
    `camera-test` prints the frame size and fps, or the exact error with the
    password hidden. Paste that line into the next session if it fails.
 
-## 5. When the Fi collar arrives
+## 5. When the Fi collar arrives (anywhere, any machine)
+
+Fi's API is a normal internet service, so this does **not** need the home
+network. All it needs is that Kona's collar is set up in the Fi app, plus
+internet on whichever machine you run it from.
 
 Add to `.env`:
 
@@ -140,9 +154,14 @@ uv run kona probe
 ```
 
 It logs in, asks Fi's API what it knows about Kona, and writes
-`probe-out/summary.md` (private, not uploaded). Read the "Step errors" and
-"Speculative field hints" sections, then share the file in the next session.
-That is what decides which numbers the Activity tab can show.
+`probe-out/summary.md` (private, gitignored, never uploaded on its own).
+Read the "Step errors" and "Speculative field hints" sections, then paste
+or attach that file in the next session.
+
+**This is the step that unblocks the Activity tab.** Nobody yet knows
+whether Fi exposes a sleep-quality score, or barking and scratching counts,
+or only raw sleep and step totals. The summary answers that, and the answer
+decides what the dial and the numbers underneath it can honestly show.
 
 ## Updating later
 

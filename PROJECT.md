@@ -24,11 +24,21 @@ for Chris to merge. Astro's PR #1 is absorbed (with the regex fix).
   and Wyze v4 do NOT work without unofficial bridges. Fi collar arrives
   2026-09-11. Raspberry Pi 5 kit bought; not set up.
 
-**next (chapter 2):** Chris follows `docs/first-run.md` on the laptop:
-(1) see the app with `--fake-camera`; (2) Tapo C120 on Wi-Fi ->
-`kona camera-test` -> `kona serve` -> iPhone; (3) collar -> `kona probe` ->
-share `probe-out/summary.md`. Then `/plan` slice 3: Activity hero on the
-confirmed Fi fields, and Pi + Tailscale for remote viewing.
+**next (chapter 2):** Chris follows `docs/first-run.md`.
+
+*Anywhere, any machine with internet:*
+1. Merge PR #2 so `main` stops being an empty scaffold.
+2. See the app: `uv run kona serve --fake-camera`, open `localhost:8000`.
+3. Once the collar is paired in the Fi app: `FI_*` in `.env`,
+   `uv run kona probe`, share `probe-out/summary.md`. This is what unblocks
+   slice 3 — it says which Fi fields actually exist.
+
+*At home only (the camera stream originates there):*
+4. Tapo C120 on the Wi-Fi + camera account -> `uv run kona camera-test` ->
+   `uv run kona serve` -> iPhone on the same Wi-Fi.
+
+Then `/plan` slice 3: Activity hero on the confirmed Fi fields, and
+Pi + Tailscale for remote viewing.
 
 ## Ownership
 
@@ -95,8 +105,12 @@ ipconfig                        # IPv4 of the PC; iPhone opens http://<that-ip>:
 
 ## Facts that constrain design
 
-- `api.tryfi.com` is unreachable from claude.ai/code sandboxes (proxy 403).
-  Anything touching the real API must be run by Chris in PowerShell.
+- **Only the camera is location-bound.** The video originates on the home
+  network, so the server that reads it must sit there. The Fi probe and the
+  app itself run on any machine with internet, home or not.
+- `api.tryfi.com` is an ordinary cloud API, blocked *only* from claude.ai/code
+  sandboxes (proxy 403). Chris can run `kona probe` from any laptop with
+  internet and the Fi credentials; it does not need the home machine.
 - Fi's API is undocumented and unversioned; pytryfi (the reference) has not
   shipped since Dec 2023. Expect drift; the probe is the drift detector.
 - Starlette's TestClient runs the ASGI app to completion, so an endless
