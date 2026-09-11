@@ -42,7 +42,7 @@ Not a blank box, not an error: nothing. Which matches what Chris sees.
 - `"positions": []` and `"home_position": null` → this is A1. Expected.
 - `"positions"` has entries, or `home_position` is set → it is **A2**.
 
-### A2. The points exist but Leaflet never loads
+### A2. The points exist but Leaflet never loads — **DONE 2026-09-11** (vendored, hash-pinned)
 
 `activity.html` pulls `leaflet.css` and `leaflet.js` from **unpkg.com** with
 SRI hashes. If unpkg is slow, blocked, or the hash mismatches, `L` is

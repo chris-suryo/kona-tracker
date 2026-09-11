@@ -3,8 +3,7 @@
 {% block pageclass %}activity-page{% endblock %}
 {% block head %}
 {% if map_points %}
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="anonymous">
+<link rel="stylesheet" href="/static/leaflet/leaflet.css">
 {% endif %}
 {% endblock %}
 {% block hdrright %}
@@ -157,8 +156,7 @@ the previous collar. {% endif %}Last night is the most recent full day on Kona's
 midnight to midnight. Naps count from midnight today.</p>
 {% endif %}
 {% if map_points %}
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"></script>
+<script src="/static/leaflet/leaflet.js"></script>
 <script>
   (function () {
     var points = {{ map_points|tojson }};

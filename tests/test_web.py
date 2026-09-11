@@ -299,3 +299,33 @@ def test_motion_is_opt_in_and_respects_the_accessibility_setting():
     reduce = css[css.index("@media (prefers-reduced-motion: reduce)") :]
     assert "@view-transition { navigation: none; }" in reduce
     assert ".dial .val, .stat { animation: none; }" in reduce
+
+
+def test_leaflet_is_vendored_and_is_the_exact_release_the_page_used_to_pin():
+    """A CDN is a dependency, and one that was measured to leave a blank
+    coloured box when unreachable. The copies in static/ are the npm
+    release: these are the SRI hashes activity.html carried for unpkg."""
+    import base64
+    import hashlib
+
+    from kona_tracker.web.app import HERE
+
+    vendored = HERE / "static" / "leaflet"
+    expected = {
+        "leaflet.js": "20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=",
+        "leaflet.css": "p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=",
+    }
+    for name, sha in expected.items():
+        digest = hashlib.sha256((vendored / name).read_bytes()).digest()
+        assert base64.b64encode(digest).decode() == sha, f"{name} is not Leaflet 1.9.4 as published"
+    assert (vendored / "LICENSE").read_text(encoding="utf-8").startswith("BSD 2-Clause")
+    for image in ("layers.png", "layers-2x.png", "marker-icon.png"):
+        assert (vendored / "images" / image).exists(), "leaflet.css references these"
+
+
+def test_the_map_page_loads_no_third_party_script(client):
+    login(client)
+    page = client.get("/activity?preview=1").text
+    assert "unpkg.com" not in page and "/static/leaflet/leaflet.js" in page
+    assert client.get("/static/leaflet/leaflet.css").status_code == 200
+    assert client.get("/static/leaflet/images/layers.png").status_code == 200

@@ -142,8 +142,9 @@ device. Only today onward is Kona.
 
 ### Map tradeoff to remember
 
-The MVP deliberately uses Leaflet 1.9.4 from its official CDN and the
-standard OpenStreetMap raster endpoint. That costs nothing and fits a
+The MVP uses Leaflet 1.9.4, vendored into `web/static/leaflet/` (hash-pinned
+by a test, so it is exactly the npm release), and the standard
+OpenStreetMap raster endpoint. That costs nothing and fits a
 two-person private app, with visible attribution and ordinary browser
 caching. It is best-effort, has no SLA, and the tile server necessarily sees
 which small map area the browser requests. Do not add offline download,
