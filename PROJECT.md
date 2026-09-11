@@ -58,14 +58,33 @@ brief for a visiting assistant.
 
 **next:**
 
-*Needs Chris, and blocks the rest:*
-1. **Probe round 5.** `uv run kona probe --out probe-out\round5` **from the
-   branch above**, then read `whereabouts` in `summary.md`. It settles
-   whether Fi returns `... on OngoingRest { position }`, which is the one
-   field the map's resting tier rests on. Sourced from pytryfi, not yet
-   measured on Kona's collar. If Fi rejects it the page already says so and
-   falls back to the home pin, so nothing is broken either way.
-2. **Merge the branch**, so `main` stops being stale.
+*The live thread, 2026-09-11: the camera on the phone.*
+Read `docs/camera-black-screen-handoff.md`; it carries the diagnosis, the
+plan and what is already ruled out. Short version: the slow-reveal bug is
+fixed and merged, and a second bug remains. Abandoned MJPEG streams pile up
+on the server (one per tab switch, never closed), saturate the small thread
+pool the stream waits use, and the phone then gets no video from a server
+that is reporting `live`. Restarting `kona serve` clears it every time,
+which is what proves it is ours and not Safari's. Chrome on the phone is a
+real workaround until it is fixed.
+
+0. **Measure the frame-rate ceiling.** `camera-test` gets 4 fps at 1280x720,
+   which is low enough to suspect OpenCV is pulling uncompressed YUYV and
+   saturating USB 2.0. Run the 640x480 comparison in the handoff doc. If fps
+   jumps, asking the camera for MJPG buys more frames at full resolution,
+   and that is worth having before any transport decision.
+1. **Then the camera plan**, approved parts first: adaptive snapshot polling
+   instead of a held stream, a bounded pool for stream waits, viewers
+   reported in `/status.json`. Needs a local session with a real browser and
+   a phone; a cloud session cannot verify any of it.
+
+*Needs Chris, and blocks the Fi half:*
+2. **Probe round 5.** `uv run kona probe --out probe-out\round5`, then read
+   `whereabouts` in `summary.md`. It settles whether Fi returns
+   `... on OngoingRest { position }`, which is the one field the map's
+   resting tier rests on. Sourced from pytryfi, not yet measured on Kona's
+   collar. If Fi rejects it the page already says so and falls back to the
+   home pin, so nothing is broken either way.
 
 *The road to always-on, in order, and nothing here has been run:*
 3. `docs/remote-access.md` Part 1: a Cloudflare quick tunnel, about fifteen
