@@ -128,8 +128,60 @@ connected viewers. Four zombies would have been visible in that JSON and
 this would have been a ten-minute diagnosis. Approved by Chris.
 
 Open decisions: whether the MJPEG path stays for desktop or is deleted, and
-the poll rate. Recommendation is two per second and, eventually, one path
-rather than two for a two-person household.
+the poll rate. Recommendation is adaptive — fire the next request when the
+previous picture decodes — and, eventually, one path rather than two for a
+two-person household. The frame-rate section below removes the objection
+that polling loses smoothness: this camera delivers 4 fps either way.
+
+### Where it was stopped, 2026-09-11
+
+Nothing above is built. The state Chris is leaving it in, deliberately:
+
+- **The app works on the phone in Chrome.** That is a real workaround, not a
+  compromise, and it is what to use meanwhile.
+- **Safari hangs after a tab switch**, recovers on a wait, a server restart,
+  or a detour through another browser.
+- **The home-screen icon is stuck with Safari.** iOS only lets Safari
+  install a web app to the home screen, so the workaround and the
+  home-screen shortcut are mutually exclusive until this is fixed. Worth
+  knowing before wondering why the icon still misbehaves.
+
+This is an honest stopping point, not a finished one. The app is usable
+every day via Chrome; the fix is specified and waiting for a session with a
+browser and a phone.
+
+## The frame rate ceiling: measured, and left alone
+
+Three runs of `kona camera-test` on the C270, server stopped each time:
+
+| resolution | light | fps | bytes/frame |
+|---|---|---|---|
+| 1280x720 | room | 4.0 | 84,876 |
+| 640x480 | room | 7.0 | 34,541 |
+| 1280x720 | bright | 4.0 | 81,764 |
+
+**Two theories were proposed and both are wrong.** Lighting is not it: a
+bright room gave exactly the same 4.0 fps. Nor is it simple USB saturation:
+at 4 fps, 720p uncompressed is about 7.4 MB/s, comfortably under what USB
+2.0 carries. Cutting to a third of the pixels bought only 1.75 times the
+frames, not three, so pixel count is not the dominant cost either.
+
+Fitting the two resolutions suggests roughly **90 ms of fixed cost per
+frame** on top of pixel-proportional work, which caps the whole path near
+11 fps before any pixels are touched. Candidates not investigated: the
+DirectShow backend's per-read overhead, the camera negotiating a low native
+rate, or our own per-frame work in `read_jpeg`.
+
+**Deliberately left unresolved.** Four frames a second is adequate for
+watching a dog sleep, the C270 is a temporary stand-in for the Tapo, and
+Chris had spent a day on this camera already. Recorded so nobody re-derives
+it. Do not propose the MJPG FOURCC change on the bandwidth argument: the
+measurements above do not support it.
+
+It also settles the design question that prompted the measurement. At 4 fps
+there is no meaningful difference between holding a stream open and polling
+snapshots, so the frame-rate objection to polling does not apply to this
+hardware.
 
 ## What has been ruled out, with evidence
 
