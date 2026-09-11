@@ -64,3 +64,11 @@ def test_sample_overview_and_drilldown_agree_and_bars_fit():
             if metric == "rest":
                 interval_minutes = sum(i["width"] * 1440 / 340 for i in context["intervals"])
                 assert interval_minutes == pytest.approx(context["total"])
+
+
+def test_weekly_rest_average_excludes_missing_and_in_progress_days():
+    context = history_preview("rest", "week", 0, None)
+    complete = [b for b in context["buckets"] if not b["partial"]]
+    assert context["complete_days"] == 5
+    assert context["average"] == round(sum(b["value"] for b in complete) / 5)
+    assert context["average"] != round(context["total"] / 7)

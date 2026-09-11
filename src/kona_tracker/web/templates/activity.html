@@ -25,7 +25,7 @@
 {% endif %}
 {# A duration as the page's display numerals: `8h 30m` is a big tabular 8, a
    small h, a big 30, a small m. The pairs come from views.duration_parts. #}
-{% macro duration(parts) %}{% for figure, unit in parts %}{{ figure }}<small>{{ unit }}</small>{% endfor %}{% endmacro %}
+{% from "_duration.html" import duration %}
 
 {% if lost %}
 <section class="safety-alert danger" role="alert">

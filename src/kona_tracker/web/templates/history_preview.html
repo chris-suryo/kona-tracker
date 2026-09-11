@@ -2,9 +2,10 @@
 {% block title %}Kona · {{ metric }} · sample{% endblock %}
 {% block pageclass %}history-page{% endblock %}
 {% block body %}
+{% from "_duration.html" import minutes %}
 <nav class="subnav" aria-label="Back"><a class="back" href="/activity?preview=1">{% include "_chevron.svg" %}<span>Activity</span></a></nav>
 <aside class="preview-banner" aria-label="Sample data preview"><div><strong>Design preview · sample data</strong><span>Fictional readings, not Kona's history.</span><span>11 Sep 2026 · sample clock UTC</span></div></aside>
-<header class="history-heading"><span class="eyebrow">A little more of her day</span><h1>{{ 'Steps' if metric == 'steps' else 'Rest' }}</h1></header>
+<header class="history-heading"><h1>{{ 'Steps' if metric == 'steps' else 'Rest' }}</h1></header>
 <nav class="history-tabs" aria-label="Time range">
   {% for value, label in [('day', 'Day'), ('week', 'Week')] %}<a href="/preview/{{ metric }}?period={{ value }}&amp;day={{ day }}"{% if period == value %} aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}
 </nav>
@@ -14,9 +15,9 @@
   {% if period == 'day' and day > 0 %}<a href="/preview/{{ metric }}?day={{ day - 1 }}" aria-label="Next sample day">›</a>{% else %}<span aria-hidden="true">›</span>{% endif %}
 </div>
 <section class="history-total" aria-label="Sample total">
-  <span class="eyebrow">{{ 'Recorded steps' if metric == 'steps' else 'Recorded rest' }}</span><strong class="d">{{ total_label }}</strong>
-  <p>{{ 'Through 11:00 · sample day in progress' if period == 'day' and day == 0 else 'Includes a gap in readings' if partial else 'Complete sample day' }}</p>
-  {% if metric == 'rest' %}<div class="rest-key"><span><i class="sleep-key"></i>Sleep <strong>{{ sleep_total // 60 }} h {{ sleep_total % 60 }} m</strong></span><span><i class="nap-key"></i>Naps <strong>{{ nap_total // 60 }} h {{ nap_total % 60 }} m</strong></span></div>{% endif %}
+  <span class="eyebrow">{{ 'Recorded steps' if metric == 'steps' else 'Average daily rest' if period == 'week' else 'Recorded rest' }}</span><strong class="d">{% if metric == 'steps' %}{{ total_label }}{% else %}{{ minutes(average if period == 'week' else total) }}{% endif %}</strong>
+  <p>{% if metric == 'rest' and period == 'week' %}Across {{ complete_days }} complete days · excludes today and gaps{% else %}{{ 'Through 11:00' if period == 'day' and day == 0 else 'Includes a gap in readings' if partial else 'Complete day' }}{% endif %}</p>
+  {% if metric == 'rest' %}<div class="rest-key"><span><i class="sleep-key"></i>{{ 'Avg sleep' if period == 'week' else 'Sleep' }} <strong>{{ minutes(average_sleep if period == 'week' else sleep_total) }}</strong></span><span><i class="nap-key"></i>{{ 'Avg naps' if period == 'week' else 'Naps' }} <strong>{{ minutes(average_nap if period == 'week' else nap_total) }}</strong></span></div>{% endif %}
 </section>
 <section class="history-chart" aria-labelledby="chart-title">
   <div class="chart-heading"><h2 id="chart-title">{{ 'Steps' if metric == 'steps' else 'Rest' }} by {{ 'hour' if period == 'day' else 'day' }}</h2><span>{{ '{:,}'.format(maximum) }} {{ 'steps' if metric == 'steps' else 'min' }}</span></div>
@@ -33,7 +34,6 @@
   </svg>
   <div class="chart-axis">{% if period == 'day' %}<span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>24:00</span>{% else %}{% for b in buckets %}<span>{{ b.short }}</span>{% endfor %}{% endif %}</div>
   <p class="chart-selection" aria-live="polite">{% if chosen %}<strong>{{ chosen.label }}</strong> · {% if chosen.future %}Not yet elapsed{% elif chosen.value is none %}No reading{% else %}{{ '{:,}'.format(chosen.value) }} {{ 'steps' if metric == 'steps' else 'minutes of rest' }}{% endif %}{% else %}{{ 'Tap an hour to see its reading.' if period == 'day' else 'Tap a day to explore it. Today is incomplete.' }}{% endif %}</p>
-  <p class="chart-footnote">A dot means zero. A dashed mark means no reading. Future hours are faint.</p>
   {% if metric == 'rest' and period == 'day' %}
   <h2 class="timeline-title">Sleep &amp; nap intervals</h2>
   <svg class="rest-timeline" viewBox="0 0 340 36" role="img" aria-label="Fictional sleep and nap intervals; exact times listed below">
@@ -44,10 +44,9 @@
     {% if day == 2 %}<path class="missing-bar" d="M{{ 840 / 1440 * 340 }} 18h{{ 60 / 1440 * 340 }}"/>{% endif %}
   </svg>
   <div class="chart-axis"><span>00:00</span><span>12:00</span><span>24:00</span></div>
-  {% if day == 0 %}<p class="chart-footnote">Dotted line: sample readings through 11:00. The remaining hours have not elapsed.</p>{% endif %}
-  <details class="history-readings"><summary>Read sample intervals</summary><ul>{% for interval in intervals %}<li>{{ interval.label }}</li>{% endfor %}</ul></details>
+  <details class="history-readings"><summary>View intervals</summary><ul>{% for interval in intervals %}<li>{{ interval.label }}</li>{% endfor %}</ul></details>
   {% endif %}
-  <details class="history-readings"><summary>Read the sample values</summary><table><thead><tr><th>{{ 'Hour' if period == 'day' else 'Day' }}</th><th>{{ 'Steps' if metric == 'steps' else 'Rest (min)' }}</th></tr></thead><tbody>{% for b in buckets %}<tr><th>{{ b.label }}</th><td>{{ 'Not yet elapsed' if b.future else 'No reading' if b.value is none else b.value }}{% if b.partial %} · incomplete{% endif %}</td></tr>{% endfor %}</tbody></table></details>
+  <details class="history-readings"><summary>View readings</summary><p class="chart-footnote">These are the values plotted above. Dots mean zero; dashed marks mean missing readings. Future hours are faint.</p><table><thead><tr><th>{{ 'Hour' if period == 'day' else 'Day' }}</th><th>{{ 'Steps' if metric == 'steps' else 'Rest (min)' }}</th></tr></thead><tbody>{% for b in buckets %}<tr><th>{{ b.label }}</th><td>{{ 'Not yet elapsed' if b.future else 'No reading' if b.value is none else b.value }}{% if b.partial %} · incomplete{% endif %}</td></tr>{% endfor %}</tbody></table></details>
 </section>
-<aside class="history-next"><span class="eyebrow">About this preview</span><p>These charts show the design, not a connected history feed. Real hourly readings still need verification.</p><a href="/preview/{{ 'rest' if metric == 'steps' else 'steps' }}">Explore {{ 'rest' if metric == 'steps' else 'steps' }} <span aria-hidden="true">↗</span></a></aside>
+<aside class="history-next"><a href="/preview/{{ 'rest' if metric == 'steps' else 'steps' }}">Explore {{ 'rest' if metric == 'steps' else 'steps' }} <span aria-hidden="true">↗</span></a></aside>
 {% endblock %}

@@ -65,6 +65,20 @@ def history_preview(metric: str, period: str, day: int, selected: int | None) ->
     total = sum(b["value"] for b in buckets if b["value"] is not None)
     sleep_total = sum(b["sleep"] for b in buckets if b["sleep"] is not None)
     nap_total = sum(b["nap"] for b in buckets if b["nap"] is not None)
+    complete_days = [b for b in buckets if not b.get("partial")] if period == "week" else []
+    average = (
+        round(sum(b["value"] for b in complete_days) / len(complete_days))
+        if complete_days
+        else None
+    )
+    average_sleep = (
+        round(sum(b["sleep"] for b in complete_days) / len(complete_days))
+        if complete_days
+        else None
+    )
+    average_nap = (
+        round(sum(b["nap"] for b in complete_days) / len(complete_days)) if complete_days else None
+    )
     maximum = (
         3000
         if metric == "steps" and period == "day"
@@ -101,6 +115,10 @@ def history_preview(metric: str, period: str, day: int, selected: int | None) ->
         "total": total,
         "sleep_total": sleep_total,
         "nap_total": nap_total,
+        "average": average,
+        "average_sleep": average_sleep,
+        "average_nap": average_nap,
+        "complete_days": len(complete_days),
         "maximum": maximum,
         "selected": selected,
         "chosen": chosen,

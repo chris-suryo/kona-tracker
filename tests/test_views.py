@@ -113,7 +113,7 @@ def test_the_page_draws_a_second_lap_and_prints_the_true_percentage():
 
 def test_the_page_prints_naps_and_last_night_as_hours_and_minutes():
     page = render(_snapshot())
-    assert "8<small>h</small>30<small>m</small>" in page
+    assert '8<small>h</small><span class="duration-minutes">30<small>m</small></span>' in page
     assert "22<small>m</small>" in page
     assert "<small>h</small></span>\n    <span>so far today" not in page
 

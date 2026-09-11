@@ -1,0 +1,10 @@
+{% macro duration(parts) -%}
+{%- for figure, unit in parts -%}
+{%- if unit == 'm' and parts|length > 1 -%}<span class="duration-minutes">{{ figure }}<small>{{ unit }}</small></span>
+{%- else -%}{{ figure }}<small>{{ unit }}</small>{%- endif -%}
+{%- endfor -%}
+{%- endmacro %}
+{% macro minutes(value) -%}
+{%- if value >= 60 -%}{{ value // 60 }}<small>h</small>{% if value % 60 %}<span class="duration-minutes">{{ value % 60 }}<small>m</small></span>{% endif %}
+{%- else -%}{{ value }}<small>m</small>{%- endif -%}
+{%- endmacro %}

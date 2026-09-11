@@ -169,6 +169,7 @@ test('refresh timeout unlocks retry and explains failure', async () => {
   x.window.KonaRefresh(); x.window.KonaRefresh();
   assert.equal(x.requests.length, 1);
   x.fire(20000); await settle();
+  x.fire(650); x.fire(220);
   assert.equal(x.nodes.pull.hidden, true);
   assert.match(x.note.textContent, /Couldn't refresh/);
   x.window.KonaRefresh(); assert.equal(x.requests.length, 2);
@@ -188,6 +189,19 @@ test('cancelled touch never triggers a refresh', () => {
   x.page.events.touchmove({touches:[{clientY:150}]});
   x.page.events.touchcancel(); x.page.events.touchend();
   assert.equal(x.requests.length, 0);
+});
+
+test('a new pull is not hidden by the previous dismissal timer', async () => {
+  const x = setup('app.js'); x.window.scrollY = 0;
+  x.window.KonaRefresh(); x.requests[0].resolve(response({})); await settle();
+  assert.equal(x.nodes.pull.classList.contains('finished'), true);
+  x.page.events.touchstart({touches:[{clientY:0}], target:element()});
+  x.page.events.touchmove({touches:[{clientY:150}]});
+  assert.equal([...x.timers.values()].some(t => t.delay === 650), false);
+  assert.equal(x.nodes.pull.hidden, false);
+  x.page.events.touchend();
+  assert.equal(x.requests.length, 2);
+  assert.equal(x.nodes.pull.style.transform, '');
 });
 
 test('map init releases the previous Leaflet instance even when new points are absent', () => {

@@ -361,7 +361,10 @@ def web_client(fi_service=None, **kw) -> TestClient:
 def test_activity_page_renders_real_numbers():
     with web_client(service()) as c:
         body = c.get("/activity").text
-        assert "8<small>h</small>30<small>m</small>" in body and "4,210" in body
+        assert (
+            '8<small>h</small><span class="duration-minutes">30<small>m</small></span>' in body
+            and "4,210" in body
+        )
         assert "9,000" in body
         assert "22<small>m</small>" in body and "so far today" in body  # today's naps
         assert "31,000" in body and "This week" in body  # replaced the distance tile
