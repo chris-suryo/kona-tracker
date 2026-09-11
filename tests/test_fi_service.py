@@ -379,7 +379,7 @@ def test_activity_page_renders_real_numbers():
         assert "password" not in json.dumps(data).lower()
 
         assert body.index("Steps today") < body.index("Naps today")
-        assert body.index("Location") < body.index("Steps today") < body.index("Naps today")
+        assert body.index("Steps today") < body.index("Naps today") < body.index("Location")
         assert 'id="kona-map"' in body and "Home" in body
 
 

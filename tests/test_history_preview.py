@@ -81,7 +81,11 @@ def test_overview_charts_are_sample_only():
         sample = client.get("/activity?preview=1").text
         live = client.get("/activity").text
         assert "Steps by hour" not in sample and "Rest by hour" not in sample
-        assert sample.index('class="location-card') < sample.index('class="steps-hero')
+        assert (
+            sample.index('class="steps-hero')
+            < sample.index('class="rest-grid')
+            < sample.index('class="location-card')
+        )
         assert "Steps by hour" not in live and "/preview/steps" not in live
         assert "Explore sample steps" not in sample
         detail = client.get("/preview/steps").text

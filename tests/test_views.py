@@ -127,7 +127,7 @@ def test_resting_since_uses_the_start_fi_already_sends():
     assert "Resting" in page and f"since {expected}" in page
     # A walk keeps its distance and gains the start time beside it.
     page = render(_snapshot(activity="walk", activity_since=since, walk_distance=420))
-    assert f"420 m so far · since {expected}" in page
+    assert f"420 m walked · Started {expected}" in page
     # Nothing to say without a start; the line simply is not there.
     assert activity_context(_snapshot(activity="rest"), configured=True)["activity_since"] is None
 

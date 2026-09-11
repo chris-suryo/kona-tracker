@@ -135,6 +135,13 @@ charts and approved removing them from the overview.
 
 ## Approved simplification (current design)
 
+Latest approved adjustment supersedes the ordering in the paragraph below:
+Steps first, naps/sleep second, Location third, then freshness. Restored a
+larger steps number/ring and more section spacing. Removed the separate
+"From her collar" status block; activity start, walking distance and
+connection now sit inside Location. "420 m walked · Started ..." distinguishes
+the start from the collar report time. Detailed charts remain one tap away.
+
 Activity now orders collar status, compact location/map, tappable Steps,
 tappable Rest, then freshness. Hourly charts and weekly totals are removed
 from the overview; sample history remains in its detail routes. Steps/Rest

@@ -40,59 +40,6 @@
 </section>
 {% endif %}
 
-<section class="collar-summary" aria-label="Kona's current collar status">
-  <div>
-    <span class="eyebrow">{{ 'Last reported' if stale else 'From her collar' }}</span>
-    <strong>
-      {% if activity == 'walk' %}On a walk
-      {% elif activity == 'rest' %}Resting
-      {% elif not configured %}Collar not connected
-      {% else %}Status unavailable{% endif %}
-    </strong>
-    {% set walk_note = activity == 'walk' and walk_distance_m %}
-    {% if walk_note or (activity in ('walk', 'rest') and activity_since) %}
-    <span>{% if walk_note %}{{ walk_distance_m }} m so far{% if activity_since %} · {% endif %}{% endif %}{% if activity_since %}since {{ activity_since }}{% endif %}</span>
-    {% endif %}
-  </div>
-  <div class="connection">
-    {% if on_base is sameas true %}<span class="status-dot {{ 'warn-dot' if stale else 'live' }}"></span>On charger
-    {% elif on_base is sameas false and signal %}<span class="status-dot {{ 'warn-dot' if stale else 'live' }}"></span>Cellular {{ signal }}%
-    {% elif configured and has_data %}<span class="status-dot"></span>Connection unknown
-    {% endif %}
-  </div>
-</section>
-
-{% if configured %}
-
-<section class="location-card {{ 'urgent' if escaped or lost else '' }}" aria-labelledby="location-title">
-  <div class="location-heading">
-    <div>
-      <span class="eyebrow">Location</span>
-      <strong id="location-title">
-        {% if map_kind == 'current' %}Current walk
-        {% elif map_kind == 'rest' %}Resting{% if area_name %} at {{ area_name }}{% endif %}
-        {% elif map_kind == 'last' %}Last GPS fix
-        {% elif map_kind == 'home' %}Home
-        {% elif area_name %}{{ area_name }}
-        {% else %}Location unavailable{% endif %}
-      </strong>
-    </div>
-    {% if location_updated %}<span>{{ 'Collar reported' if map_kind in ('current', 'rest') else 'Last seen' }} {{ location_updated }}</span>{% endif %}
-  </div>
-  {% if map_kind == 'home' %}<p class="location-note">Saved Home location · not Kona's reported position</p>{% endif %}
-  {% if stale %}<p class="location-note warn">From the last successful Fi update{% if as_of %} · {{ as_of }}{% endif %}</p>{% endif %}
-  {% if map_points %}
-  <div id="kona-map" class="map" aria-label="Map showing Kona's {% if map_kind == 'current' %}current walk route{% elif map_kind == 'rest' %}resting place{% elif map_kind == 'home' %}Home location{% else %}last reported location{% endif %}"></div>
-  <p id="map-unavailable" class="map-empty" hidden>Map unavailable. The map provider did not supply the background. Collar report details are shown above.</p>
-  {% else %}
-  <div class="map-empty">
-    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s6-5.2 6-11a6 6 0 1 0-12 0c0 5.8 6 11 6 11Z"/><circle cx="12" cy="10" r="2"/></svg>
-    <span>{% if area_name %}Fi reported {{ area_name }} without a map position.{% else %}Fi hasn't sent a map position.{% endif %}</span>
-  </div>
-  {% endif %}
-</section>
-{% endif %}
-
 <section class="steps-hero {{ 'dimmed' if stale else '' }}" aria-label="Steps today">
   <div class="hero-copy">
     <span class="eyebrow">Steps today</span>
@@ -137,6 +84,41 @@
     {% endif %}
   </div>
 </section>
+
+{% if configured %}
+
+<section class="location-card {{ 'urgent' if escaped or lost else '' }}" aria-labelledby="location-title">
+  <div class="location-heading">
+    <div>
+      <span class="eyebrow">Location</span>
+      <strong id="location-title">
+        {% if map_kind == 'current' %}Current walk
+        {% elif map_kind == 'rest' %}Resting{% if area_name %} at {{ area_name }}{% endif %}
+        {% elif map_kind == 'last' %}Last GPS fix
+        {% elif map_kind == 'home' %}Home
+        {% elif area_name %}{{ area_name }}
+        {% else %}Location unavailable{% endif %}
+      </strong>
+    </div>
+    {% if location_updated %}<span>{{ 'Collar reported' if map_kind in ('current', 'rest') else 'Last seen' }} {{ location_updated }}</span>{% endif %}
+  </div>
+  {% if map_kind == 'home' %}<p class="location-note">Saved Home location · not Kona's reported position</p>{% endif %}
+  {% if activity in ('walk', 'rest') and (activity_since or walk_distance_m) %}
+  <p class="location-note activity-timing">{% if activity == 'walk' and walk_distance_m %}{{ walk_distance_m }} m walked{% if activity_since %} · {% endif %}{% endif %}{% if activity_since %}{{ 'Started' if activity == 'walk' else 'Resting since' }} {{ activity_since }}{% endif %}</p>
+  {% endif %}
+  {% if on_base is not none %}<p class="location-note connection"><span class="status-dot {{ 'warn-dot' if stale else 'live' }}"></span>{% if on_base %}On charger{% elif signal %}Cellular {{ signal }}%{% else %}Cellular{% endif %}</p>{% endif %}
+  {% if stale %}<p class="location-note warn">From the last successful Fi update{% if as_of %} · {{ as_of }}{% endif %}</p>{% endif %}
+  {% if map_points %}
+  <div id="kona-map" class="map" aria-label="Map showing Kona's {% if map_kind == 'current' %}current walk route{% elif map_kind == 'rest' %}resting place{% elif map_kind == 'home' %}Home location{% else %}last reported location{% endif %}"></div>
+  <p id="map-unavailable" class="map-empty" hidden>Map unavailable. The map provider did not supply the background. Collar report details are shown above.</p>
+  {% else %}
+  <div class="map-empty">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s6-5.2 6-11a6 6 0 1 0-12 0c0 5.8 6 11 6 11Z"/><circle cx="12" cy="10" r="2"/></svg>
+    <span>{% if area_name %}Fi reported {{ area_name }} without a map position.{% else %}Fi hasn't sent a map position.{% endif %}</span>
+  </div>
+  {% endif %}
+</section>
+{% endif %}
 
 <div class="freshness" data-as-of="{{ as_of or '' }}">
   {% if as_of and stale %}<span class="status-dot warn-dot"></span>Last successful update {{ as_of }}{% if clock_zone %} {{ clock_zone }}{% endif %}
