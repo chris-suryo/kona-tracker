@@ -8,13 +8,17 @@ once the hardware exists.
 kit: 3e06b156508b881bef26345c0bb7a63c90db4824 · stamped by dos new
 ---
 
-## Status (2026-09-10, chapter 2)
+## Status (2026-09-11, chapter 2)
 
-**`main` is stale.** The current work is on `claude/elegant-sagan-tit1xp`,
-fifteen commits ahead, CI green on ubuntu and windows, 220 tests. Work from
-that branch; Chris merges. `docs/production-punchlist.md` is the queue and
-carries the reasoning behind every item; `docs/chatgpt-handoff.md` is the
-brief for a visiting assistant.
+**`main` is current.** Everything built through 2026-09-11 is merged: the
+overnight UI pass, the Fi data brief, and the camera rewrite from MJPEG to
+snapshot polling. Branch from `main`; Chris merges. One branch is
+deliberately unmerged, `chatgpt/ui-pass` (PR #7), which is a visiting
+assistant's work in flight.
+
+`docs/production-punchlist.md` is the queue and carries the reasoning behind
+every item; `docs/scaling-limits.md` is the standing list of ceilings;
+`docs/chatgpt-handoff.md` is the brief for a visiting assistant.
 
 - **Slice 1:** `kona probe` dumps every Fi API field, redacted. Still
   unverified against the real API. `docs/slice-1-probe-plan.md`.

@@ -167,7 +167,7 @@ Each has a test, and each has already cost real time.
 > Jinja, plain CSS, no build step, no JS framework.
 >
 > Before more UI work, understand what the data can support. The full brief
-> is `docs/data-brief.md` on branch `claude/elegant-sagan-tit1xp`. The short
+> is `docs/data-brief.md` on `main`. The short
 > version:
 >
 > **We have:** steps and an adaptive step goal, weekly steps, outdoor GPS

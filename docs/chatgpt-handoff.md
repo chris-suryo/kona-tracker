@@ -19,9 +19,11 @@ design session.
 
 ## Where the code is
 
-Branch **`claude/elegant-sagan-tit1xp`**, thirteen commits ahead of `main`,
-CI green on ubuntu and windows, 219 tests. `main` is stale; work from the
-branch. Chris merges.
+**`main`**, as of 2026-09-11. It is current: everything built through that
+day is merged, CI green on ubuntu and windows, 274 tests. Branch from `main`
+and open a PR; Chris merges. (Earlier versions of this file pointed at
+`claude/elegant-sagan-tit1xp` and said `main` was stale. That is no longer
+true.)
 
 ## The five rules that matter most here
 
@@ -98,7 +100,11 @@ outbound heartbeat so a dead PC still raises an alarm.
   iOS half needs the JavaScript, not the meta tag.
 - Do not hard-code `secure=True` on the session cookie: it breaks LAN login
   silently.
-- Do not use `location.reload()` to refresh: it tears down the MJPEG stream.
+- Do not use `location.reload()` to refresh: pull-to-refresh repaints in
+  place so the picture never blinks. The Camera tab no longer holds an MJPEG
+  stream at all -- it fetches one frame at a time from `/snapshot.jpg?after=`
+  and hands the `<img>` an object URL. `docs/camera-black-screen-handoff.md`
+  is why, and `docs/scaling-limits.md` is what it costs.
 - Do not trust a forwarded-IP header from a non-loopback peer.
 - A mock that answers any query tests the parser, not the query.
 
@@ -110,8 +116,8 @@ outbound heartbeat so a dead PC still raises an alarm.
 > dog Kona's Fi collar data and a live camera from my house. Python, FastAPI,
 > Jinja templates, plain CSS, no build step, no JS framework.
 >
-> The code is on GitHub at chris-suryo/kona-tracker, branch
-> `claude/elegant-sagan-tit1xp`. Read `docs/chatgpt-handoff.md` first, then
+> The code is on GitHub at chris-suryo/kona-tracker, branch `main`.
+> Read `docs/chatgpt-handoff.md` first, then
 > `docs/handoff.md` and `CLAUDE.md`. The handoff doc lists constraints that
 > will silently break things if you miss them, especially: the page sends a
 > Content-Security-Policy so there can be no inline `<script>` and no `onclick`
