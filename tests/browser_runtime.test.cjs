@@ -1,6 +1,12 @@
 // No packages: run with an existing Node installation:
 // node --test tests/browser_runtime.test.cjs
 // Executes the shipped scripts with controlled network/timer/DOM boundaries.
+//
+// MANUAL TEST, NOT A GATE. CI (.github/workflows/ci.yml) runs ruff and pytest
+// only; nothing runs this file automatically, so a green CI says nothing
+// about it. Run it yourself after touching app.js or camera.js. Wiring it
+// into CI means installing Node on both runners, which is a dependency
+// decision that is Chris's to make (docs/overnight-brief.md, item 3).
 const {test} = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
