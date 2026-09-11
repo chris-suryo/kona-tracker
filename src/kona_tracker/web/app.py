@@ -231,6 +231,7 @@ def create_app(
             request.headers,
             request.client.host if request.client else "?",
             settings.trusted_proxy_header,
+            settings.trusted_proxy_ips,
         )
         if auth.lockout.blocked(key):
             return templates.TemplateResponse(

@@ -45,6 +45,10 @@ class Settings:
     # back, so the login silently never takes. `docs/remote-access.md` says
     # when to turn them on.
     trusted_proxy_header: str = ""  # e.g. CF-Connecting-IP behind cloudflared
+    #: Peers whose forwarded-address header is believed. Loopback, because
+    #: cloudflared runs on this machine; list the tunnel host's address here
+    #: if it ever runs elsewhere. Never a LAN range.
+    trusted_proxy_ips: tuple[str, ...] = ("127.0.0.1", "::1")
     secure_cookies: bool = False
     #: Directory for a rotating `kona.log`; blank = console only.
     log_dir: str = ""
@@ -146,6 +150,10 @@ def load_settings(env_file: Path | None = Path(".env"), fake_camera: bool = Fals
         raise SettingsError("KONA_RTSP_URL must start with a scheme, e.g. rtsp://<ip>:554/stream1")
 
     trusted_proxy_header = get("KONA_TRUSTED_PROXY_HEADER").strip()
+    trusted_proxy_ips = tuple(
+        part.strip() for part in get("KONA_TRUSTED_PROXY_IPS", "127.0.0.1,::1").split(",")
+    )
+    trusted_proxy_ips = tuple(ip for ip in trusted_proxy_ips if ip) or ("127.0.0.1", "::1")
     secure_cookies = parse_bool(get("KONA_SECURE_COOKIES"), "KONA_SECURE_COOKIES")
     if trusted_proxy_header and not secure_cookies:
         # A proxy header only makes sense behind a tunnel, and a tunnel is
@@ -183,6 +191,7 @@ def load_settings(env_file: Path | None = Path(".env"), fake_camera: bool = Fals
         fi_refresh_seconds=float(get("KONA_FI_REFRESH_SECONDS", "300")),
         fi_data_start=data_start,
         trusted_proxy_header=trusted_proxy_header,
+        trusted_proxy_ips=trusted_proxy_ips,
         secure_cookies=secure_cookies,
         log_dir=get("KONA_LOG_DIR").strip(),
     )

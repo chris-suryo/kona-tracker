@@ -43,7 +43,12 @@ would lock you and your sister out too. With it, the lockout counts per
 visitor address, read from the header Cloudflare sets. It is deliberately
 not `X-Forwarded-For`: anyone can send that header and pick their own
 bucket. `kona serve` also tells uvicorn *not* to honour forwarded headers on
-its own, so this setting is the only path.
+its own, so this setting is the only path. And the header is believed only
+when the request comes from the tunnel's own address
+(`KONA_TRUSTED_PROXY_IPS`, loopback by default): port 8000 stays open on
+the Wi-Fi next to the tunnel, and a visitor there who sends a fresh
+`CF-Connecting-IP` per guess must not get a fresh lockout bucket per guess.
+The security review of 2026-09-11 caught exactly that gap.
 
 **`KONA_SECURE_COOKIES=true`.** Marks the session cookie `Secure` so it only
 travels over HTTPS. Do not set this while you still open

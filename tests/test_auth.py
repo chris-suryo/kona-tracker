@@ -15,6 +15,20 @@ def test_without_a_trusted_header_the_peer_address_is_the_key():
     assert client_key(headers, "127.0.0.1", "") == "127.0.0.1"
 
 
+def test_a_trusted_header_counts_only_from_the_tunnels_own_peer():
+    """The regression the security review caught: honouring the header from
+    every peer lets a Wi-Fi visitor pick a fresh bucket per guess and
+    brute-force the passcode with no lockout at all. cloudflared connects
+    over localhost; nobody else's word for their address is taken."""
+    header = {"CF-Connecting-IP": "203.0.113.9"}
+    assert client_key(header, "127.0.0.1", "CF-Connecting-IP") == "203.0.113.9"
+    assert client_key(header, "::1", "CF-Connecting-IP") == "203.0.113.9"
+    assert client_key(header, "192.168.1.20", "CF-Connecting-IP") == "192.168.1.20"
+    # The tunnel host can be somewhere else, if you say so.
+    assert client_key(header, "10.0.0.5", "CF-Connecting-IP", ("10.0.0.5",)) == "203.0.113.9"
+    assert client_key(header, "127.0.0.1", "CF-Connecting-IP", ("10.0.0.5",)) == "127.0.0.1"
+
+
 def test_a_trusted_header_is_used_only_when_it_carries_an_address():
     assert client_key({"CF-Connecting-IP": " 203.0.113.9 "}, "127.0.0.1", "CF-Connecting-IP") == (
         "203.0.113.9"

@@ -91,6 +91,13 @@ def test_tunnel_settings_are_off_by_default_and_parsed_strictly(tmp_path, monkey
     monkeypatch.setenv("KONA_TRUSTED_PROXY_HEADER", "CF-Connecting-IP")
     s = load_settings(tmp_path / "none.env", fake_camera=True)
     assert s.trusted_proxy_header == "CF-Connecting-IP"
+    assert s.trusted_proxy_ips == ("127.0.0.1", "::1"), "loopback unless told otherwise"
+    monkeypatch.setenv("KONA_TRUSTED_PROXY_IPS", " 10.0.0.5, ::1 ")
+    assert load_settings(tmp_path / "none.env", fake_camera=True).trusted_proxy_ips == (
+        "10.0.0.5",
+        "::1",
+    )
+    monkeypatch.delenv("KONA_TRUSTED_PROXY_IPS")
     # A tunnel is HTTPS; say so when the cookie is still allowed over http.
     assert "KONA_SECURE_COOKIES" in capsys.readouterr().err
 

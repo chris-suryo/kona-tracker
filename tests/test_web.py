@@ -101,7 +101,7 @@ def test_a_trusted_proxy_header_gives_each_visitor_their_own_lockout():
     """Behind cloudflared every peer is 127.0.0.1. With the header trusted,
     a stranger locking themselves out does not lock out the household."""
     app = _app(trusted_proxy_header="CF-Connecting-IP")
-    with TestClient(app) as c:
+    with TestClient(app, client=("127.0.0.1", 50000)) as c:
         stranger = {"CF-Connecting-IP": "203.0.113.1"}
         sister = {"CF-Connecting-IP": "198.51.100.7"}
         for _ in range(2):
@@ -113,6 +113,30 @@ def test_a_trusted_proxy_header_gives_each_visitor_their_own_lockout():
         # the peer address, and that bucket is untouched by the stranger.
         r = c.post("/login", data={"passcode": "4242"}, follow_redirects=False)
         assert r.status_code == 303
+    app.state.hub.stop()
+
+
+def test_a_wifi_visitor_cannot_dodge_the_lockout_by_sending_the_header():
+    """Port 8000 stays reachable on the LAN next to the tunnel. A peer that
+    is not the tunnel keeps its own address as the key whatever it sends;
+    otherwise a fresh header value per guess would mean no lockout."""
+    app = _app(trusted_proxy_header="CF-Connecting-IP")
+    with TestClient(app, client=("192.168.1.20", 50000)) as c:
+        for n in (1, 2):
+            r = c.post(
+                "/login",
+                data={"passcode": "0000"},
+                headers={"CF-Connecting-IP": f"10.0.0.{n}"},
+                follow_redirects=False,
+            )
+            assert r.status_code == 401
+        r = c.post(
+            "/login",
+            data={"passcode": "4242"},
+            headers={"CF-Connecting-IP": "10.0.0.3"},
+            follow_redirects=False,
+        )
+        assert r.status_code == 429, "two guesses from one Wi-Fi peer, whatever it claims"
     app.state.hub.stop()
 
 

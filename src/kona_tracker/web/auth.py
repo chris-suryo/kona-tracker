@@ -29,17 +29,31 @@ from itsdangerous import BadSignature, SignatureExpired, TimestampSigner
 COOKIE_NAME = "kona_session"
 
 
-def client_key(headers: Mapping[str, str], client_host: str, trusted_header: str = "") -> str:
+#: Where the tunnel connects from. `cloudflared` runs on the same machine
+#: and reaches the app over localhost; KONA_TRUSTED_PROXY_IPS widens this
+#: if it ever moves to another box.
+LOOPBACK_PEERS: tuple[str, ...] = ("127.0.0.1", "::1")
+
+
+def client_key(
+    headers: Mapping[str, str],
+    client_host: str,
+    trusted_header: str = "",
+    trusted_peers: tuple[str, ...] = LOOPBACK_PEERS,
+) -> str:
     """Which lockout bucket this request belongs to.
 
     With no trusted header configured this is the peer address, full stop; a
     forwarded-address header that happens to be present is ignored, because
     nothing vouches for it. With one configured (e.g. `CF-Connecting-IP`
-    behind cloudflared) its value is used when it parses as an IP address,
-    and the peer address otherwise -- a LAN visitor who bypasses the tunnel
-    sends no such header and must still get a bucket of their own.
+    behind cloudflared) its value is used when it parses as an IP address
+    **and the request came from a trusted peer** -- the tunnel's own address.
+    Anyone else, such as a Wi-Fi visitor reaching port 8000 directly, keeps
+    their peer address as the key however many headers they send: honouring
+    the header from every peer would let a LAN attacker pick a fresh bucket
+    per guess and brute-force the passcode with no lockout at all.
     """
-    if trusted_header:
+    if trusted_header and client_host in trusted_peers:
         raw = (headers.get(trusted_header) or "").strip()
         if raw:
             try:

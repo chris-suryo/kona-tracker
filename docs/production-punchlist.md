@@ -220,8 +220,11 @@ academic. Behind a tunnel it is not.
 > `web/auth.py`, `Lockout` no longer grows with strangers, and `kona serve`
 > passes `proxy_headers=False` to uvicorn -- whose *default* silently
 > rewrites the client address from `X-Forwarded-For` for any 127.0.0.1 peer,
-> which is the unconditional trust this item rules out. Tests cover both
-> states. What remains is Chris's: set it behind the real tunnel.
+> which is the unconditional trust this item rules out. The header is
+> believed only from the tunnel's own peer (`KONA_TRUSTED_PROXY_IPS`,
+> loopback by default) -- the session's security review caught that a
+> Wi-Fi visitor could otherwise pick a fresh bucket per guess. Tests cover
+> both states. What remains is Chris's: set it behind the real tunnel.
 
 
 `app.py:170`:
