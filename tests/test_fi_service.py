@@ -538,7 +538,7 @@ def test_walk_positions_are_validated_sorted_and_exposed_behind_auth():
         from kona_tracker.web.app import HERE
 
         assert "tile.openstreetmap.org" in (HERE / "static" / "map.js").read_text("utf-8")
-        assert "Current walk" in page and "Updated" in page
+        assert "Current walk" in page and "Collar reported" in page
         assert "30.2672" in page and len(api["positions"]) == 2
 
 
@@ -651,7 +651,7 @@ def test_preview_is_obviously_sample_data_and_never_changes_live_json():
         preview = c.get("/activity?preview=1").text
         live = c.get("/activity.json").json()
     assert "Sample preview" in preview and "not Kona's live collar data" in preview
-    assert "18,240" in preview and "8<small>h</small>12<small>m</small>" in preview
+    assert "7,420" in preview and "7<small>h</small>" in preview
     assert 'id="kona-map"' in preview
     assert live["steps"] == 4210, "preview mode must not enter Fi's cache or API"
 
@@ -832,7 +832,7 @@ def test_resting_position_reaches_the_map_with_its_own_words():
         ctx = activity_context(c.app.state.fi.snapshot(), configured=True)
     assert ctx["map_kind"] == "rest" and ctx["location_live"] is False
     assert ctx["map_points"] == [{"lat": 30.2675, "lon": -97.7429, "accuracy": None}]
-    assert "Resting at Home" in page and "Last report" in page
+    assert "Resting at Home" in page and "Collar reported" in page
     assert "Current walk" not in page and "Last GPS fix" not in page
     assert data["rest_position"] == {
         "latitude": 30.2675,
@@ -1018,7 +1018,7 @@ def test_times_are_konas_when_fi_names_her_timezone_and_say_so():
         assert ctx["as_of"] == expected.strftime("%H:%M")
         assert ctx["clock_zone"] == expected.strftime("%Z") and ctx["clock_zone"]
         assert data["clock"] == "fi" and data["timezone"] == "America/Chicago"
-        assert f"Updated {ctx['as_of']} {ctx['clock_zone']}" in page
+        assert f"Checked Fi {ctx['as_of']} {ctx['clock_zone']}" in page
     else:
         assert ctx["as_of"] == NOW.astimezone().strftime("%H:%M")
         assert ctx["clock_zone"] is None and data["clock"] == "server"

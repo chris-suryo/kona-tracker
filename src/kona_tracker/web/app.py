@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, Form, Request, Response
+from fastapi import FastAPI, Form, HTTPException, Query, Request, Response
 from fastapi.responses import (
     HTMLResponse,
     JSONResponse,
@@ -26,6 +26,7 @@ from kona_tracker.fi.service import FiService
 from kona_tracker.web.auth import COOKIE_NAME, Lockout, PasscodeAuth, client_key
 from kona_tracker.web.awake import allow_sleep, keep_awake
 from kona_tracker.web.heartbeat import Heartbeat
+from kona_tracker.web.history_preview import history_preview
 from kona_tracker.web.logs import attach_file_logging, detach_file_logging
 from kona_tracker.web.settings import Settings
 from kona_tracker.web.views import (
@@ -333,6 +334,20 @@ def create_app(
             else activity_context(snapshot, configured=fi is not None)
         )
         return templates.TemplateResponse(request, "activity.html", context)
+
+    @app.get("/preview/{metric}", response_class=HTMLResponse)
+    def preview_history(
+        request: Request,
+        metric: str,
+        period: str = "day",
+        day: int = Query(default=0, ge=0, le=6),
+        selected: int | None = Query(default=None, ge=0, le=23),
+    ):
+        if metric not in {"steps", "rest"} or period not in {"day", "week"}:
+            raise HTTPException(status_code=404)
+        return templates.TemplateResponse(
+            request, "history_preview.html", history_preview(metric, period, day, selected)
+        )
 
     @app.get("/settings", response_class=HTMLResponse)
     def profile_settings(request: Request):

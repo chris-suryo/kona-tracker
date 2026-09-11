@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Kona · {{ metric }} · sample{% endblock %}
+{% block pageclass %}history-page{% endblock %}
+{% block body %}
+<nav class="subnav" aria-label="Back"><a class="back" href="/activity?preview=1">{% include "_chevron.svg" %}<span>Activity</span></a></nav>
+<aside class="preview-banner" aria-label="Sample data preview"><div><strong>Design preview · sample data</strong><span>Fictional readings, not Kona's history.</span><span>11 Sep 2026 · sample clock UTC</span></div></aside>
+<header class="history-heading"><span class="eyebrow">A little more of her day</span><h1>{{ 'Steps' if metric == 'steps' else 'Rest' }}</h1></header>
+<nav class="history-tabs" aria-label="Time range">
+  {% for value, label in [('day', 'Day'), ('week', 'Week')] %}<a href="/preview/{{ metric }}?period={{ value }}&amp;day={{ day }}"{% if period == value %} aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}
+</nav>
+<div class="date-switch">
+  {% if period == 'day' and day < 6 %}<a href="/preview/{{ metric }}?day={{ day + 1 }}" aria-label="Previous sample day">‹</a>{% else %}<span aria-hidden="true">‹</span>{% endif %}
+  <strong>{{ date_label if period == 'day' else '5–11 Sep · sample week' }}</strong>
+  {% if period == 'day' and day > 0 %}<a href="/preview/{{ metric }}?day={{ day - 1 }}" aria-label="Next sample day">›</a>{% else %}<span aria-hidden="true">›</span>{% endif %}
+</div>
+<section class="history-total" aria-label="Sample total">
+  <span class="eyebrow">{{ 'Recorded steps' if metric == 'steps' else 'Recorded rest' }}</span><strong class="d">{{ total_label }}</strong>
+  <p>{{ 'Through 11:00 · sample day in progress' if period == 'day' and day == 0 else 'Includes a gap in readings' if partial else 'Complete sample day' }}</p>
+  {% if metric == 'rest' %}<div class="rest-key"><span><i class="sleep-key"></i>Sleep <strong>{{ sleep_total // 60 }} h {{ sleep_total % 60 }} m</strong></span><span><i class="nap-key"></i>Naps <strong>{{ nap_total // 60 }} h {{ nap_total % 60 }} m</strong></span></div>{% endif %}
+</section>
+<section class="history-chart" aria-labelledby="chart-title">
+  <div class="chart-heading"><h2 id="chart-title">{{ 'Steps' if metric == 'steps' else 'Rest' }} by {{ 'hour' if period == 'day' else 'day' }}</h2><span>{{ '{:,}'.format(maximum) }} {{ 'steps' if metric == 'steps' else 'min' }}</span></div>
+  <svg class="bar-chart {{ metric }}" viewBox="0 0 340 178" role="group" aria-label="Sample {{ metric }} chart. {{ 'Select an hour for its reading.' if period == 'day' else 'Select a day to open it.' }}">
+    <path class="chart-rule" d="M0 12H340 M0 87H340 M0 162H340"/>
+    {% for bucket in buckets %}
+    <a href="{{ bucket.href }}" aria-label="{{ bucket.label }}: {{ 'not yet elapsed' if bucket.future else 'no reading' if bucket.value is none else (bucket.value|string) ~ (' steps' if metric == 'steps' else ' minutes') }}"{% if selected == loop.index0 %} aria-current="true"{% endif %}>
+      <rect class="bar-hit" x="{{ bucket.x }}" y="10" width="{{ bucket.width + 3 }}" height="158"/>
+      {% if bucket.value is none %}<path class="{{ 'future-bar' if bucket.future else 'missing-bar' }}" d="M{{ bucket.x }} 162h{{ bucket.width }}"/>
+      {% elif bucket.value == 0 %}<circle class="zero-bar" cx="{{ bucket.x + bucket.width / 2 }}" cy="162" r="2"/>
+      {% elif metric == 'steps' %}<rect class="step-bar{% if bucket.partial %} partial-bar{% endif %}" x="{{ bucket.x }}" y="{{ 162 - bucket.height }}" width="{{ bucket.width }}" height="{{ bucket.height }}" rx="2"/>
+      {% else %}<rect class="sleep-bar" x="{{ bucket.x }}" y="{{ 162 - bucket.sleep_height }}" width="{{ bucket.width }}" height="{{ bucket.sleep_height }}" rx="2"/><rect class="nap-bar" x="{{ bucket.x }}" y="{{ 162 - bucket.height }}" width="{{ bucket.width }}" height="{{ bucket.nap_height }}" rx="2"/>{% endif %}
+    </a>{% endfor %}
+  </svg>
+  <div class="chart-axis">{% if period == 'day' %}<span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>24:00</span>{% else %}{% for b in buckets %}<span>{{ b.short }}</span>{% endfor %}{% endif %}</div>
+  <p class="chart-selection" aria-live="polite">{% if chosen %}<strong>{{ chosen.label }}</strong> · {% if chosen.future %}Not yet elapsed{% elif chosen.value is none %}No reading{% else %}{{ '{:,}'.format(chosen.value) }} {{ 'steps' if metric == 'steps' else 'minutes of rest' }}{% endif %}{% else %}{{ 'Tap an hour to see its reading.' if period == 'day' else 'Tap a day to explore it. Today is incomplete.' }}{% endif %}</p>
+  <p class="chart-footnote">A dot means zero. A dashed mark means no reading. Future hours are faint.</p>
+  {% if metric == 'rest' and period == 'day' %}
+  <h2 class="timeline-title">Sleep &amp; nap intervals</h2>
+  <svg class="rest-timeline" viewBox="0 0 340 36" role="img" aria-label="Fictional sleep and nap intervals; exact times listed below">
+    <rect class="timeline-track" width="340" height="36" rx="8"/>
+    {% if day == 0 %}<rect class="timeline-future" x="{{ 660 / 1440 * 340 }}" width="{{ 780 / 1440 * 340 }}" height="36"/>{% endif %}
+    {% for interval in intervals %}<rect class="{{ interval.kind }}-bar" x="{{ interval.x }}" y="2" width="{{ interval.width }}" height="32" rx="2"/>{% endfor %}
+    {% if day == 0 %}<path class="timeline-now" d="M{{ 660 / 1440 * 340 }} 0v36"/>{% endif %}
+    {% if day == 2 %}<path class="missing-bar" d="M{{ 840 / 1440 * 340 }} 18h{{ 60 / 1440 * 340 }}"/>{% endif %}
+  </svg>
+  <div class="chart-axis"><span>00:00</span><span>12:00</span><span>24:00</span></div>
+  {% if day == 0 %}<p class="chart-footnote">Dotted line: sample readings through 11:00. The remaining hours have not elapsed.</p>{% endif %}
+  <details class="history-readings"><summary>Read sample intervals</summary><ul>{% for interval in intervals %}<li>{{ interval.label }}</li>{% endfor %}</ul></details>
+  {% endif %}
+  <details class="history-readings"><summary>Read the sample values</summary><table><thead><tr><th>{{ 'Hour' if period == 'day' else 'Day' }}</th><th>{{ 'Steps' if metric == 'steps' else 'Rest (min)' }}</th></tr></thead><tbody>{% for b in buckets %}<tr><th>{{ b.label }}</th><td>{{ 'Not yet elapsed' if b.future else 'No reading' if b.value is none else b.value }}{% if b.partial %} · incomplete{% endif %}</td></tr>{% endfor %}</tbody></table></details>
+</section>
+<aside class="history-next"><span class="eyebrow">About this preview</span><p>These charts show the design, not a connected history feed. Real hourly readings still need verification.</p><a href="/preview/{{ 'rest' if metric == 'steps' else 'steps' }}">Explore {{ 'rest' if metric == 'steps' else 'steps' }} <span aria-hidden="true">↗</span></a></aside>
+{% endblock %}

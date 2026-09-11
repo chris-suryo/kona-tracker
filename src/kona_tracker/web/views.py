@@ -309,21 +309,27 @@ def preview_activity_context() -> dict[str, Any]:
     collar does not force the owner to wait a week before checking whether
     every part of the dashboard reads well.
     """
-    now = datetime.now(UTC)
+    from kona_tracker.web.history_preview import SAMPLE_DAY, history_preview
+
+    now = datetime(SAMPLE_DAY.year, SAMPLE_DAY.month, SAMPLE_DAY.day, 11, tzinfo=UTC)
     start = (now - timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    sample_steps = history_preview("steps", "day", 0, None)
+    sample_rest = history_preview("rest", "day", 0, None)
     snapshot = FiSnapshot(
         fetched_at=now,
         pet_name="Kona",
-        window=RestWindow(start, start + timedelta(days=1), 8 * 3600 + 12 * 60, 0),
+        window=RestWindow(start, start + timedelta(days=1), sample_rest["sleep_total"] * 60, 0),
         today=RestWindow(
             start + timedelta(days=1),
             start + timedelta(days=2),
             0,
             1 * 3600 + 24 * 60,
         ),
-        activity=ActivityStats(18_240, 28_000, 2100),
-        week=ActivityStats(142_300, 196_000, None),
-        profile=PetProfile(name="Kona", breed="Labrador Retriever", birthday=date(2025, 8, 15)),
+        activity=ActivityStats(sample_steps["total"], 28_000, 2100),
+        week=ActivityStats(history_preview("steps", "week", 0, None)["total"], None, None),
+        profile=PetProfile(
+            name="Kona", breed="Labrador Retriever", birthday=date(2025, 8, 15), timezone="UTC"
+        ),
         status=CollarStatus(
             battery_percent=57,
             on_base=False,

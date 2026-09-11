@@ -19,7 +19,7 @@
 <div id="activity-body">
 {% if preview %}
 <aside class="preview-banner" aria-label="Sample data preview">
-  <div><strong>Sample preview</strong><span>This is not Kona's live collar data.</span></div>
+  <div><strong>Sample preview</strong><span>This is not Kona's live collar data. 11 Sep · sample clock UTC.</span></div>
   <a href="/activity">Return to live</a>
 </aside>
 {% endif %}
@@ -41,7 +41,7 @@
 
 <section class="collar-summary" aria-label="Kona's current collar status">
   <div>
-    <span class="eyebrow">{{ 'Last reported' if stale else 'Right now' }}</span>
+    <span class="eyebrow">{{ 'Last reported' if stale else 'From her collar' }}</span>
     <strong>
       {% if activity == 'walk' %}On a walk
       {% elif activity == 'rest' %}Resting
@@ -66,6 +66,7 @@
     <span class="eyebrow">Steps today</span>
     <span class="d hero-number {{ '' if steps else 'empty' }}">{{ steps or '&ndash;'|safe }}</span>
     <span class="hero-note">{% if step_goal %}of {{ step_goal }}{% else %}No goal available{% endif %}</span>
+    {% if preview %}<a class="detail-link" href="/preview/steps">Explore sample steps <span aria-hidden="true">↗</span></a>{% endif %}
   </div>
   <div class="goal-ring" aria-label="{{ ring.percent }} percent of today's step goal">
     <svg viewBox="0 0 120 120" aria-hidden="true">
@@ -104,6 +105,7 @@
 </section>
 
 {% if configured %}
+{% if preview %}<a class="detail-link rest-detail-link" href="/preview/rest">Explore sample rest <span aria-hidden="true">↗</span></a>{% endif %}
 <section class="location-card {{ 'urgent' if escaped or lost else '' }}" aria-labelledby="location-title">
   <div class="location-heading">
     <div>
@@ -117,7 +119,7 @@
         {% else %}Location unavailable{% endif %}
       </strong>
     </div>
-    {% if location_updated %}<span>{{ 'Updated' if map_kind == 'current' else 'Last report' if map_kind == 'rest' else 'Last seen' }} {{ location_updated }}</span>{% endif %}
+    {% if location_updated %}<span>{{ 'Collar reported' if map_kind in ('current', 'rest') else 'Last seen' }} {{ location_updated }}</span>{% endif %}
   </div>
   {% if map_kind == 'home' %}<p class="location-note">Saved Home location · not Kona's reported position</p>{% endif %}
   {% if stale %}<p class="location-note warn">From the last successful Fi update{% if as_of %} · {{ as_of }}{% endif %}</p>{% endif %}
@@ -139,14 +141,14 @@
   <span><span class="eyebrow">This week</span><strong class="phrase">{% if week_available_label %}Available {{ week_available_label }}{% else %}Not yet available{% endif %}</strong></span>
   <span>weekly steps</span>
   {% else %}
-  <span><span class="eyebrow">This week</span><strong class="d {{ '' if week_steps else 'empty' }}">{{ week_steps or '&ndash;'|safe }}</strong></span>
+  <span><span class="eyebrow">{{ 'Sample 7 days · incomplete' if preview else 'This week' }}</span><strong class="d {{ '' if week_steps else 'empty' }}">{{ week_steps or '&ndash;'|safe }}</strong></span>
   <span>steps</span>
   {% endif %}
 </section>
 
 <div class="freshness" data-as-of="{{ as_of or '' }}">
   {% if as_of and stale %}<span class="status-dot warn-dot"></span>Last successful update {{ as_of }}{% if clock_zone %} {{ clock_zone }}{% endif %}
-  {% elif as_of %}<span class="status-dot live"></span>Updated {{ as_of }}{% if clock_zone %} {{ clock_zone }}{% endif %}
+  {% elif as_of %}<span class="status-dot live"></span>Checked Fi {{ as_of }}{% if clock_zone %} {{ clock_zone }}{% endif %}
   {% elif not configured %}<span class="status-dot"></span>Waiting for setup
   {% elif problem %}<span class="status-dot bad-dot"></span>No answer from Fi
   {% endif %}
