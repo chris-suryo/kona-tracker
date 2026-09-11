@@ -10,6 +10,15 @@ Starting state verified before anything was touched: branch
 commits plus this report, all on the same branch. `/security-review` ran on
 the diff and reported no findings above its threshold.
 
+**Correction, the morning after.** That "260 passed" was true in the
+sandbox and in CI and still failed on Chris's PC: one new test asserted a
+literal clock face, which is really an assertion about the machine's
+timezone. Both CI runners are UTC, so the matrix could not catch it. Fixed
+in the commit after this report and re-run across eight zones from UTC-11
+to UTC+14; 262 pass. The lesson is the one already in this repo, missed
+one file away: `tests/test_fi_service.py` had solved it by pinning Kona's
+zone and computing the expectation with `.astimezone()`.
+
 ---
 
 ## Built

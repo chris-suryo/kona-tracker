@@ -7,18 +7,24 @@ can act on. Every case here was a real reading or a real complaint.
 
 from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import pytest
 from fastapi.testclient import TestClient
 
 from kona_tracker.camera.source import FakeSource
-from kona_tracker.fi.parse import ActivityStats, CollarStatus, RestWindow
+from kona_tracker.fi.parse import ActivityStats, CollarStatus, PetProfile, RestWindow
 from kona_tracker.fi.service import FiSnapshot
 from kona_tracker.web.app import create_app
 from kona_tracker.web.settings import Settings
 from kona_tracker.web.views import activity_context, duration_parts, step_ring
 
 NOW = datetime(2026, 9, 11, 15, 0, tzinfo=UTC)
+#: Kona's zone, the value `tests/fixtures/status.json` carries. Pinned here
+#: because every clock face on the page is rendered in *her* zone, so a test
+#: that writes one as a literal is really asserting the machine it ran on.
+#: `tzdata` is a declared dependency, so this loads on Windows too.
+CHICAGO = ZoneInfo("America/Chicago")
 
 
 class StubFi:
@@ -90,6 +96,7 @@ def _snapshot(**status) -> FiSnapshot:
         today=RestWindow(start + timedelta(days=1), start + timedelta(days=2), 0, 1_290),
         activity=ActivityStats(42_000, 28_000, 900),
         week=ActivityStats(90_000, 196_000, None),
+        profile=PetProfile(name="Kona", timezone="America/Chicago"),
         status=CollarStatus(**status) if status else None,
     )
 
@@ -113,19 +120,48 @@ def test_the_page_prints_naps_and_last_night_as_hours_and_minutes():
 
 def test_resting_since_uses_the_start_fi_already_sends():
     since = NOW - timedelta(hours=2, minutes=18)
+    expected = since.astimezone(CHICAGO).strftime("%H:%M")
     ctx = activity_context(_snapshot(activity="rest", activity_since=since), configured=True)
-    assert ctx["activity_since"] == "12:42"
+    assert ctx["activity_since"] == expected
     page = render(_snapshot(activity="rest", activity_since=since))
-    assert "Resting" in page and "since 12:42" in page
+    assert "Resting" in page and f"since {expected}" in page
     # A walk keeps its distance and gains the start time beside it.
     page = render(_snapshot(activity="walk", activity_since=since, walk_distance=420))
-    assert "420 m so far · since 12:42" in page
-    # A rest that began yesterday names the day, so 22:10 is not read as today's.
-    yesterday = NOW - timedelta(hours=17)
-    ctx = activity_context(_snapshot(activity="rest", activity_since=yesterday), configured=True)
-    assert ctx["activity_since"] == "10 Sep 22:00"
+    assert f"420 m so far · since {expected}" in page
     # Nothing to say without a start; the line simply is not there.
     assert activity_context(_snapshot(activity="rest"), configured=True)["activity_since"] is None
+
+
+def test_a_rest_that_began_on_an_earlier_day_names_the_day():
+    """Otherwise "since 17:00" on a dog who settled last night reads as this
+    afternoon. The boundary is *her* local midnight, not the server's."""
+    began = NOW - timedelta(hours=17)
+    local = began.astimezone(CHICAGO)
+    assert local.date() < NOW.astimezone(CHICAGO).date(), "this fixture must cross her midnight"
+    ctx = activity_context(_snapshot(activity="rest", activity_since=began), configured=True)
+    assert ctx["activity_since"] == f"{local.day} {local:%b} {local:%H:%M}"
+
+
+def test_without_fi_s_timezone_since_falls_back_to_the_servers_clock():
+    """The same rule every other time on the page follows: no zone from Fi
+    means this machine's clock, never UTC dressed up as hers. Written from
+    `.astimezone()` rather than a literal so it is true on any machine --
+    the mistake this file made on 2026-09-11, which only showed up on
+    Chris's PC because both CI runners are UTC.
+
+    `endswith`, not `==`, because the day prefix is genuinely
+    machine-dependent here: run this far enough east and the server's own
+    "today" has already rolled over, so a rest that began 2 h 18 m ago
+    began on an earlier local date and the label correctly says so. The
+    time of day is the part that must follow the server's clock.
+    """
+    since = NOW - timedelta(hours=2, minutes=18)
+    zoneless = replace(
+        _snapshot(activity="rest", activity_since=since), profile=PetProfile(name="Kona")
+    )
+    ctx = activity_context(zoneless, configured=True)
+    assert ctx["activity_since"].endswith(since.astimezone().strftime("%H:%M"))
+    assert ctx["clock_zone"] is None, "an unnamed clock is never labelled as hers"
 
 
 def test_the_bottom_row_names_the_day_the_weekly_total_arrives():
