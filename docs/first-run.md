@@ -230,8 +230,7 @@ uv run kona serve
 
 ## If something goes wrong
 
-- **Video is choppy.** Measured on the USB webcam at index 0: at the
-  default 1280x720 the
+- **Video is choppy.** Measured on the C270: at the default 1280x720 the
   app got 3.7 fps and ~88 KB per frame. Dropping to `KONA_CAMERA_WIDTH=640`
   and `KONA_CAMERA_HEIGHT=480` in `.env` trades detail for a much smoother
   picture, which is usually the better deal for watching a dog move around.

@@ -1,5 +1,10 @@
 # Handoff — kona-tracker, 2026-09-10
 
+> **This is the current handoff.** Immediate queue:
+> `docs/next-session.md`. Getting it onto the phone from outside the
+> house: `docs/remote-access.md`. Anything in `docs/archive/` is a record
+> of a past day, not instructions.
+
 Everything another assistant (or a future session) needs to pick this up.
 Written at the end of the first day with the real collar and USB camera.
 

@@ -1,3 +1,12 @@
+> **SUPERSEDED — archived 2026-09-11.** The current handoff is
+> `docs/handoff.md`; the immediate queue is `docs/next-session.md`.
+>
+> This was written on 2026-09-09, the day *before* the Fi collar and the
+> camera went live. It says the collar has not arrived and that units and
+> behaviour values are unverified — both were true then and are false now.
+> It already misled one assistant into treating it as the current handoff.
+> Kept because it is an accurate record of that day, not of today.
+
 # Fi probe fixes — Codex handoff
 
 This branch follows Claude's probe implementation. It adds no web UI,

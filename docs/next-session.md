@@ -52,33 +52,43 @@ roughly where Kona is whenever the page opens. Chris knows and accepts this
 for a two-person private app. Keep the attribution. Do not add prefetching,
 offline tiles, or a proxy.
 
-## 2. Camera: treat black frames as a regression, not a new fact
+## 2. Camera: RESOLVED 2026-09-11 — it was a wedged USB device
 
-`docs/handoff.md` on `chatgpt/map-camera-pass` says the camera is a
-**Logitech C230** returning black frames. **Both halves are wrong.**
-Chris confirms it is a **Logitech C270**, and it **worked earlier the same
-day** -- there is a screenshot of live video on the Camera tab, and the
-capability model correctly drew no pan/tilt pad for it. Fix the model name
-in the docs.
+`camera-doctor` (added this session, `uv run kona camera-doctor`) reported
+mean 86.96 / max 255 / sd 58.54 at index 0 through DirectShow, and
+`camera-test` then captured 10 frames at 1280x720. Chris had **unplugged the
+camera and plugged it back in** between the failing run and the working one.
 
-So this is a regression with a known-good starting point. Diagnose in this
-order:
+Diagnosis: the device wedged after another program held it. It opened
+cleanly and delivered nothing. Not code, not hardware, not the resolution
+request — my hypothesis that 1280x720 caused it was disproved by
+`camera-test` succeeding at exactly that size. Recorded in
+`docs/device-capabilities.md` and `docs/first-run.md`; the `sd` column is
+what separates a wedged camera (0.00) from a dark room (low mean, sd well
+above zero, because a real sensor has read noise).
 
-1. Something else grabbed the camera. This already happened once: Windows
-   Settings > Camera was open and that alone was enough. Close Settings,
-   Teams, Zoom, browser tabs on a call. `uv run kona camera-test` with the
-   server stopped is the command that actually reads frames.
-2. A physical lens cover or shutter.
-3. **The new black-frame check itself.** `camera/source.py::frame_is_unusable`
-   returns True when `frame.mean() <= 0.25` on a 0-255 scale. That is
-   essentially pure black, so it should be safe -- but this camera watches a
-   dog in a room at night. Confirm a genuinely dim room does not trip it,
-   because "CHECK CAMERA" when the truth is "the light is off" is exactly
-   the kind of confident wrong output this project refuses.
+**Still open from this item:** point 3 below was never checked. The
+black-frame threshold `frame_is_unusable` (`frame.mean() <= 0.25`) has not
+been tested against a genuinely dim room at night — the room was lit in
+every run so far. "CHECK CAMERA" when the truth is "the light is off" is
+exactly the confident-wrong output this project refuses. Worth one evening
+test with the lights off.
 
-The black-frame detection is good work regardless: a transport-live stream
-of all-zero pixels is not a live picture, and the app should not call it
-one.
+## 2b. Set `secure=True` on the session cookie — do before the public URL
+
+`web/app.py` sets the login cookie with `httponly=True, samesite="lax"` and
+**no `secure=True`**. Behind a Cloudflare tunnel the public side is always
+HTTPS so it is not exposed in practice, but the same cookie is issued over
+plain HTTP on the LAN, and "in practice" is not a security argument.
+
+The catch that makes this more than a one-liner: hard-coding `secure=True`
+breaks LAN access over `http://192.168.x.x:8000`, because the browser will
+refuse to send the cookie and the login silently never takes. So it needs to
+be conditional — a `KONA_PUBLIC` / `KONA_SECURE_COOKIES` setting, defaulting
+off, that `docs/remote-access.md` tells you to turn on. That means a
+settings key, the app change, and tests for both states.
+
+Flagged in `docs/remote-access.md` Part 0.
 
 ## 3. Port 8000 vs 8100
 
@@ -109,11 +119,25 @@ launch is wanted.
 - Probe round 4: `uv run kona probe --out probe-out\round4`. The allowlist
   fix means required-argument messages now name the arguments for
   `overnightRestSummary` and the three history feeds.
-- `docs/probe-fixes-handoff.md` is from 2026-09-09 and is stale -- it says
-  the collar has not arrived. It already misled one assistant into using it
-  as the current handoff. Archive it under a dated name.
+- ~~Archive the stale `docs/probe-fixes-handoff.md`.~~ **Done 2026-09-11**:
+  moved to `docs/archive/2026-09-09-probe-fixes-handoff.md` with a
+  superseded header. `docs/handoff.md` now names itself as current.
 - The `?preview=1` sample-data page ChatGPT added deserves a careful look
   against this project's "never show data you do not have" rule. It is
   labelled sample-only; confirm that survives every state.
 - The eventual Tapo camera: model not chosen. Third-Party Compatibility must
   be enabled in the Tapo app or nothing connects.
+
+## 6. Remote access — the actual next milestone
+
+`docs/remote-access.md` now exists. **Nothing in it has been run.** It is a
+plan written from documentation on a sandbox with no Windows machine, and it
+says so at the top. Part 1 (a Cloudflare quick tunnel, ~15 minutes, no
+domain needed) is the proving step and should be done before anything in
+Part 3 is automated.
+
+The step I am least confident in is 3c, starting the app on boot: a
+Scheduled Task running as SYSTEM will probably serve a dead camera, because
+Windows gates camera access per-user. The doc proposes at-log-on as the user
+instead and says to verify by looking at the camera tab from a phone after a
+reboot, not by confirming the process started.
