@@ -25,7 +25,7 @@
 <section class="history-total {{ 'dimmed' if stale else '' }}" aria-label="Average daily rest">
   <span class="eyebrow">Average daily rest</span>
   <strong class="d">{% if average is not none %}{{ minutes(average) }}{% else %}&ndash;{% endif %}</strong>
-  <p>Across {{ complete_days }} complete day{{ '' if complete_days == 1 else 's' }} of {{ total_days }} · today and the collar's first day are excluded{% if stale %} · last good reading{% elif fetched_label %} · checked Fi {{ fetched_label }}{% endif %}</p>
+  <p>Across {{ complete_days }} complete day{{ '' if complete_days == 1 else 's' }} of {{ total_days }}{% if excluded_note %} · {{ excluded_note }}{% endif %}{% if stale %} · last good reading{% elif fetched_label %} · checked Fi {{ fetched_label }}{% if clock_zone %} {{ clock_zone }}{% endif %}{% endif %}</p>
   <div class="rest-key">
     <span><i class="sleep-key"></i>Avg sleep <strong>{% if average_sleep is not none %}{{ minutes(average_sleep) }}{% else %}&ndash;{% endif %}</strong></span>
     <span><i class="nap-key"></i>Avg naps <strong>{% if average_nap is not none %}{{ minutes(average_nap) }}{% else %}&ndash;{% endif %}</strong></span>

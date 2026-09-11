@@ -433,12 +433,17 @@ def rest_history_context(
 
     buckets: list[dict[str, Any]] = []
     for d in days:
-        local = _clock(d.window.start, zone)  # type: ignore[arg-type]
+        # A day is named by its window's start as Fi sent it, exactly as the
+        # hero's "9 Sep to 10 Sep" is (`window_from`, above). Fi anchors the
+        # window at midnight in the owner's zone, so that date *is* the day;
+        # re-deriving it through Kona's timezone can only disagree with the
+        # hero, and did, by one day, when the two were first drawn together.
+        start = d.window.start
         buckets.append(
             {
-                "date": local.date().isoformat(),
-                "label": f"{_day(local)}",
-                "short": local.strftime("%a"),
+                "date": start.date().isoformat(),  # type: ignore[union-attr]
+                "label": f"{_day(start)}",
+                "short": start.strftime("%a"),  # type: ignore[union-attr]
                 "value": _minutes(d.total),
                 "sleep": _minutes(d.window.sleep),
                 "nap": _minutes(d.window.nap),
@@ -471,6 +476,18 @@ def rest_history_context(
 
     chosen = buckets[selected] if selected is not None and selected < len(buckets) else None
     first, last = (buckets[0], buckets[-1]) if buckets else (None, None)
+    # Say only what was actually left out. With no collar cutoff configured
+    # there is no "first day" to exclude, and the sentence must not claim one.
+    left_out = []
+    if any(b["in_progress"] for b in buckets):
+        left_out.append("today")
+    if any(b["partial_first_day"] for b in buckets):
+        left_out.append("the collar's first day")
+    excluded_note = (
+        f"{' and '.join(left_out)} {'are' if len(left_out) > 1 else 'is'} excluded"
+        if left_out
+        else None
+    )
     return {
         "tab": None,
         "preview": False,
@@ -479,6 +496,8 @@ def rest_history_context(
         "stale": bool(snapshot and snapshot.stale),
         "problem": snapshot.problem if snapshot else None,
         "fetched_label": fetched_local.strftime("%H:%M") if fetched_local else None,
+        "clock_zone": fetched_local.strftime("%Z") if zone and fetched_local else None,
+        "excluded_note": excluded_note,
         "range_label": (
             f"{first['label']} – {last['label']}"
             if first and last and first != last

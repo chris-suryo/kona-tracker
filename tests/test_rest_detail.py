@@ -50,6 +50,10 @@ def test_context_draws_one_bar_per_day_in_minutes_oldest_first():
 
     assert ctx["has_days"] and ctx["total_days"] == 5
     assert [b["short"] for b in ctx["buckets"]] == ["Mon", "Tue", "Wed", "Thu", "Fri"]
+    # Named by the window's start as Fi sent it, the hero's convention.
+    assert ctx["buckets"][0]["date"] == "2026-09-07" and ctx["buckets"][0]["label"] == "7 Sep"
+    assert ctx["range_label"] == "7 Sep – 11 Sep"
+    assert ctx["excluded_note"] == "today and the collar's first day are excluded"
     thu = ctx["buckets"][3]
     assert thu["sleep"] == round(24760 / 60) and thu["nap"] == round(7373 / 60)
     assert thu["value"] == round((24760 + 7373) / 60)
@@ -84,6 +88,20 @@ def test_no_reading_stays_none_not_zero_in_chart_and_average():
     # The average ignores the None rather than counting it as 0.
     assert ctx["average"] == round((3600 + 600) / 60)
     assert ctx["complete_days"] == 2
+
+
+def test_exclusion_note_names_only_what_was_actually_left_out():
+    """With no collar cutoff there is no "first day" to exclude, and a page
+    that claimed one would be asserting a measurement that never happened."""
+    only_today = rest_history(MEASURED[:2], NOW, None)  # 10 Sep complete, 11 Sep in progress
+    ctx = rest_history_context(FiSnapshot(fetched_at=NOW, rest_days=only_today), configured=True)
+    assert ctx["excluded_note"] == "today is excluded"
+    assert ctx["complete_days"] == 1
+
+    all_complete = rest_history(MEASURED[1:4], NOW, None)  # 8, 9, 10 Sep, all finished
+    ctx = rest_history_context(FiSnapshot(fetched_at=NOW, rest_days=all_complete), configured=True)
+    assert ctx["excluded_note"] is None
+    assert ctx["complete_days"] == 3
 
 
 def test_chart_floor_stops_a_quiet_week_looking_busy():
@@ -137,6 +155,14 @@ def test_rest_page_renders_real_days_and_never_the_sample_vocabulary():
     assert "Average daily rest" in body
     # The mock's rest.json carries two daily windows: one complete, one today.
     assert "1 complete day of 2" in body
+    # The mock has no collar cutoff, so only today is excluded -- and the
+    # page must not claim a "first day" exclusion that did not happen.
+    assert "today is excluded" in body and "first day" not in body
+    # Days are named as the hero names them: the window's start date as Fi
+    # sent it. The fixture's windows start on the 9th and 10th; the mock's
+    # Chicago timezone must not pull them back a day.
+    assert "9 Sep – 10 Sep" in body
+    assert "checked Fi 10:00 CDT" in body
     # Nothing from the design-preview page may appear here.
     for word in ("sample", "Sample", "Fictional", "fictional", "Design preview", "by hour"):
         assert word not in body, word
