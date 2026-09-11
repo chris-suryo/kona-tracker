@@ -12,6 +12,7 @@ from __future__ import annotations
 import os
 import struct
 import time
+from dataclasses import dataclass
 from typing import Any, Protocol
 
 from kona_tracker.camera.redact import redact_url, with_credentials
@@ -36,6 +37,140 @@ class CameraFrameError(RuntimeError):
 def frame_is_unusable(frame: Any) -> bool:
     """True for an effectively all-black image, including a few hot pixels."""
     return float(frame.mean()) <= 0.25
+
+
+@dataclass(frozen=True)
+class FrameStats:
+    """Raw pixel statistics for one frame, on the usual 0-255 scale."""
+
+    mean: float
+    minimum: float
+    maximum: float
+    stddev: float
+
+
+@dataclass(frozen=True)
+class CameraReport:
+    """What one (index, backend) pair actually did. Never an exception."""
+
+    index: int
+    backend: str
+    opened: bool
+    width: int = 0
+    height: int = 0
+    frames: int = 0
+    stats: FrameStats | None = None
+    verdict: str = ""
+    detail: str = ""
+
+
+#: Backends to try, most reliable on Windows first. `None` = OpenCV's choice.
+_BACKENDS = ("CAP_DSHOW", "CAP_MSMF", None)
+
+
+def _classify(stats: FrameStats) -> tuple[str, str]:
+    """Name what the pixels are, and say what it implies.
+
+    The load-bearing distinction is **stddev**, not mean. A closed privacy
+    shutter, or a driver handing back an empty buffer, produces pixels that
+    are identically zero: no variation at all. A real sensor in a genuinely
+    dark room still has read noise, so its mean is low but its stddev is
+    not. Telling those apart is the difference between "open the cover" and
+    "turn on a light", and the app could not distinguish them before.
+    """
+    if stats.maximum == 0:
+        return (
+            "all-zero",
+            "every pixel is exactly 0: shutter closed, or the driver is handing "
+            "back an empty buffer. Not a dark room -- a dark room has noise.",
+        )
+    if stats.stddev < 1.0:
+        return (
+            "flat",
+            "almost no pixel-to-pixel variation. Lens blocked, or the sensor is "
+            "returning a constant. Check for a cover or a finger over the lens.",
+        )
+    if stats.mean < 8.0:
+        return (
+            "very dark",
+            "real sensor noise is present, so the camera is working -- there "
+            "is just almost no light. Turn a light on and re-run.",
+        )
+    return ("usable", "a real picture.")
+
+
+def inspect_cameras(
+    indexes: range = range(0, 5), frames_per: int = 5, cv2_module: Any = None
+) -> list[CameraReport]:
+    """Try every index against every backend and report what came back.
+
+    A diagnostic must never fail: `camera-test` raises on black frames, which
+    is right for a health check and useless when the question is *why* the
+    frames are black. This one catches everything and always returns rows.
+    """
+    cv2 = cv2_module if cv2_module is not None else _import_cv2()
+    reports: list[CameraReport] = []
+    for index in indexes:
+        for name in _BACKENDS:
+            flag = getattr(cv2, name, None) if name else None
+            label = name or "default"
+            cap = None
+            try:
+                cap = cv2.VideoCapture(index) if flag is None else cv2.VideoCapture(index, flag)
+                if not cap.isOpened():
+                    reports.append(
+                        CameraReport(
+                            index, label, False, verdict="no device", detail="did not open"
+                        )
+                    )
+                    continue
+                width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                best: FrameStats | None = None
+                read = 0
+                for _ in range(frames_per):
+                    ok, frame = cap.read()
+                    if not ok or frame is None:
+                        continue
+                    read += 1
+                    stats = FrameStats(
+                        mean=round(float(frame.mean()), 3),
+                        minimum=round(float(frame.min()), 3),
+                        maximum=round(float(frame.max()), 3),
+                        stddev=round(float(frame.std()), 3),
+                    )
+                    # Keep the liveliest frame: a camera warming up often
+                    # delivers a black frame or two before a real one.
+                    if best is None or stats.stddev > best.stddev:
+                        best = stats
+                if best is None:
+                    reports.append(
+                        CameraReport(
+                            index,
+                            label,
+                            True,
+                            width,
+                            height,
+                            0,
+                            verdict="opens, no frames",
+                            detail="the device opened but never delivered an image",
+                        )
+                    )
+                    continue
+                verdict, detail = _classify(best)
+                reports.append(
+                    CameraReport(index, label, True, width, height, read, best, verdict, detail)
+                )
+            except Exception as e:  # a diagnostic that raises is not a diagnostic
+                reports.append(
+                    CameraReport(
+                        index, label, False, verdict="error", detail=f"{type(e).__name__}: {e}"
+                    )
+                )
+            finally:
+                if cap is not None:
+                    cap.release()
+    return reports
 
 
 def _import_cv2():

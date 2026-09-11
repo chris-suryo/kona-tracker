@@ -158,5 +158,63 @@ def camera_test(
     )
 
 
+@app.command("camera-doctor")
+def camera_doctor(
+    indexes: Annotated[int, typer.Option(help="How many indexes to try, from 0.")] = 5,
+    frames: Annotated[int, typer.Option(help="Frames to sample per backend.")] = 5,
+) -> None:
+    """Why is the picture black? Try every index and backend, report the pixels.
+
+    `camera-test` is a health check: it fails when the picture is unusable.
+    That is right, and useless when the question is *why*. This never fails.
+    It prints raw statistics so the answer is readable rather than guessed.
+
+    The column that matters is **sd** (standard deviation). All-zero pixels
+    with no variation mean a closed shutter or a driver returning an empty
+    buffer. A genuinely dark room still has sensor noise, so its mean is low
+    but its sd is not. Those two need opposite fixes.
+    """
+    from kona_tracker.camera.source import inspect_cameras
+
+    typer.echo(f"Probing indexes 0-{indexes - 1}, {frames} frames each. Nothing else may be")
+    typer.echo("using the camera: close Windows Settings > Camera, Teams, Zoom, video tabs.\n")
+    try:
+        reports = inspect_cameras(range(0, indexes), frames_per=frames)
+    except Exception as e:
+        typer.echo(f"Could not probe at all: {type(e).__name__}: {e}", err=True)
+        raise typer.Exit(code=1) from None
+
+    typer.echo(
+        f"{'idx':<4}{'backend':<13}{'size':<12}{'frames':<8}{'mean':<9}{'max':<8}{'sd':<9}verdict"
+    )
+    typer.echo("-" * 78)
+    for r in reports:
+        size = f"{r.width}x{r.height}" if r.opened else "-"
+        mean = f"{r.stats.mean:.2f}" if r.stats else "-"
+        mx = f"{r.stats.maximum:.0f}" if r.stats else "-"
+        sd = f"{r.stats.stddev:.2f}" if r.stats else "-"
+        typer.echo(
+            f"{r.index:<4}{r.backend:<13}{size:<12}{r.frames:<8}{mean:<9}{mx:<8}{sd:<9}{r.verdict}"
+        )
+
+    typer.echo("")
+    live = [r for r in reports if r.verdict == "usable"]
+    if live:
+        best = live[0]
+        typer.echo(f"A usable picture came from index {best.index} via {best.backend}.")
+        typer.echo(f"Set KONA_CAMERA_INDEX={best.index} in .env and run `uv run kona serve`.")
+        raise typer.Exit(code=0)
+
+    opened = [r for r in reports if r.opened and r.stats]
+    if not opened:
+        typer.echo("No camera delivered a frame on any index or backend.")
+        typer.echo("Either nothing is plugged in, or another program owns it.")
+        raise typer.Exit(code=1)
+    worst = max(opened, key=lambda r: r.stats.stddev if r.stats else 0.0)
+    typer.echo(f"The camera opens but the picture is not usable ({worst.verdict}):")
+    typer.echo(f"  {worst.detail}")
+    raise typer.Exit(code=1)
+
+
 def main() -> None:  # pragma: no cover - console entry
     sys.exit(app())
