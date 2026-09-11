@@ -16,6 +16,7 @@ def test_probe_end_to_end_writes_redacted_files(fake_client, tmp_path):
         "pet-kona-device.json",
         "pet-kona-location.json",
         "pet-kona-profile.json",
+        "pet-kona-rest-history.json",
         "pet-kona-rest.json",
         "pet-kona-whereabouts.json",
         "schema.json",
@@ -130,3 +131,33 @@ def test_gps_tracks_collapse_to_their_shape_in_the_summary():
         "errorRadius": [0.1, 65],
     }
     assert _collapse_positions({"positions": []})["positions"]["count"] == 0
+
+
+def test_rest_history_probe_asks_for_more_windows_than_the_page_uses(fake_client, tmp_path):
+    """The page sends `limit=2` deliberately; nobody has asked Fi for more.
+
+    `restSummaryFeed` is an accepted production query, so if a raised limit
+    returns more windows then daily rest history needs no new document --
+    only a different argument. This pins that the probe actually asks, and
+    that its answer is told apart from the two-window production probe in the
+    one file Chris pastes back.
+    """
+    from kona_tracker.fi import queries
+    from kona_tracker.probe.run import HISTORY_LIMIT
+
+    assert HISTORY_LIMIT > 2
+    asked = queries.pet_rest("pet-1", limit=HISTORY_LIMIT)
+    assert f"limit: {HISTORY_LIMIT}" in asked
+    assert "limit: 2" not in asked
+
+    fake_client.login("chris@example.com", "correct")
+    run_probe(fake_client, tmp_path)
+
+    assert (tmp_path / "pet-kona-rest-history.json").exists()
+    summary = (tmp_path / "summary.md").read_text(encoding="utf-8")
+    # Both probes report, and the history one is labelled, or the two sets of
+    # windows would be indistinguishable in the pasted summary.
+    # `_metric_lines` is passed the file slug, not the display name.
+    assert "kona [history]" in summary
+    assert f"asked restSummaryFeed for limit={HISTORY_LIMIT}" in summary
+    assert "windows back" in summary

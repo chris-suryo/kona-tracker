@@ -55,34 +55,48 @@ every item; `docs/scaling-limits.md` is the standing list of ceilings;
   Kona's timezone, and an outbound heartbeat so a dead PC still raises an
   alarm. `docs/production-punchlist.md` marks what is done and what is left.
 - **Hardware:** Fi collar paired and live since 2026-09-10. The USB webcam
-  (Logitech, fixed) works; its recurring failure is a **wedged USB device**,
-  cleared by a replug, not a code or resolution problem. Blink Mini 2K+ and
-  Wyze v4 do NOT work without unofficial bridges. Raspberry Pi 5 kit bought,
-  still unopened, and now the intended always-on host: it draws about a
-  tenth of the desktop's idle power and never sleeps.
+  (Logitech C270, fixed) works; its recurring failure is a **wedged USB
+  device**, cleared by a replug, not a code or resolution problem. Blink
+  Mini 2K+ and Wyze v4 do NOT work without unofficial bridges.
+- **Hardware bought 2026-09-11** (an earlier version of this bullet said a
+  Pi was already bought and unopened -- it was not, and acting on that sent
+  a session telling Chris the wrong thing while he stood in the store):
+  one **Raspberry Pi 5 8GB, open box**, a 52Pi case with fan, a 128 GB
+  microSD, a card reader, an RTC battery, a **Hiwonder TurboPi** robot kit
+  (**no Pi included**, so the Pi 5 is its brain for now), and a 6 ft USB-A
+  extension for the C270. **No power supply** -- Chris is trying a charger
+  he already owns, so an undervoltage check is the first thing to do.
+- **Kona still runs on the Windows PC**, and should. The Pi migration waits
+  on the Tapo, per `docs/handoff.md`: prove the new camera on a machine that
+  already works. `KONA_KEEP_AWAKE=true` in `.env` is the whole of "leave it
+  running"; boot-start (`docs/remote-access.md` 3c) stays deferred as the
+  least-tested step in the setup.
 
 **next:**
 
-*The live thread, 2026-09-11: the camera on the phone.*
-Read `docs/camera-black-screen-handoff.md`; it is the whole record. Short
-version: two bugs. The slow reveal is fixed and merged. The second, the
-one that made the phone hang on "Connecting…" after a tab switch, was
-abandoned MJPEG streams piling up on the server until the small pool the
-stream waits use was full; restarting `kona serve` cleared it every time,
-which is what proved it was ours and not Safari's. **The fix is built on
-`claude/camera-snapshot-polling` and has not been run on a phone.** The
-Camera tab now polls `/snapshot.jpg` one frame at a time instead of
-holding a stream, so nothing outlives a request and nothing can pile up;
-the MJPEG path that remains is fenced and capped; `/status.json` reports
-`streams` and `viewers`. Chrome on the phone is the workaround until Chris
-has verified it.
+*The camera on the phone: fixed, merged, and confirmed on 2026-09-11.*
+`docs/camera-black-screen-handoff.md` is the whole record. Two bugs. The
+slow reveal is fixed. The second, the one that hung the phone on
+"Connecting…" after a tab switch, was abandoned MJPEG streams piling up
+until the small pool the stream waits use was full; restarting `kona serve`
+cleared it every time, which is what proved it was ours and not Safari's.
+The Camera tab now polls `/snapshot.jpg` one frame at a time, so nothing
+outlives a request and nothing can pile up; the MJPEG path that remains is
+fenced and capped; `/status.json` reports `streams` and `viewers`.
 
-0. **Verify on the iPhone**, both the Safari home-screen app and Chrome.
-   The eight-step acceptance list is at the end of the handoff doc. Nothing
-   in the sandbox can stand in for this; every camera fix before it passed
-   in desktop Chrome and left the phone black.
-1. **Then merge**, delete the branch, and after a week of it holding,
-   delete the MJPEG endpoint and the containment that only exists for it.
+**Chris confirmed it on the real phone**: force-close and reopen, switching
+browsers, restarting `kona serve` with the page open, and **three devices
+streaming at once** off one camera open. He also reached it over the
+Cloudflare tunnel on cellular with Wi-Fi off, which was the first real
+exercise of `docs/remote-access.md` Part 0.
+
+0. **Still unverified, and both are his to run:** the ten-minute soak
+   (`/status.json` should hold `streams: 0`, `viewers` bouncing 0/1, and
+   `opens` at 1), and the cellular data cost -- baseline noted at 37.7 GB on
+   Safari's counter, and the delta tests the 1.2 GB/hour estimate in
+   `docs/scaling-limits.md` §1. If it disagrees, that doc is wrong.
+1. **After a week of polling holding up**, delete `/stream.mjpg` and the
+   containment that exists only for it.
 
 *Needs Chris, and blocks the Fi half:*
 2. **Probe round 5.** `uv run kona probe --out probe-out\round5`, then read

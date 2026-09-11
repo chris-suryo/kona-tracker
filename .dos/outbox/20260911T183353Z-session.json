@@ -1,0 +1,69 @@
+{
+  "goal": "Land the camera fix and Fi data brief on main, bookmark the ceilings that remain, clean up GitHub, prove remote access over cellular, and kit out the Raspberry Pi / robot side.",
+  "completed": [
+    "Wrote docs/scaling-limits.md - the standing list of ceilings with the measurement behind each: ~1.2 GB/hour per viewer at 720p, the ~40 concurrent long-poll limit, the always-open camera, the forever-polling idle page, the unexplained 4 fps, and what a product version would have to change.",
+    "Documented KONA_CAMERA_WIDTH/HEIGHT/FPS in .env.example - configurable all along, written down nowhere, so the only no-code bandwidth lever effectively did not exist.",
+    "Fixed stale branch pointers in PROJECT.md, docs/chatgpt-handoff.md and the data brief's paste block; all three told the next session main was stale and to work from claude/elegant-sagan-tit1xp.",
+    "Drove PR #9 to green and corrected PR #8's body to record Chris's real-phone confirmations. He merged both and deleted the branches; origin is now main + chatgpt/ui-pass.",
+    "Gave the exact PowerShell for the Cloudflare tunnel including the three .env settings that had never met real Cloudflare. Chris ran it, turned Wi-Fi off, and watched Kona live over cellular - first real exercise of remote-access.md Part 0.",
+    "Acted as a live shopping consultant at Micro Center: talked him out of a $300 Ultimate Kit, built an a-la-carte cart from the store's own listing, vetted the 37-in-1 sensor kit, assessed the Hiwonder robot shelf, and checked the USB extension cable's spec.",
+    "Opened PR #10: bookmarked the two-camera idea (Kona's camera plus the robot's, selectable in one app) as punchlist item 8 with its reasoning, and corrected two doc sections that had gone false."
+  ],
+  "discovered": [
+    "anyio's default thread limiter is exactly 40, verified by running it - that is the real concurrent-viewer ceiling, shared with every other sync endpoint.",
+    "PROJECT.md and docs/handoff.md both claimed a Raspberry Pi 5 was already bought and unopened. False. Chris had never bought one, and I asserted it to him as fact while he stood in the store.",
+    "Micro Center Cambridge is store 121; microcenter.com is blocked from this sandbox's egress proxy, so live stock and prices had to come from Chris pasting the listing.",
+    "Real Pi 5 8GB price is $169.99, not the $125 a stale web search gave me. The Ultimate Kit at ~$300 is roughly double an a-la-carte build for a headless server.",
+    "The Micro Center TurboPi SKU is $129.99 and the box says no Raspberry Pi included - so the robot needs its own brain, which reopened the one-Pi-two-jobs question.",
+    "kona camera-test loads .env, so the resolution/bandwidth trade is measurable on real hardware with no code change.",
+    "KONA_KEEP_AWAKE is opt-in, not automatic - the likeliest cause of a mystery failure when the user leaves the house.",
+    "Safari's 37.7 GB cellular figure is cumulative since the counter was last reset, so it is a baseline and not a measurement."
+  ],
+  "decisions": [
+    "Do not build KONA_CAMERA_QUALITY yet. Record the limit; gate the knob on the real cellular measurement so it is sized by evidence.",
+    "Docs point at main rather than a long-lived branch; chapter 2 work lands by PR.",
+    "chatgpt/ui-pass stays unmerged while ChatGPT is mid-iteration.",
+    "Kona stays hosted on the Windows PC. The Pi migration still waits on the Tapo, per handoff.md - prove the new camera on a machine that already works.",
+    "The one Pi 5 bought tonight becomes TurboPi's brain. That defers the shared-Pi question entirely rather than answering it.",
+    "The two-camera feature is wanted but not scheduled, and is not to be started until TurboPi drives and streams on its own terms.",
+    "Boot-start for kona serve stays deferred; the repo's own doc flags it as the least-tested step and a likely way to break camera access."
+  ],
+  "lessons": [
+    "A handoff doc that names a branch or a purchase goes stale silently, and the reader cannot tell. It cost real money-adjacent advice today: a wrong hardware line in PROJECT.md became wrong guidance to a person standing in a shop.",
+    "Do not write 'X is already in main' in a PR that has not merged. I did, and merging #9 alone would have made two files false on arrival.",
+    "For video bandwidth, measure bytes per second and not frame size. Halving resolution was measured to raise the frame rate ~1.75x, so the wire saving is far smaller than the pixel count implies.",
+    "Verify a library's default by running it rather than reciting it - the anyio 40-thread limiter is load-bearing for the stated viewer ceiling.",
+    "Stale web-search pricing is worse than no pricing when the user can read the real shelf tag. Ask them to paste the listing.",
+    "Cumulative usage counters are baselines, not results. Record the number before, not only after."
+  ],
+  "files_changed": [
+    ".env.example",
+    "PROJECT.md",
+    "docs/scaling-limits.md",
+    "docs/chatgpt-handoff.md",
+    "docs/data-brief.md",
+    "docs/device-capabilities.md",
+    "docs/remote-access.md",
+    "docs/production-punchlist.md"
+  ],
+  "open_questions": [
+    "What does an hour of watching actually cost on cellular? 1.2 GB/hour is arithmetic from a LAN measurement, never checked against a carrier. Baseline 37.7 GB.",
+    "Does the picture survive a ten-minute soak, and does /status.json still show opens: 1 afterwards?",
+    "Will the home charger Chris is using power a Pi 5 with peripherals, or will it undervolt? Untested.",
+    "Will TurboPi let another process read its camera, or does Hiwonder's control software hold it? This gates the whole two-camera item.",
+    "Does the open-box Pi 5 have everything in the box and work? Worth checking inside the return window.",
+    "Why is the C270 capped at ~4 fps? Left unresolved on purpose; the Tapo replaces it."
+  ],
+  "intent": "Ended because the day ran long and Chris is switching tracks - frontend work with ChatGPT, and a separate session for setting up the robot. Everything built today is merged to main except PR #10, which is one click. Nothing is mid-change.",
+  "next_task": "Check Safari's cellular counter against the 37.7 GB baseline to get the real per-hour cost, then build KONA_CAMERA_QUALITY if that number is ugly.",
+  "blockers": null,
+  "resume_minutes": 10,
+  "dont_retry": [
+    "Lighting and USB bandwidth as explanations for the 4 fps ceiling. Both measured and disproved.",
+    "Shipping PowerShell I cannot run in this sandbox. Two snippets failed on his machine earlier in this project and both wrote into system32 because I never said to cd first. Keep away-from-keyboard commands trivially simple.",
+    "Reading a hardware or branch claim out of PROJECT.md and repeating it as fact without checking. That is exactly how I told Chris he already owned a Raspberry Pi while he was in the store.",
+    "Fetching microcenter.com from this sandbox - the egress proxy blocks it. Web search works; direct fetch does not.",
+    "Diagnosing orphaned kona processes from behaviour alone. I produced a Stop-Process kill list once and every PID belonged to something else."
+  ],
+  "session_id": "session_01KgmQrVuaAGmKyaioEr7d7t"
+}
