@@ -106,17 +106,19 @@
         {% elif map_kind == 'last' %}Last GPS fix
         {% elif map_kind == 'home' %}Home
         {% elif area_name %}{{ area_name }}
-        {% else %}Waiting for GPS{% endif %}
+        {% else %}Location unavailable{% endif %}
       </strong>
     </div>
     {% if location_updated %}<span>{{ 'Updated' if map_kind == 'current' else 'Last report' if map_kind == 'rest' else 'Last seen' }} {{ location_updated }}</span>{% endif %}
   </div>
+  {% if map_kind == 'home' %}<p class="location-note">Saved Home location · not Kona's reported position</p>{% endif %}
+  {% if stale %}<p class="location-note warn">From the last successful Fi update{% if as_of %} · {{ as_of }}{% endif %}</p>{% endif %}
   {% if map_points %}
   <div id="kona-map" class="map" aria-label="Map showing Kona's {% if map_kind == 'current' %}current walk route{% elif map_kind == 'rest' %}resting place{% elif map_kind == 'home' %}Home location{% else %}last reported location{% endif %}"></div>
   {% else %}
   <div class="map-empty">
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s6-5.2 6-11a6 6 0 1 0-12 0c0 5.8 6 11 6 11Z"/><circle cx="12" cy="10" r="2"/></svg>
-    <span>{% if area_name %}Fi calls this place {{ area_name }} but sent no map position for it.{% else %}No map position has come back from Fi.{% endif %} Nothing is being guessed.</span>
+    <span>{% if area_name %}Fi reported {{ area_name }} without a map position.{% else %}Fi hasn't sent a map position.{% endif %}</span>
   </div>
   {% endif %}
 </section>

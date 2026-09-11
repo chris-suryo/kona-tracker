@@ -55,7 +55,14 @@ body.activity-page { overscroll-behavior-y: contain; }
 .pull span { font-size: 12px; font-weight: 600; color: var(--ink2); background: var(--bg2);
              border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; }
 .pull.ready span { color: var(--on); background: var(--t4); border-color: transparent; }
-.pull.busy span { animation: pulse 1.2s ease-in-out infinite; }
+.pull span { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; }
+.pull span::before { content: ''; width: 9px; height: 9px; border-right: 1.5px solid currentColor;
+                     border-bottom: 1.5px solid currentColor; transform: rotate(45deg); margin: -4px 2px 0; }
+.pull.ready span::before { transform: rotate(225deg); margin-top: 4px; }
+.pull.busy { transform: translateY(64px); }
+.pull.busy span::before { width: 12px; height: 12px; margin: 0; border: 1.5px solid currentColor;
+                         border-right-color: transparent; border-radius: 50%; animation: refresh-spin .8s linear infinite; }
+@keyframes refresh-spin { to { transform: rotate(405deg); } }
 
 .seg { display: flex; padding: 3px; border-radius: 999px; background: var(--bg2); }
 .seg a { padding: 8px 18px; border-radius: 999px; font-size: 13px; font-weight: 600; color: var(--ink2); text-decoration: none; }
@@ -90,13 +97,16 @@ body.activity-page { overscroll-behavior-y: contain; }
 
 .location-card { margin: 18px 0 0; overflow: hidden; border: 1px solid var(--line); border-radius: 18px; background: var(--bg2); }
 .location-card.urgent { border-color: color-mix(in srgb, var(--warn) 48%, transparent); }
-.location-heading { min-height: 62px; padding: 13px 14px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.location-heading { min-height: 62px; padding: 16px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; }
 .location-heading > div { display: flex; flex-direction: column; gap: 3px; }
 .location-heading strong { font-size: 16px; letter-spacing: -.025em; }
 .location-heading > span { color: var(--ink2); font-size: 11px; white-space: nowrap; }
 .map { height: 214px; width: 100%; background: var(--t1); }
-.map-empty { height: 150px; padding: 24px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
-             border-top: 1px solid var(--line); color: var(--ink2); text-align: center; font-size: 12px; line-height: 1.4; }
+.location-note { margin: -4px 16px 14px; color: var(--ink2); font-size: 12px; line-height: 1.5; }
+.location-note.warn { color: var(--warn); }
+.map-empty { min-height: 144px; padding: 24px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+             border-top: 1px solid var(--line); color: var(--ink2); text-align: center; font-size: 13px; line-height: 1.5; }
+.map-empty span { max-width: 28ch; }
 .map-empty svg { width: 28px; height: 28px; fill: none; stroke: var(--t4); stroke-width: 1.7; }
 .kona-map-marker { border: 0; background: none; }
 .kona-map-marker span { width: 34px; height: 34px; display: grid; place-items: center; border: 3px solid #fff; border-radius: 50%;
@@ -203,6 +213,12 @@ body.activity-page { overscroll-behavior-y: contain; }
 .settings-row { display: flex; justify-content: space-between; gap: 20px; padding: 10px 0; font-size: 14px; }
 .settings-row span { color: var(--ink2); }
 .settings-row strong { text-align: right; }
+.camera-status { align-items: baseline; }
+.camera-status strong { display: inline-flex; justify-content: flex-end; align-items: center; gap: 8px; line-height: 1.4; }
+.camera-status .status-dot { display: inline-block; background: var(--t4); }
+.camera-problem { flex-direction: column; gap: 6px; margin: 8px 0; padding: 14px 0; border-top: 1px solid var(--line); }
+.camera-problem > span { font-size: 12px; font-weight: 600; }
+.camera-problem p { margin: 0; color: var(--ink2); font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
 .settings-link { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 10px 0 14px;
                  color: var(--ink); text-decoration: none; }
 .settings-link > span:first-child { display: flex; flex-direction: column; gap: 4px; }
@@ -269,4 +285,5 @@ body.activity-page { overscroll-behavior-y: contain; }
   .nub, .shutter { transition: none; }
   /* `.pull.busy span` outranks `.pull span`, so it is named here too. */
   .pull, .pull span, .pull.busy span { transition: none; animation: none; }
+  .pull.busy span::before { animation: none; }
 }

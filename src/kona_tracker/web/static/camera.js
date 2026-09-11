@@ -18,7 +18,7 @@
   function poll() {
     fetch('/status.json', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (s) {
       if (s.state === 'live') set('on', 'LIVE', '');
-      else if (s.last_error_kind === 'black_frame') set('off', 'CHECK CAMERA', 'Image is fully dark—check the lens cover and room light');
+      else if (s.last_error_kind === 'black_frame') set('off', 'CHECK CAMERA', 'No usable picture. Check the lens cover; for USB, unplug and reconnect the camera.');
       else if (s.state === 'stale') set('stale', 'STALE', 'No new frames for ' + Math.round(s.last_frame_age) + ' s');
       else if (s.state === 'connecting') set('stale', 'CONNECTING', 'Opening the camera…');
       else set('off', 'OFFLINE', 'Camera disconnected, reconnecting…');

@@ -376,7 +376,7 @@ _CAMERA_PROBLEMS = {
         "unplug the camera and plug it back in."
     ),
     "open": "Could not open the camera. Another program may be holding it.",
-    "hung": "The camera stopped answering and was reopened.",
+    "hung": "The camera stopped answering. A reconnect was requested.",
     "read": "Reading frames failed.",
     "empty_frames": "The camera opened but delivered no frames: unplug it and plug it back in.",
 }

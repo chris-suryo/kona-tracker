@@ -823,6 +823,7 @@ def test_a_rejected_position_field_costs_only_the_map_point():
     ctx = activity_context(snap, configured=True)
     assert ctx["map_kind"] == "home", "the saved home pin is the honest fallback"
     assert "Part of this didn" in page and 'id="kona-map"' in page
+    assert "Saved Home location · not Kona's reported position" in page
     assert data["rest_position"] is None and data["battery_percent"] == 57
 
 
