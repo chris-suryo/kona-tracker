@@ -255,7 +255,11 @@ their shapes do not. Each needs a subfield guess and another correction.
 - `overnightRestSummary` on `Pet` — Fi's own "last night". Should replace
   the previous-completed-window heuristic once its shape is known.
 - `restFeed`, `activityFeed`, `stepFeed` — history feeds.
-- `timezone` on `Pet`; `homeLocation.position` and resting `place` are now shaped.
+- `timezone` on `Pet` is now selected by the page and assumed to be an IANA
+  name; the probe redacts its value, so check `/activity.json`'s `"clock"`
+  instead -- `"fi"` means it loaded, `"server"` means it did not (or the PC
+  lacks the `tzdata` package). `homeLocation.position` and resting `place`
+  are shaped.
 - `heatmap`, `packs`, `packFeed`, `activity` on `Pet`.
 - `carrier`, `hardwareRevision`, `firmwareUpdate` on `Device`;
   `uncertaintyInfo` on `OngoingActivity`.

@@ -78,6 +78,10 @@ class PetProfile:
     #: own `/avatar.jpg` so it never reaches the browser and a dead link
     #: degrades to the initial.
     photo_url: str | None = None
+    #: Fi's `timezone` on Pet: accepted in round 3, value format unmeasured
+    #: (the probe redacts it). Assumed IANA, e.g. "America/Chicago"; the
+    #: page falls back to the server's clock when it does not load.
+    timezone: str | None = None
 
 
 @dataclass(frozen=True)
@@ -245,11 +249,13 @@ def profile_from(data: Any) -> PetProfile:
     photo = _dict(_dict(_dict(pet.get("photos")).get("first")).get("image"))
     url = photo.get("fullSize")
     breed = _dict(pet.get("breed")).get("name")
+    timezone = pet.get("timezone")
     return PetProfile(
         name=str(pet.get("name") or ""),
         breed=breed if isinstance(breed, str) and breed else None,
         birthday=birthday,
         photo_url=url if isinstance(url, str) and url.startswith("https://") else None,
+        timezone=timezone if isinstance(timezone, str) and timezone else None,
     )
 
 

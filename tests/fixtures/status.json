@@ -3,6 +3,7 @@
     "pet": {
       "__typename": "Pet",
       "name": "Kona",
+      "timezone": "America/Chicago",
       "breed": {
         "__typename": "Breed",
         "name": "Labrador Retriever"

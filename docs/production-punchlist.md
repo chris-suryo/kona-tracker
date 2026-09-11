@@ -349,7 +349,16 @@ My own read, ordered by what would actually bite first.
    output this project refuses — and night is when a sleeping dog is most
    worth looking at. One evening's test. Carried over from
    `next-session.md` §2.
-5. **No timezone handling that has been thought about.** `views.py` uses
+5. **DECIDED AND BUILT 2026-09-11:** times are Kona's. `pet_status` now
+   selects Fi's `timezone` (accepted in round 3; its value is redacted by
+   the probe so an IANA name is assumed), the page formats every HH:MM in
+   it and labels them (`Updated 18:48 CDT`), and `/activity.json` says
+   whose clock it used (`"clock": "fi" | "server"`). The fallback is the
+   server's clock, unlabelled -- the same thing while the PC is at home.
+   **Needs Chris:** Windows has no timezone database, so on the PC this
+   only takes effect with the `tzdata` package (`uv add tzdata`); a
+   dependency, so it is his call, and until then the JSON will say
+   `"server"`. *Original:* No timezone handling that has been thought about. `views.py` uses
    `.astimezone()` — the *server's* local zone. Correct while the PC and the
    phone are in the same house. Wrong the moment Chris is on the road in
    another timezone, which is the entire point of `remote-access.md`. Decide

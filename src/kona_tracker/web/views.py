@@ -9,8 +9,9 @@ as `None`, and the template renders the muted dash for it.
 from __future__ import annotations
 
 import re
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta, tzinfo
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from kona_tracker.fi.parse import ActivityStats, CollarStatus, LocationPoint, PetProfile, RestWindow
 from kona_tracker.fi.service import FiSnapshot
@@ -36,6 +37,29 @@ def _location_label(status: Any) -> str | None:
     if status.activity == "rest" and re.match(r"^\s*\d+\s+\S", status.place_name):
         return "Home"
     return status.place_name
+
+
+def kona_zone(timezone: str | None) -> tzinfo | None:
+    """Kona's timezone, from Fi, or None when it cannot be loaded.
+
+    Times on the page are *her* times -- "last night" means her night, and
+    the map's "Last report" is when it happened where she is, whatever zone
+    the phone reading it is in. None falls back to the server's clock, which
+    is the same thing while the PC sits at home with her, and is labelled in
+    the JSON so it is never mistaken for the deliberate answer. Windows has
+    no timezone database of its own: without the `tzdata` package this is
+    always None there.
+    """
+    if not timezone:
+        return None
+    try:
+        return ZoneInfo(timezone)
+    except (ZoneInfoNotFoundError, ValueError, OSError):
+        return None
+
+
+def _clock(moment: datetime, zone: tzinfo | None) -> datetime:
+    return moment.astimezone(zone) if zone else moment.astimezone()
 
 
 def _hours(value: float | None) -> str | None:
@@ -94,6 +118,8 @@ def activity_context(snapshot: FiSnapshot | None, configured: bool) -> dict[str,
     profile = snapshot.profile if snapshot else None
     status = snapshot.status if snapshot else None
     sleep_hours = snapshot.sleep_hours if snapshot else None
+    zone = kona_zone(profile.timezone if profile else None)
+    fetched_local = _clock(snapshot.fetched_at, zone) if snapshot else None
     positions = status.positions if status else ()
     rest_position = status.rest_position if status else None
     home_position = status.home_location if status else None
@@ -123,7 +149,7 @@ def activity_context(snapshot: FiSnapshot | None, configured: bool) -> dict[str,
         # the design lands. Nothing here is rendered yet.
         "has_photo": bool(profile and profile.photo_url),
         "breed": profile.breed if profile else None,
-        "age": age_label(profile.birthday, snapshot.fetched_at) if profile and snapshot else None,
+        "age": age_label(profile.birthday, fetched_local) if profile and fetched_local else None,
         "battery": _count(status.battery_percent) if status else None,
         # No "days left" here on purpose. `timeToEmptyS` read 4.3 days on
         # the charger and 12 hours once cellular and GPS were running: it is
@@ -150,14 +176,14 @@ def activity_context(snapshot: FiSnapshot | None, configured: bool) -> dict[str,
         ],
         "map_kind": map_kind,
         "location_updated": (
-            last_position.recorded_at.astimezone().strftime("%H:%M")
+            _clock(last_position.recorded_at, zone).strftime("%H:%M")
             if last_position and last_position.recorded_at
             else None
         ),
         "location_live": walking and not stale,
         "data_start_label": (
             "today"
-            if snapshot and snapshot.data_start == snapshot.fetched_at.date()
+            if snapshot and fetched_local and snapshot.data_start == fetched_local.date()
             else _day(snapshot.data_start)
             if snapshot and snapshot.data_start
             else None
@@ -192,11 +218,11 @@ def activity_context(snapshot: FiSnapshot | None, configured: bool) -> dict[str,
         "dial_scale": f"{DIAL_SCALE_HOURS:.0f}",
         # Only stamped when there is something for it to date. "As of 18:48"
         # over an empty dial reads as "we checked and she slept nothing".
-        "as_of": (
-            snapshot.fetched_at.astimezone().strftime("%H:%M")
-            if snapshot and snapshot.has_data
-            else None
-        ),
+        "as_of": (fetched_local.strftime("%H:%M") if fetched_local and snapshot.has_data else None),
+        # Shown next to the times only when they are Kona's, so a reader in
+        # another timezone knows whose 18:48 that is. Blank on the fallback:
+        # the server's clock has no name worth printing.
+        "clock_zone": fetched_local.strftime("%Z") if zone and fetched_local else None,
         "problem": snapshot.problem if snapshot else None,
     }
 
@@ -321,6 +347,16 @@ def activity_json(snapshot: FiSnapshot | None, configured: bool) -> dict[str, An
         "week_distance_m": week.distance if week else None,
         "problem": snapshot.problem if snapshot else None,
         "stale": bool(snapshot and snapshot.stale),
+        # Whose clock the page's HH:MM strings follow: Fi's timezone for the
+        # pet, or this server's when that could not be loaded.
+        "timezone": profile.timezone if profile else None,
+        "clock": (
+            None
+            if snapshot is None
+            else "fi"
+            if kona_zone(profile.timezone if profile else None)
+            else "server"
+        ),
     }
 
 

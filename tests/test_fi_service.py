@@ -929,3 +929,56 @@ def test_fi_failures_are_logged_for_the_morning_after(caplog):
     with caplog.at_level(logging.WARNING, logger="kona_tracker.fi"):
         service(rest_fails).snapshot()
     assert any("Fi refresh partial: Sleep:" in r.getMessage() for r in caplog.records)
+
+
+# --------------------------------------------------------------------------
+# whose clock
+# --------------------------------------------------------------------------
+
+
+def test_times_are_konas_when_fi_names_her_timezone_and_say_so():
+    """`.astimezone()` was the server's zone: right while the PC sits at home
+    with her, wrong the moment the app is hosted elsewhere, and unlabelled
+    for a reader in another zone. Fi's `timezone` on Pet was accepted in
+    round 3; its VALUE is redacted by the probe, so "America/Chicago" in the
+    fixture is an assumed IANA name, and a bad one must fall back cleanly."""
+    from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+    from kona_tracker.fi.parse import profile_from
+
+    assert profile_from(fixture("status")["data"]).timezone == "America/Chicago"
+    try:
+        chicago = ZoneInfo("America/Chicago")
+    except ZoneInfoNotFoundError:
+        # Windows without the tzdata package: the fallback branch below is
+        # what runs there, and that is the honest thing to assert.
+        chicago = None
+
+    with web_client(service()) as c:
+        ctx = activity_context(c.app.state.fi.snapshot(), configured=True)
+        data = c.get("/activity.json").json()
+        page = c.get("/activity").text
+    if chicago is not None:
+        expected = NOW.astimezone(chicago)
+        assert ctx["as_of"] == expected.strftime("%H:%M")
+        assert ctx["clock_zone"] == expected.strftime("%Z") and ctx["clock_zone"]
+        assert data["clock"] == "fi" and data["timezone"] == "America/Chicago"
+        assert f"Updated {ctx['as_of']} {ctx['clock_zone']}" in page
+    else:
+        assert ctx["as_of"] == NOW.astimezone().strftime("%H:%M")
+        assert ctx["clock_zone"] is None and data["clock"] == "server"
+
+
+def test_an_unloadable_timezone_falls_back_to_the_servers_clock():
+    from kona_tracker.fi.parse import ActivityStats, PetProfile
+
+    snap = FiSnapshot(
+        fetched_at=NOW,
+        pet_name="Kona",
+        activity=ActivityStats(10, 100, 0),
+        profile=PetProfile(name="Kona", timezone="Mars/Olympus_Mons"),
+    )
+    ctx = activity_context(snap, configured=True)
+    assert ctx["as_of"] == NOW.astimezone().strftime("%H:%M") and ctx["clock_zone"] is None
+    assert activity_json(snap, configured=True)["clock"] == "server"
+    assert activity_json(None, configured=False)["clock"] is None

@@ -133,8 +133,8 @@
 </section>
 
 <div class="freshness" data-as-of="{{ as_of or '' }}">
-  {% if as_of and stale %}<span class="status-dot warn-dot"></span>Last successful update {{ as_of }}
-  {% elif as_of %}<span class="status-dot live"></span>Updated {{ as_of }}
+  {% if as_of and stale %}<span class="status-dot warn-dot"></span>Last successful update {{ as_of }}{% if clock_zone %} {{ clock_zone }}{% endif %}
+  {% elif as_of %}<span class="status-dot live"></span>Updated {{ as_of }}{% if clock_zone %} {{ clock_zone }}{% endif %}
   {% elif not configured %}<span class="status-dot"></span>Waiting for setup
   {% elif problem %}<span class="status-dot bad-dot"></span>No answer from Fi
   {% endif %}

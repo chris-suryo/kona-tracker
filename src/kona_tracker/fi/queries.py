@@ -292,13 +292,15 @@ def speculative_queries(pet_id: str) -> list[tuple[str, str]]:
 def pet_status(pet_id: str) -> str:
     """Everything the page shows beyond rest and steps, in one round trip.
 
-    Only fields measured on Kona's collar on 2026-09-10. `info` is a JSON
-    scalar; battery is inside it. The two inline fragments are the concrete
+    Only fields measured on Kona's collar on 2026-09-10, plus `timezone`,
+    accepted by Fi in round 3 (its value is redacted by the probe, so the
+    format is assumed IANA and the page falls back if it is not). `info` is
+    a JSON scalar; battery is inside it. The two inline fragments are the concrete
     connection states -- selecting `signalStrengthPercent` directly would be
     the same class of error that broke sleep.
     """
     return (
-        f'query KonaStatus {{ pet(id: "{pet_id}") {{ __typename name '
+        f'query KonaStatus {{ pet(id: "{pet_id}") {{ __typename name timezone '
         "breed { __typename name } yearOfBirth monthOfBirth dayOfBirth "
         "homeLocation { __typename position { __typename latitude longitude } } "
         "photos { __typename first { __typename id date image { __typename fullSize } } } "
