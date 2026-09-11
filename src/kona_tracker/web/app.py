@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI, Form, Request, Response
 from fastapi.responses import (
@@ -21,6 +23,7 @@ from kona_tracker.camera.hub import BOUNDARY, CameraHub
 from kona_tracker.camera.source import FakeSource, FrameSource, OpenCVSource, RtspSource
 from kona_tracker.fi.service import FiService
 from kona_tracker.web.auth import COOKIE_NAME, Lockout, PasscodeAuth, client_key
+from kona_tracker.web.logs import attach_file_logging, detach_file_logging
 from kona_tracker.web.settings import Settings
 from kona_tracker.web.views import activity_context, activity_json, preview_activity_context
 
@@ -131,8 +134,13 @@ def create_app(
 ):
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-        yield
-        hub.stop()  # release the webcam on shutdown
+        log_handler = attach_file_logging(Path(settings.log_dir)) if settings.log_dir else None
+        try:
+            yield
+        finally:
+            hub.stop()  # release the webcam on shutdown
+            if log_handler is not None:
+                detach_file_logging(log_handler)
 
     app = FastAPI(
         title="kona-tracker", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan
@@ -186,8 +194,25 @@ def create_app(
         return response
 
     @app.get("/healthz")
-    def healthz() -> dict[str, str]:
-        return {"status": "ok"}
+    def healthz() -> dict[str, Any]:
+        """Public, for an outside pinger: is the process up, is the camera
+        delivering, how old is the Fi reading. Deliberately nothing else --
+        no error text (it can carry a redacted camera host), no coordinates,
+        and no Fi round trip, so a stranger cannot make us talk to Fi."""
+        camera = hub.status()
+        snapshot = fi.peek() if fi else None
+        age = (datetime.now(UTC) - snapshot.fetched_at).total_seconds() if snapshot else None
+        return {
+            "status": "ok",
+            "camera": camera["state"],
+            "camera_error": camera["last_error_kind"],
+            "fi": "unconfigured"
+            if fi is None
+            else "stale"
+            if snapshot and snapshot.stale
+            else "ok",
+            "fi_age_s": None if age is None else round(age),
+        }
 
     @app.get("/login", response_class=HTMLResponse)
     def login_page(request: Request):

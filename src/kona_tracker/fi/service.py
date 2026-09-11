@@ -13,6 +13,7 @@ day pays the round trip.
 
 from __future__ import annotations
 
+import logging
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass, replace
@@ -40,6 +41,8 @@ from kona_tracker.fi.queries import (
     pet_status,
     pet_whereabouts,
 )
+
+log = logging.getLogger("kona_tracker.fi")
 
 DEFAULT_REFRESH_SECONDS = 300.0
 #: How often a *person* may make us ask Fi again (pull-to-refresh, coming back
@@ -279,6 +282,10 @@ class FiService:
             fresh, problem = None, str(e)
         except Exception as e:  # a bug here must not kill the page
             fresh, problem = None, f"Unexpected error talking to Fi: {type(e).__name__}: {e}"
+        if fresh is None:
+            log.warning("Fi refresh failed: %s", problem)
+        elif fresh.problem:
+            log.warning("Fi refresh partial: %s", fresh.problem)
         with self._lock:
             self._attempted_at = self._clock()
             if fresh is not None:
@@ -310,6 +317,15 @@ class FiService:
                     fetched_at=self._clock(), problem=problem, data_start=self._data_start
                 )
             self._refreshing = False
+
+    def peek(self) -> FiSnapshot | None:
+        """What the cache holds, without asking Fi for anything.
+
+        For the unauthenticated health check: a stranger pinging the URL
+        must not be able to make this process talk to Fi.
+        """
+        with self._lock:
+            return self._snapshot
 
     def _since_attempt(self) -> float:
         if self._attempted_at is None:

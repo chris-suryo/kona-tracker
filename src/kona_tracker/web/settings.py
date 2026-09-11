@@ -46,6 +46,8 @@ class Settings:
     # when to turn them on.
     trusted_proxy_header: str = ""  # e.g. CF-Connecting-IP behind cloudflared
     secure_cookies: bool = False
+    #: Directory for a rotating `kona.log`; blank = console only.
+    log_dir: str = ""
     # Same two keys the probe already uses, so `.env` stays one file with one
     # Fi login in it rather than two that can drift apart.
     fi_email: str = ""
@@ -182,4 +184,5 @@ def load_settings(env_file: Path | None = Path(".env"), fake_camera: bool = Fals
         fi_data_start=data_start,
         trusted_proxy_header=trusted_proxy_header,
         secure_cookies=secure_cookies,
+        log_dir=get("KONA_LOG_DIR").strip(),
     )

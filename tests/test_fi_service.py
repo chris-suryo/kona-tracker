@@ -893,3 +893,39 @@ def test_the_fresh_page_is_the_same_template_with_the_swap_hooks():
         page = c.get("/activity?fresh=1").text
     assert 'id="activity-body"' in page and 'class="freshness" data-as-of="' in page
     assert 'class="activity-page"' in page.split("<main")[0], "body carries the page class"
+
+
+def test_healthz_never_asks_fi_and_reports_the_reading_age():
+    logins = {"n": 0}
+
+    def counting(request):
+        if request.url.path == "/auth/login":
+            logins["n"] += 1
+        return fake_fi_handler(request)
+
+    settings = Settings(passcode="4242", secret="test-secret")
+    app = create_app(
+        settings, source_factory=lambda: FakeSource(fps=100), fi_service=service(counting)
+    )
+    with TestClient(app) as c:
+        health = c.get("/healthz").json()
+        assert logins["n"] == 0, "an unauthenticated ping must not make us talk to Fi"
+        assert health["fi"] == "ok" and health["fi_age_s"] is None
+        c.post("/login", data={"passcode": "4242"})
+        c.get("/activity")
+        health = c.get("/healthz").json()
+        assert logins["n"] == 1 and isinstance(health["fi_age_s"], int)
+        assert "30.26" not in json.dumps(health) and "password" not in json.dumps(health)
+
+
+def test_fi_failures_are_logged_for_the_morning_after(caplog):
+    import logging
+
+    def rest_fails(request):
+        if request.url.path == "/graphql" and "KonaRest" in json.loads(request.content)["query"]:
+            return httpx.Response(200, json={"errors": [{"message": "boom"}]})
+        return fake_fi_handler(request)
+
+    with caplog.at_level(logging.WARNING, logger="kona_tracker.fi"):
+        service(rest_fails).snapshot()
+    assert any("Fi refresh partial: Sleep:" in r.getMessage() for r in caplog.records)

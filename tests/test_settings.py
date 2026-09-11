@@ -103,3 +103,12 @@ def test_tunnel_settings_are_off_by_default_and_parsed_strictly(tmp_path, monkey
     monkeypatch.setenv("KONA_SECURE_COOKIES", "yes please")
     with pytest.raises(SettingsError, match="KONA_SECURE_COOKIES"):
         load_settings(tmp_path / "none.env", fake_camera=True)
+
+
+def test_log_dir_is_optional(tmp_path, monkeypatch):
+    monkeypatch.delenv("KONA_LOG_DIR", raising=False)
+    monkeypatch.setenv("KONA_PASSCODE", "123456")
+    monkeypatch.setenv("KONA_SECRET", "s")
+    assert load_settings(tmp_path / "none.env", fake_camera=True).log_dir == ""
+    monkeypatch.setenv("KONA_LOG_DIR", str(tmp_path / "logs"))
+    assert load_settings(tmp_path / "none.env", fake_camera=True).log_dir == str(tmp_path / "logs")

@@ -25,6 +25,7 @@ camera is not held open (and a webcam LED goes off) when nobody is watching.
 from __future__ import annotations
 
 import asyncio
+import logging
 import threading
 import time
 from collections.abc import AsyncIterator, Callable
@@ -35,6 +36,8 @@ from kona_tracker.camera.redact import redact_url
 from kona_tracker.camera.source import CameraFrameError, FrameSource
 
 BOUNDARY = "kona-frame"
+
+log = logging.getLogger("kona_tracker.camera")
 
 IDLE = "idle"
 CONNECTING = "connecting"
@@ -167,6 +170,7 @@ class CameraHub:
                             self._reader_alive = False  # abandon; reader sees gen != current
                             self.last_error = f"no frames for {self._hang_after:.0f}s; reconnecting"
                             self.last_error_kind = "hung"
+                            log.warning("camera hung: %s", self.last_error)
                             self._fails += 1
                             self._lock.notify_all()
                         break
@@ -190,6 +194,7 @@ class CameraHub:
                 if gen == self._generation:
                     self.last_error = redact_url(f"{type(e).__name__}: {e}")
                     self.last_error_kind = "open"
+                    log.warning("camera open: %s", self.last_error)
                     self._reader_alive = False
                     self._fails += 1
                     self._lock.notify_all()
@@ -207,6 +212,7 @@ class CameraHub:
                         self.last_error_kind = (
                             "black_frame" if isinstance(e, CameraFrameError) else "read"
                         )
+                        log.warning("camera %s: %s", self.last_error_kind, self.last_error)
                     break
                 if jpeg:
                     misses = 0
@@ -224,6 +230,7 @@ class CameraHub:
                         with self._lock:
                             self.last_error = f"{misses} consecutive empty reads"
                             self.last_error_kind = "empty_frames"
+                            log.warning("camera empty_frames: %s", self.last_error)
                         break
                     time.sleep(0.05)
                 elapsed = time.monotonic() - started

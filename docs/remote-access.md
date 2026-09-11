@@ -212,6 +212,33 @@ rethinking — say so rather than papering over it.
 `cloudflared` gets the same treatment, or `cloudflared service install` if
 the service account turns out to be fine for it (it has no camera to lose).
 
+### 3d. Something has to watch it (built 2026-09-11, not yet pointed at a tunnel)
+
+If `kona serve` dies at 2am the page is simply unreachable and nobody is
+told. `/healthz` is public and answers without touching Fi or the camera:
+
+```json
+{"status": "ok", "camera": "idle", "camera_error": null, "fi": "ok", "fi_age_s": 212}
+```
+
+`camera` is `idle` whenever nobody is watching (the webcam is released
+after a few idle seconds) -- that is normal; `disconnected` with a
+`camera_error` of `open`, `hung` or `black_frame` is the wedged-USB
+signature and means a replug. `fi` is `stale` when Fi has stopped
+answering; `fi_age_s` says how old the numbers on the page are.
+
+Point any free uptime pinger (UptimeRobot, Better Stack, healthchecks.io)
+at `https://<your-tunnel>/healthz` every five minutes, alerting on
+anything but HTTP 200. That catches the process dying, the PC sleeping and
+the tunnel dropping in one go. It does not catch a black camera; for that,
+`/settings` now shows the camera's state and last problem from any phone.
+
+Set `KONA_LOG_DIR=C:\Users\harim\kona-tracker\logs` in `.env` so the
+access log and every camera or Fi failure land in a rotating `kona.log`
+that survives the PowerShell window closing. On Windows a rotation can
+fail with a PermissionError while another program (an editor, a tail) holds
+the file open; that is printed, not fatal.
+
 ---
 
 ## When it breaks

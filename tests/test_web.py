@@ -400,3 +400,32 @@ def test_pages_have_no_inline_script_and_no_inline_handlers(client):
     assert '<script type="application/json" id="map-points">' in preview
     assert 'src="/static/map.js"' in preview and 'src="/static/app.js"' in preview
     assert "data-optional" in preview, "the avatar fallback moved from onerror= to app.js"
+
+
+def test_healthz_is_public_and_says_only_what_a_pinger_needs(client):
+    """Nothing watches the watcher today; an outside uptime ping against
+    this is the cheapest honest fix. It is unauthenticated, so it must not
+    leak error text or coordinates, and must not touch Fi."""
+    r = client.get("/healthz")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["status"] == "ok" and data["fi"] == "unconfigured"
+    assert data["camera"] in ("idle", "connecting", "live", "stale", "disconnected")
+    assert set(data) == {"status", "camera", "camera_error", "fi", "fi_age_s"}
+
+
+def test_log_dir_writes_a_file_that_outlives_the_console(tmp_path):
+    import logging
+
+    log_dir = tmp_path / "logs"
+    settings = Settings(passcode="4242", secret="s", camera_source="fake", log_dir=str(log_dir))
+    app = create_app(settings, source_factory=lambda: FakeSource(fps=100))
+    with TestClient(app) as c:
+        login(c)
+        logging.getLogger("kona_tracker.camera").warning("camera open: a redacted reason")
+    app.state.hub.stop()
+    text = (log_dir / "kona.log").read_text(encoding="utf-8")
+    assert "WARNING kona_tracker.camera: camera open: a redacted reason" in text
+    # Detached on shutdown: nothing more lands, and the file is closed.
+    logging.getLogger("kona_tracker.camera").warning("after shutdown")
+    assert "after shutdown" not in (log_dir / "kona.log").read_text(encoding="utf-8")
