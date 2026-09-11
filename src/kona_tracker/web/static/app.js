@@ -32,17 +32,28 @@
   var label = bar.querySelector('span');
   var THRESHOLD = 60, RESISTANCE = 0.5;
   var startY = null, pulling = false, busy = false;
+  var dismissTimer = null;
+
+  function interruptDismissal() {
+    clearTimeout(dismissTimer);
+    bar.classList.remove('finished', 'failed');
+  }
 
   function show(dy) {
+    interruptDismissal();
     bar.hidden = false;
-    bar.style.transform = 'translateY(' + Math.min(dy, 88) + 'px)';
+    bar.classList.add('dragging');
+    bar.style.transform = 'translateY(' + (Math.min(dy, 88) - 48) + 'px)';
+    bar.style.opacity = String(Math.min(dy / 36, 1));
     bar.classList.toggle('ready', dy >= THRESHOLD);
     label.textContent = dy >= THRESHOLD ? 'Release to refresh' : 'Pull to refresh';
   }
   function hide() {
-    bar.classList.remove('ready', 'busy');
+    clearTimeout(dismissTimer);
+    bar.classList.remove('ready', 'busy', 'dragging', 'finished', 'failed');
     bar.style.transform = '';
-    bar.hidden = true;
+    bar.style.opacity = '';
+    dismissTimer = setTimeout(function () { bar.hidden = true; }, 220);
   }
 
   // The honest failure: keep every number on screen with the time it was
@@ -78,11 +89,15 @@
 
   function refresh() {
     if (busy) { return; }
+    interruptDismissal();
     busy = true;
     bar.hidden = false;
-    bar.classList.remove('ready');
+    bar.classList.remove('ready', 'dragging');
+    bar.style.transform = '';
+    bar.style.opacity = '';
     bar.classList.add('busy');
     label.textContent = 'Refreshing\u2026';
+    var succeeded = false;
     var controller = new AbortController();
     var deadline = setTimeout(function () { controller.abort(); }, 20000);
     fetch('/activity?fresh=1', { cache: 'no-store', signal: controller.signal, headers: { 'Accept': 'text/html' } })
@@ -98,10 +113,19 @@
           var hdr = doc.querySelector('.hdr .right'), here = document.querySelector('.hdr .right');
           if (hdr && here) { here.innerHTML = hdr.innerHTML; }  // the battery
           if (window.KonaMap) { window.KonaMap.init(); }
+          succeeded = true;
         });
       })
       .catch(failed)
-      .finally(function () { clearTimeout(deadline); busy = false; hide(); });
+      .finally(function () {
+        clearTimeout(deadline);
+        busy = false;
+        bar.classList.remove('busy');
+        bar.classList.add('finished');
+        bar.classList.toggle('failed', !succeeded);
+        label.textContent = succeeded ? 'Updated' : 'Could not refresh';
+        dismissTimer = setTimeout(hide, 650);
+      });
   }
 
   page.addEventListener('touchstart', function (e) {

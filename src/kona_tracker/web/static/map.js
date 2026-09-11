@@ -33,18 +33,27 @@
     // Alidade Smooth Dark is already dark; the CSS filter that fakes a dark
     // basemap must not also run, or it darkens twice.
     el.classList.toggle('tiles-dark', !!cfg.dark);
-    // Deliberately no per-layer `referrerPolicy`. An element-level policy
-    // overrides the page's `Referrer-Policy: no-referrer`, so setting one
-    // would send this deployment's hostname -- including a Cloudflare tunnel
-    // URL -- to the tile host, on the default OSM path as well as Stadia.
-    // It would buy something only under domain-based tile auth, and this
-    // integration authenticates with ?api_key= instead. If a stable hostname
-    // ever makes domain auth possible, add it back and fix the comment above
-    // SECURITY_HEADERS in app.py at the same time.
-    L.tileLayer(cfg.url, {
+    // Deliberately no per-layer `referrerPolicy`, though the frontend branch
+    // added one for OSM's usage policy. An element-level policy overrides the
+    // page's `Referrer-Policy: no-referrer`, so it would send this
+    // deployment's hostname -- a Cloudflare tunnel URL included -- to the tile
+    // host, on the default OSM path as well as Stadia. OSM's ask is a policy
+    // nicety and tiles load without it; the hostname leak is concrete. It
+    // would buy something real only under domain-based tile auth, which needs
+    // a stable hostname the quick tunnel does not give us. If that ever
+    // changes, add it back and fix the comment above SECURITY_HEADERS too.
+    var tiles = L.tileLayer(cfg.url, {
       maxZoom: cfg.maxZoom || 19,
       attribution: cfg.attribution
-    }).addTo(map);
+    });
+    // From the frontend branch: a dead tile server should say so rather than
+    // leave a blank grey rectangle that reads as a broken app.
+    tiles.on('tileerror', function () {
+      el.hidden = true;
+      var unavailable = document.getElementById('map-unavailable');
+      if (unavailable) { unavailable.hidden = false; }
+    });
+    tiles.addTo(map);
     if (latlngs.length > 1) {
       L.polyline(latlngs, { color: '#5F8A48', weight: 5, opacity: .9 }).addTo(map);
       map.fitBounds(latlngs, { padding: [28, 28], maxZoom: 17 });

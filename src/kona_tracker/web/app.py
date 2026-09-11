@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, Form, Query, Request, Response
+from fastapi import FastAPI, Form, HTTPException, Query, Request, Response
 from fastapi.responses import (
     HTMLResponse,
     JSONResponse,
@@ -26,6 +26,7 @@ from kona_tracker.fi.service import FiService
 from kona_tracker.web.auth import COOKIE_NAME, Lockout, PasscodeAuth, client_key
 from kona_tracker.web.awake import allow_sleep, keep_awake
 from kona_tracker.web.heartbeat import Heartbeat
+from kona_tracker.web.history_preview import history_preview
 from kona_tracker.web.logs import attach_file_logging, detach_file_logging
 from kona_tracker.web.settings import Settings
 from kona_tracker.web.views import (
@@ -51,9 +52,13 @@ PUBLIC_PATHS = {"/login", "/healthz"}
 #: concedes nothing `data:` did not already. `img-src` names OpenStreetMap's
 #: tile host, a decision already recorded in docs/handoff.md;
 #: `Referrer-Policy: no-referrer` means it learns a tile area and nothing
-#: else. `tiles.stadiamaps.com` is the same bargain for the optional Alidade
-#: Smooth Dark basemap, off unless `KONA_MAP_TILES=stadia`; naming both hosts
-#: costs nothing while only one can be configured at a time.
+#: else, and map.js deliberately does NOT opt tile images back into sending an
+#: origin: an element-level referrerpolicy overrides this header, which would
+#: hand the tile host this deployment's hostname -- a tunnel URL included --
+#: on the default OSM path as well as the Stadia one. `tiles.stadiamaps.com`
+#: is the same bargain as OSM's host for the optional Alidade Smooth Dark
+#: basemap, off unless `KONA_MAP_TILES=stadia`; naming both costs nothing
+#: while only one can be configured at a time.
 #: No HSTS: the LAN address is plain http on purpose.
 SECURITY_HEADERS = {
     "Content-Security-Policy": (
@@ -348,8 +353,22 @@ def create_app(
         context["map_tiles"] = tile_config
         return templates.TemplateResponse(request, "activity.html", context)
 
+    @app.get("/preview/{metric}", response_class=HTMLResponse)
+    def preview_history(
+        request: Request,
+        metric: str,
+        period: str = "day",
+        day: int = Query(default=0, ge=0, le=6),
+        selected: int | None = Query(default=None, ge=0, le=23),
+    ):
+        if metric not in {"steps", "rest"} or period not in {"day", "week"}:
+            raise HTTPException(status_code=404)
+        return templates.TemplateResponse(
+            request, "history_preview.html", history_preview(metric, period, day, selected)
+        )
+
     @app.get("/settings", response_class=HTMLResponse)
-    def profile_settings(request: Request):
+    def profile_settings(request: Request, from_preview: bool = False):
         snapshot = fi.snapshot() if fi else None
         context = activity_context(snapshot, configured=fi is not None)
         # Not a tab. With `tab` set the header drew the Activity/Camera
@@ -361,6 +380,7 @@ def create_app(
         # can be diagnosed from a phone instead of at the machine.
         context["camera"] = camera_health(hub.status())
         context["camera_description"] = settings.camera_description()
+        context["from_preview"] = from_preview
         return templates.TemplateResponse(request, "settings.html", context)
 
     @app.get("/avatar.jpg")
