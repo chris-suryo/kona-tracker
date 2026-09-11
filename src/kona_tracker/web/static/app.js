@@ -27,6 +27,8 @@
   var body = document.getElementById('activity-body');
   var bar = document.getElementById('pull');
   if (!page || !body || !bar) { return; }
+  // Sample preview must remain sample data, including after sleep/wake.
+  if (body.querySelector('.preview-banner')) { return; }
   var label = bar.querySelector('span');
   var THRESHOLD = 60, RESISTANCE = 0.5;
   var startY = null, pulling = false, busy = false;
@@ -48,6 +50,13 @@
   // except that this time it was our own server that did not answer, and
   // the sentence must not blame Fi for that.
   function failed() {
+    var current = body.querySelector('.collar-summary .eyebrow');
+    if (current) { current.textContent = 'Last reported'; }
+    var location = body.querySelector('.location-heading .eyebrow');
+    if (location) { location.textContent = 'Last reported location'; }
+    body.querySelectorAll('.status-dot.live').forEach(function (dot) {
+      dot.classList.remove('live'); dot.classList.add('warn-dot');
+    });
     var freshness = body.querySelector('.freshness');
     var asOf = freshness ? freshness.getAttribute('data-as-of') : '';
     if (freshness) {
@@ -74,7 +83,9 @@
     bar.classList.remove('ready');
     bar.classList.add('busy');
     label.textContent = 'Refreshing\u2026';
-    fetch('/activity?fresh=1', { cache: 'no-store', headers: { 'Accept': 'text/html' } })
+    var controller = new AbortController();
+    var deadline = setTimeout(function () { controller.abort(); }, 20000);
+    fetch('/activity?fresh=1', { cache: 'no-store', signal: controller.signal, headers: { 'Accept': 'text/html' } })
       .then(function (r) {
         if (r.redirected) { window.location.href = r.url; return; }  // signed out
         if (!r.ok) { throw new Error('refresh failed'); }
@@ -82,6 +93,7 @@
           var doc = new DOMParser().parseFromString(html, 'text/html');
           var next = doc.getElementById('activity-body');
           if (!next) { throw new Error('unexpected page'); }
+          if (window.KonaMap) { window.KonaMap.destroy(); }
           body.innerHTML = next.innerHTML;
           var hdr = doc.querySelector('.hdr .right'), here = document.querySelector('.hdr .right');
           if (hdr && here) { here.innerHTML = hdr.innerHTML; }  // the battery
@@ -89,7 +101,7 @@
         });
       })
       .catch(failed)
-      .then(function () { busy = false; hide(); });
+      .finally(function () { clearTimeout(deadline); busy = false; hide(); });
   }
 
   page.addEventListener('touchstart', function (e) {
@@ -101,6 +113,7 @@
   }, { passive: true });
   page.addEventListener('touchmove', function (e) {
     if (startY === null) { return; }
+    if (e.touches.length !== 1) { cancel(); return; }
     var dy = (e.touches[0].clientY - startY) * RESISTANCE;
     if (dy <= 0 || window.scrollY > 0) {
       if (pulling) { pulling = false; hide(); }
@@ -118,7 +131,8 @@
     if (ready) { refresh(); } else { hide(); }
   }
   page.addEventListener('touchend', end);
-  page.addEventListener('touchcancel', end);
+  function cancel() { startY = null; pulling = false; if (!busy) { hide(); } }
+  page.addEventListener('touchcancel', cancel);
   document.addEventListener('visibilitychange', function () {
     if (!document.hidden) { refresh(); }
   });

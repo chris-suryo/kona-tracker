@@ -2,7 +2,8 @@
 
 ## Branch and ownership
 
-Chris approved the four-area visual/copy pass. This branch,
+Chris approved the four-area visual/copy pass, then explicitly approved
+continuing the backend audit and hardening on the same branch. This branch,
 `codex/meadow-health-polish`, starts at `11d439a` on
 `claude/elegant-sagan-tit1xp`. Its PR targets that branch so the review shows
 only this pass. Chris merges; no deployment or production restart was performed.
@@ -23,10 +24,100 @@ the diff before merging. Do not cherry-pick the same changes twice.
   documented diagnosis. A requested reconnect no longer claims it succeeded.
 
 CSP, vendored Leaflet bytes, page/map zoom rules and dependencies are unchanged.
-The reduced-motion block remains last. No Fi queries or camera lifecycle changes
-are part of the visual pass.
+The reduced-motion block remains last. No Fi query documents were changed.
+The initial visual commit did not change camera lifecycle; the approved
+hardening continuation below does.
 
-## Reliability findings: separate follow-up
+## Current continuation for Claude
+
+Chris asked to keep the work consolidated and continue hardening, including
+the previously proposed shutdown fix. Keep using this branch/PR; do not apply
+the initial audit's proposals a second time. These are now implemented:
+
+- **Shutdown:** the real CLI passes `timeout_graceful_shutdown=5`. Uvicorn
+  cancels remaining responses after the grace period, then runs lifespan
+  cleanup. This is a response-drain budget, not a promise that all cleanup
+  finishes in exactly five seconds. A subprocess regression test holds an
+  actual HTTP MJPEG stream open, asks the server to stop, and verifies both
+process exit and camera release. It exercises the CLI configuration.
+- **Camera hub:** no obsolete or stale frame is returned to a new viewer as
+  LIVE. Abandoned readers cannot overwrite current errors/frames. A viewer
+  arriving during idle shutdown starts a replacement supervisor. At most two
+  camera reader threads may be outstanding, including blocked open/close
+  calls. Once full, recovery waits for a reader to return and reports
+  `reader_limit`, rather than spawning threads forever. Status adds `readers`.
+  Shutdown gives cooperative readers a shared one-second release budget after
+  stopping the supervisor; stuck readers cannot block cleanup indefinitely.
+- **Browser camera:** starts CONNECTING; serial status polls have a five-second
+  deadline. Invalid/failed responses hide the old image and report OFFLINE.
+  Successful recovery reconnects the video. Hidden/page-hidden pages abort
+  polling, cancel retry timers and release the stream; return resumes it.
+  Historical errors no longer override a current CONNECTING state. An idle
+  hub while the page is visible prompts a stream reconnect.
+- **Capture:** ten-second request deadline; requires `X-Kona-State: live`
+  before constructing a shareable photo. The NO SIGNAL placeholder cannot
+  be shared as a current picture of Kona. Sharing itself is not timed out.
+- **Activity:** twenty-second refresh deadline unlocks retry after a hung
+  request. Cancelled/multitouch pulls do not trigger requests. Sample preview
+  never installs refresh handlers, so wake-up cannot swap it to live data.
+  Failed refresh changes the current-status labels to last-reported wording.
+  Old Leaflet instances are explicitly removed before replacing the markup.
+- **Fi cache:** simultaneous cold-cache visitors share one refresh. Unexpected
+  exceptions expose their type, not arbitrary strings that may contain private
+  data. Retained routes carry local `positions_carried` provenance (also in
+  `/activity.json`) so a later walk without points cannot promote an old route
+  to Current walk. No GraphQL fields or requests were added.
+- **Health/heartbeat:** pending, unavailable, partial, stale and healthy Fi
+  readings are distinguished; `/healthz` remains a read-only cache peek.
+  Heartbeat non-2xx responses count as failures, and exception messages cannot
+  leak the secret ping URL. Its purpose remains process reachability, not a
+  camera-quality alarm.
+
+The browser regression harness is `tests/browser_runtime.test.cjs`, using only
+Node's built-in test/VM modules. Run it with an existing Node installation:
+`node --test tests/browser_runtime.test.cjs` (PowerShell). No npm packages,
+build step or production runtime requirement were introduced. Python pytest
+and Ruff remain the required CI checks; the browser harness is an additional
+local check, not silently required by `uv run pytest`.
+
+Real Chromium verification: fake camera LIVE → stop the test server → OFFLINE
+with old image hidden → restart the test server → LIVE on the same page,
+without reloading. All servers used for these checks were localhost-only,
+sample/fake-only and separate from Chris's running app.
+
+### Remaining limits and next hardware check
+
+This is a focused runtime audit, not a claim that every backend path or the
+physical device is now proven. In particular:
+
+- A blocked native driver cannot be killed by Python threads. The cap bounds
+  resource growth but does not repair it; replug/restart may remain necessary.
+  Worker-process isolation is a future architectural change, not implemented.
+- MJPEG `<img>` does not expose a per-frame progress callback. A successful
+  status poll plus a decoded image cannot prove Safari is receiving every new
+  frame, especially if another viewer keeps the hub live. Server-loss and
+  visibility recovery are tested; silent Safari decoder freezes remain open.
+- Fi requests have per-request network timeouts; a complete multi-query refresh
+  can exceed the browser's twenty-second deadline. The server can finish and
+  populate the cache after the browser has honestly reported refresh failure.
+- Fi's ordinary five-minute polling/backoff policy and the deployment host,
+  sleep configuration and tunnel were audited by reading, not changed.
+- Recheck on the physical phone: Camera → Activity → refresh → Camera, both
+  quickly and after more than five seconds; background/restore; Ctrl+C while
+  viewing; then a lights-off test. Verify the webcam LED goes off after the last
+  viewer leaves. Run camera-doctor/test only with other camera owners closed.
+
+The existing deprecation warnings in FastAPI/Starlette test support are not
+fixed here because doing so would require dependency changes.
+
+Local final validation: **234 pytest tests passed**, Ruff lint and format
+checks passed, and **10 browser-logic tests passed**. The Python tests include
+real TCP shutdown with a fake source, permanently hung readers, the idle-return
+race, stale-frame rejection, Fi cold-load concurrency and route provenance,
+heartbeat HTTP rejection/privacy, and health states. GitHub's Ubuntu/Windows
+results for the pushed commit are recorded in the PR checks.
+
+## Original audit findings (history; implementation status above supersedes proposals)
 
 Chris reports: after restarting, going to Activity and refreshing can leave
 the camera black; its LED remains on. Ctrl+C prints "Waiting for connections

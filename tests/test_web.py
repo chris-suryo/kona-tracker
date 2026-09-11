@@ -595,3 +595,29 @@ def test_camera_health_words_are_the_doctors_verdicts():
     # Unknown words are shown raw, never dressed up as something known.
     odd = camera_health({"state": "weird", "last_error_kind": "newkind"})
     assert odd["state"] == "weird" and odd["problem"] == "newkind"
+
+
+@pytest.mark.parametrize("kind", ["pending", "unavailable", "partial", "stale", "ok"])
+def test_healthz_distinguishes_no_reading_failure_and_partial_data(kind):
+    from datetime import UTC, datetime
+    from types import SimpleNamespace
+
+    from kona_tracker.fi.parse import CollarStatus
+    from kona_tracker.fi.service import FiSnapshot
+
+    snapshot = (
+        None
+        if kind == "pending"
+        else FiSnapshot(
+            fetched_at=datetime.now(UTC),
+            status=None if kind == "unavailable" else CollarStatus(battery_percent=50),
+            problem="test failure" if kind in ("unavailable", "partial", "stale") else None,
+            stale=kind == "stale",
+        )
+    )
+    app = create_app(
+        Settings(passcode="test-only", secret="test-only", camera_source="fake"),
+        fi_service=SimpleNamespace(peek=lambda: snapshot),
+    )
+    with TestClient(app) as c:
+        assert c.get("/healthz").json()["fi"] == kind

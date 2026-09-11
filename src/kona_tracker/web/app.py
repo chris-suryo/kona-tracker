@@ -245,8 +245,14 @@ def create_app(
             "camera_error": camera["last_error_kind"],
             "fi": "unconfigured"
             if fi is None
+            else "pending"
+            if snapshot is None
             else "stale"
-            if snapshot and snapshot.stale
+            if snapshot.stale
+            else "unavailable"
+            if not snapshot.has_data
+            else "partial"
+            if snapshot.partial
             else "ok",
             "fi_age_s": None if age is None else round(age),
         }

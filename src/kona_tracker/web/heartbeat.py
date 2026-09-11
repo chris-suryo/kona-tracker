@@ -82,12 +82,17 @@ class Heartbeat:
                 import httpx
 
                 post = httpx.post
-            post(self._url, content=body, timeout=REQUEST_TIMEOUT_SECONDS)
+            response = post(self._url, content=body, timeout=REQUEST_TIMEOUT_SECONDS)
+            if response is not None and not response.is_success:
+                self.failures += 1
+                log.warning("heartbeat ping rejected: HTTP %s", response.status_code)
+                return False
         except Exception as e:
             self.failures += 1
             # Never log the URL: anyone holding it can forge this app's
             # heartbeat and suppress the alarm that says the house is dark.
-            log.warning("heartbeat ping failed: %s: %s", type(e).__name__, e)
+            # HTTP exceptions can contain the full secret ping URL.
+            log.warning("heartbeat ping failed: %s (details omitted)", type(e).__name__)
             return False
         self.sent += 1
         return True

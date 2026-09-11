@@ -249,6 +249,96 @@ def test_backoff_grows_and_resets():
         hub.stop()
 
 
+def test_a_new_viewer_never_gets_a_stale_frame_marked_live():
+    hub, sources = make_hub([[1, "forever"]], hang_after=5, stale_after=0.1)
+    hub._add_viewer()
+    try:
+        assert wait_for(lambda: hub.status()["state"] == LIVE)
+        assert wait_for(lambda: hub.status()["state"] == STALE)
+        chunk = collect(hub, 1)[0]
+        assert part_state(chunk) != LIVE
+        assert part_body(chunk) == NO_SIGNAL_JPEG
+    finally:
+        sources[0].release.set()
+        hub._remove_viewer()
+        hub.stop()
+
+
+def test_permanent_hangs_have_a_bounded_reader_count_and_can_recover():
+    hub, sources = make_hub([["forever"], ["forever"], []], hang_after=0.1)
+    hub._add_viewer()
+    try:
+        assert wait_for(lambda: hub.status()["last_error_kind"] == "reader_limit")
+        assert len(sources) == hub.status()["readers"] == 2
+        time.sleep(0.3)  # several retry opportunities, no third blocked thread
+        assert len(sources) == 2
+        sources[0].release.set()
+        assert wait_for(lambda: hub.status()["state"] == LIVE)
+        assert len(sources) == 3
+    finally:
+        for source in sources:
+            source.release.set()
+        hub._remove_viewer()
+        hub.stop()
+
+
+def test_abandoned_reader_cannot_replace_current_error():
+    entered, release = threading.Event(), threading.Event()
+
+    class LateError(ScriptedSource):
+        def read_jpeg(self):
+            entered.set()
+            release.wait(3)
+            raise OSError("obsolete reader error")
+
+    old = LateError([])
+    calls = []
+
+    def source():
+        calls.append(1)
+        return old if len(calls) == 1 else FakeSource(fps=100)
+
+    hub = CameraHub(source, hang_after=0.1, backoff_base=0.01)
+    hub._add_viewer()
+    try:
+        assert entered.wait(2)
+        assert wait_for(lambda: hub.status()["state"] == LIVE)
+        release.set()
+        assert wait_for(lambda: old.closed)
+        assert "obsolete" not in hub.status()["last_error"]
+        assert hub.status()["state"] == LIVE
+    finally:
+        release.set()
+        hub._remove_viewer()
+        hub.stop()
+
+
+def test_viewer_arriving_during_idle_shutdown_gets_a_new_supervisor(monkeypatch):
+    hub, sources = make_hub([[], []], idle_stop_seconds=0.01)
+    leaving, proceed = threading.Event(), threading.Event()
+    original_idle = hub._idle
+
+    def idle():
+        answer = original_idle()
+        if answer and not leaving.is_set():
+            leaving.set()
+            assert proceed.wait(3)
+        return answer
+
+    monkeypatch.setattr(hub, "_idle", idle)
+    hub._add_viewer()
+    try:
+        assert wait_for(lambda: hub.status()["state"] == LIVE)
+        hub._remove_viewer()
+        assert leaving.wait(2)
+        hub._add_viewer()  # sees the old supervisor still alive
+        proceed.set()
+        assert wait_for(lambda: len(sources) >= 2 and hub.status()["state"] == LIVE)
+    finally:
+        proceed.set()
+        hub.stop()
+
+
 @pytest.mark.parametrize("n", [1, 2])
 def test_stop_ends_streams(n):
     hub, _ = make_hub([["forever"]])

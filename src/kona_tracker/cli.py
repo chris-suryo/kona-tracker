@@ -90,7 +90,16 @@ def serve(
     # from X-Forwarded-For whenever the peer is 127.0.0.1 -- which is every
     # request through a local tunnel. The lockout must key on exactly the
     # header KONA_TRUSTED_PROXY_HEADER names, and on nothing when it is unset.
-    uvicorn.run(create_app(settings), host=host, port=port, log_level="info", proxy_headers=False)
+    # MJPEG responses are endless. Bound the response drain so lifespan
+    # cleanup (which stops the camera) is reached even with a phone connected.
+    uvicorn.run(
+        create_app(settings),
+        host=host,
+        port=port,
+        log_level="info",
+        proxy_headers=False,
+        timeout_graceful_shutdown=5,
+    )
 
 
 @app.command()

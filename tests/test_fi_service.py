@@ -257,6 +257,57 @@ def test_an_unexpected_exception_becomes_a_problem_not_a_500():
     svc = FiService(EMAIL, PASSWORD, client_factory=explode)
     snap = svc.snapshot()
     assert not snap.has_data and "Unexpected error" in snap.problem
+    assert "something we did not anticipate" not in snap.problem
+
+
+def test_simultaneous_first_visitors_share_one_fi_fetch(monkeypatch):
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+
+    svc = service()
+    entered, release = threading.Event(), threading.Event()
+    calls = []
+    answer = FiSnapshot(fetched_at=NOW)
+
+    def fetch():
+        calls.append(1)
+        entered.set()
+        assert release.wait(3)
+        return answer
+
+    monkeypatch.setattr(svc, "_fetch", fetch)
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        first = pool.submit(svc.snapshot)
+        assert entered.wait(2)
+        others = [pool.submit(svc.snapshot) for _ in range(3)]
+        try:
+            # All followers must wait for the first result, without fetching.
+            with pytest.raises(TimeoutError):
+                others[-1].result(timeout=0.05)
+        finally:
+            release.set()
+        assert all(f.result(timeout=3) is answer for f in [first, *others])
+    assert len(calls) == 1
+
+
+def test_a_retained_route_is_not_promoted_to_a_new_current_walk(monkeypatch):
+    from kona_tracker.fi.parse import CollarStatus, LocationPoint
+
+    svc = service()
+    old = FiSnapshot(
+        fetched_at=NOW,
+        status=CollarStatus(activity="walk", positions=(LocationPoint(30.26, -97.74, NOW),)),
+    )
+    new = FiSnapshot(fetched_at=NOW + timedelta(hours=1), status=CollarStatus(activity="walk"))
+    answers = iter([old, new])
+    monkeypatch.setattr(svc, "_fetch", lambda: next(answers))
+    svc.snapshot()
+    svc._refresh()
+    snapshot = svc.peek()
+    assert snapshot.status.positions == old.status.positions
+    assert snapshot.status.positions_carried
+    assert activity_json(snapshot, configured=True)["positions_carried"] is True
+    assert activity_context(snapshot, configured=True)["map_kind"] == "last"
 
 
 # --------------------------------------------------------------------------
@@ -911,7 +962,7 @@ def test_healthz_never_asks_fi_and_reports_the_reading_age():
     with TestClient(app) as c:
         health = c.get("/healthz").json()
         assert logins["n"] == 0, "an unauthenticated ping must not make us talk to Fi"
-        assert health["fi"] == "ok" and health["fi_age_s"] is None
+        assert health["fi"] == "pending" and health["fi_age_s"] is None
         c.post("/login", data={"passcode": "4242"})
         c.get("/activity")
         health = c.get("/healthz").json()

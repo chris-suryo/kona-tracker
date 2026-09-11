@@ -130,6 +130,9 @@ class CollarStatus:
     #: The walk route, from `OngoingWalk.positions`. Bounded so an
     #: unexpectedly long activity cannot grow the page forever.
     positions: tuple[LocationPoint, ...] = ()
+    #: Local cache provenance, never a Fi field. A retained route is not a
+    #: current walk when a later response says "walk" but supplies no fixes.
+    positions_carried: bool = False
     #: Where she is while resting, from `pet_whereabouts`. Sourced from
     #: pytryfi's `... on OngoingRest { position }` and not yet measured on
     #: Kona's collar; `recorded_at` is the activity's `lastReportTimestamp`

@@ -3,9 +3,9 @@
 {% block pageclass %}cam-page{% endblock %}
 {% block body %}
 <figure class="cam">
-  <img id="cam" src="/stream.mjpg" alt="Live view of Kona">
+  <img id="cam" class="unavailable" src="/stream.mjpg" alt="Live view of Kona">
   <div class="top">
-    <span class="live"><span class="dot" id="dot"></span><span id="livetxt">LIVE</span></span>
+    <span class="live"><span class="dot" id="dot"></span><span id="livetxt">CONNECTING</span></span>
   </div>
   <div class="frame-actions">
     <button class="shutter" id="capture" type="button" aria-label="Capture and share a current snapshot">

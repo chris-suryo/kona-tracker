@@ -42,7 +42,7 @@
 
 <section class="collar-summary" aria-label="Kona's current collar status">
   <div>
-    <span class="eyebrow">Right now</span>
+    <span class="eyebrow">{{ 'Last reported' if stale else 'Right now' }}</span>
     <strong>
       {% if activity == 'walk' %}On a walk
       {% elif activity == 'rest' %}Resting
@@ -52,8 +52,8 @@
     {% if activity == 'walk' and walk_distance_m %}<span>{{ walk_distance_m }} m so far</span>{% endif %}
   </div>
   <div class="connection">
-    {% if on_base is sameas true %}<span class="status-dot live"></span>On charger
-    {% elif on_base is sameas false and signal %}<span class="status-dot live"></span>Cellular {{ signal }}%
+    {% if on_base is sameas true %}<span class="status-dot {{ 'warn-dot' if stale else 'live' }}"></span>On charger
+    {% elif on_base is sameas false and signal %}<span class="status-dot {{ 'warn-dot' if stale else 'live' }}"></span>Cellular {{ signal }}%
     {% elif configured and has_data %}<span class="status-dot"></span>Connection unknown
     {% endif %}
   </div>

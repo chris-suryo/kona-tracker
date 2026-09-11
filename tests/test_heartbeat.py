@@ -56,8 +56,26 @@ def test_a_failing_ping_is_logged_loudly_but_never_leaks_the_url(caplog):
         assert beat._send() is False
     assert beat.failures == 1 and beat.sent == 0
     text = caplog.text
-    assert "heartbeat ping failed" in text and "network is unreachable" in text
+    assert "heartbeat ping failed" in text and "OSError" in text
     assert URL not in text and "secret-token" not in text
+
+
+def test_http_failure_is_not_counted_as_a_success(caplog):
+    import httpx
+
+    beat = Heartbeat(URL, lambda: {}, post=lambda *a, **kw: httpx.Response(503))
+    assert beat._send() is False
+    assert beat.sent == 0 and beat.failures == 1
+    assert "503" in caplog.text
+
+
+def test_exception_containing_ping_url_is_not_logged(caplog):
+    def fail(*args, **kwargs):
+        raise RuntimeError(f"request failed for {URL}")
+
+    beat = Heartbeat(URL, lambda: {}, post=fail)
+    assert beat._send() is False
+    assert "RuntimeError" in caplog.text and "secret-token" not in caplog.text
 
 
 def test_a_broken_summary_still_pings():

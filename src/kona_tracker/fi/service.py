@@ -252,7 +252,7 @@ class FiService:
         self._client_factory = client_factory
         self._clock = clock
         self._data_start = data_start
-        self._lock = threading.Lock()
+        self._lock = threading.Condition()
         self._snapshot: FiSnapshot | None = None
         self._refreshing = False
         # When we last *tried*, as opposed to when we last succeeded. A run
@@ -281,7 +281,10 @@ class FiService:
         except FiError as e:
             fresh, problem = None, str(e)
         except Exception as e:  # a bug here must not kill the page
-            fresh, problem = None, f"Unexpected error talking to Fi: {type(e).__name__}: {e}"
+            fresh, problem = (
+                None,
+                f"Unexpected error talking to Fi: {type(e).__name__} (details omitted)",
+            )
         if fresh is None:
             log.warning("Fi refresh failed: %s", problem)
         elif fresh.problem:
@@ -303,7 +306,11 @@ class FiService:
                 ):
                     fresh = replace(
                         fresh,
-                        status=replace(fresh.status, positions=previous_status.positions),
+                        status=replace(
+                            fresh.status,
+                            positions=previous_status.positions,
+                            positions_carried=True,
+                        ),
                     )
                 self._snapshot = fresh
             elif self._snapshot is not None:
@@ -317,6 +324,7 @@ class FiService:
                     fetched_at=self._clock(), problem=problem, data_start=self._data_start
                 )
             self._refreshing = False
+            self._lock.notify_all()
 
     def peek(self) -> FiSnapshot | None:
         """What the cache holds, without asking Fi for anything.
@@ -345,6 +353,10 @@ class FiService:
         cache is the answer and its "Updated" time says so honestly.
         """
         with self._lock:
+            # Two first visitors must share one fetch, just like warm-cache
+            # visitors. Previously both saw None and logged in independently.
+            while self._snapshot is None and self._refreshing:
+                self._lock.wait()
             cached = self._snapshot
             if cached is None:
                 self._refreshing = True

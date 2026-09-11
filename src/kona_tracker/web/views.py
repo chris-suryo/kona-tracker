@@ -124,7 +124,9 @@ def activity_context(snapshot: FiSnapshot | None, configured: bool) -> dict[str,
     rest_position = status.rest_position if status else None
     home_position = status.home_location if status else None
     stale = bool(snapshot and snapshot.stale)
-    walking = bool(positions and status and status.activity == "walk")
+    walking = bool(
+        positions and status and status.activity == "walk" and not status.positions_carried
+    )
     # What the map may claim, most current first. Only `current` and `rest`
     # speak about now, so both need a fresh snapshot; a fix Fi sent before it
     # stopped answering is still real, but it is "last seen", not "resting".
@@ -317,6 +319,7 @@ def activity_json(snapshot: FiSnapshot | None, configured: bool) -> dict[str, An
             if home_position
             else None
         ),
+        "positions_carried": status.positions_carried if status else None,
         "rest_position": (
             {
                 "latitude": rest_position.latitude,
@@ -377,6 +380,9 @@ _CAMERA_PROBLEMS = {
     ),
     "open": "Could not open the camera. Another program may be holding it.",
     "hung": "The camera stopped answering. A reconnect was requested.",
+    "reader_limit": (
+        "Camera recovery is stuck. For USB, unplug and reconnect; otherwise restart the server."
+    ),
     "read": "Reading frames failed.",
     "empty_frames": "The camera opened but delivered no frames: unplug it and plug it back in.",
 }

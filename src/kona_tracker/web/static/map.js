@@ -3,7 +3,12 @@
 // CSP nonce) and init is a named function so a refreshed page can call it
 // again after its markup has been swapped.
 (function () {
+  var activeMap = null;
+  function destroy() {
+    if (activeMap) { activeMap.remove(); activeMap = null; }
+  }
   function init() {
+    destroy();
     var block = document.getElementById('map-points');
     var el = document.getElementById('kona-map');
     if (!block || !el || typeof L === 'undefined') { return; }
@@ -12,6 +17,7 @@
     if (!points || !points.length) { return; }
     var latlngs = points.map(function (p) { return [p.lat, p.lon]; });
     var map = L.map(el, { zoomControl: false, scrollWheelZoom: false });
+    activeMap = map;
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
@@ -33,6 +39,6 @@
     }).addTo(map);
     L.control.zoom({ position: 'bottomright' }).addTo(map);
   }
-  window.KonaMap = { init: init };
+  window.KonaMap = { init: init, destroy: destroy };
   init();
 })();
