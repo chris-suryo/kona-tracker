@@ -170,6 +170,16 @@ body.activity-page { overscroll-behavior-y: contain; }
 .cam { position: relative; margin: 12px 0 0; overflow: hidden; background: #0b0e0c; }
 .cam img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; }
 .cam img.unavailable { visibility: hidden; }
+/* Honest waiting state: while connecting, the hidden near-black frame carries
+   a centred "Connecting…" over it so it reads as working. Shown only when
+   camera.js marks .cam as .connecting; a hard failure leaves the badge's own
+   OFFLINE / CHECK CAMERA words over the black instead. */
+.cam-connecting { position: absolute; inset: 0; display: none; place-items: center; pointer-events: none;
+                  color: rgba(255,255,255,.62); font-size: 11px; letter-spacing: .14em; font-weight: 700; }
+.cam.connecting .cam-connecting { display: grid; }
+.cam-connecting span { display: inline-flex; align-items: center; gap: 8px; }
+.cam-connecting span::before { content: ''; width: 8px; height: 8px; border-radius: 50%;
+                               background: currentColor; animation: pulse 1.6s infinite; }
 .cam .top { position: absolute; left: 16px; right: 16px; top: 14px; display: flex; justify-content: flex-end; align-items: center; color: #fff; }
 .live { display: flex; align-items: center; gap: 8px; font-size: 11px; letter-spacing: .14em; font-weight: 700;
         padding: 6px 12px; border-radius: 999px; background: rgba(0,0,0,.45); border: 1px solid rgba(255,255,255,.15); }
@@ -297,6 +307,7 @@ body.activity-page { overscroll-behavior-y: contain; }
   /* Kept as a compatibility guard for the previous template and its test. */
   .dial .val, .stat { animation: none; }
   .dot.on { animation: none; opacity: 1; }
+  .cam-connecting span::before { animation: none; opacity: 1; }
   .nub, .shutter { transition: none; }
   /* `.pull.busy span` outranks `.pull span`, so it is named here too. */
   .pull, .pull span, .pull.busy span { transition: none; animation: none; }

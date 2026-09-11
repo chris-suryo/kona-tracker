@@ -4,6 +4,10 @@
 {% block body %}
 <figure class="cam">
   <img id="cam" class="unavailable" src="/stream.mjpg" alt="Live view of Kona">
+  {# Shown only while connecting (camera.js adds .connecting to .cam), so the
+     near-black frame reads as working rather than as a dead camera. A hard
+     failure drops it and the badge's own words stand. #}
+  <div class="cam-connecting" aria-hidden="true"><span>Connecting…</span></div>
   <div class="top">
     <span class="live"><span class="dot" id="dot"></span><span id="livetxt">CONNECTING</span></span>
   </div>

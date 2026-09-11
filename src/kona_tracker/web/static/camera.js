@@ -14,6 +14,7 @@
   // waiting up to a full poll cycle, but only if the server has said 'live' —
   // so a decoded NO-SIGNAL placeholder is never shown as a live picture.
   var lastState = null;
+  var frame = document.querySelector('.cam');
   function reload() {
     if (suspended) { return; }
     clearTimeout(retryTimer); retryTimer = null;
@@ -39,6 +40,11 @@
     dot.className = 'dot ' + cls; txt.textContent = label; cap.textContent = sub;
     // An old image must not look like a live view when the server is gone.
     img.classList.toggle('unavailable', cls !== 'on');
+    // While we are hopefully connecting, the near-black frame carries a
+    // "Connecting…" overlay so it reads as working, not as a dead camera. A
+    // hard failure (cls 'off') drops the overlay and lets the badge's own
+    // OFFLINE / CHECK CAMERA words stand over the black.
+    if (frame) { frame.classList.toggle('connecting', cls === 'stale'); }
   }
   function poll() {
     if (suspended || pending) { return; }
