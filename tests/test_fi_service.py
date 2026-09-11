@@ -129,8 +129,8 @@ def test_a_collar_paired_today_has_no_night_yet():
     last, today = split_windows(windows[:1], NOW)  # drop yesterday
     assert last is None and today is not None
     ctx = activity_context(FiSnapshot(fetched_at=NOW, today=today, activity=None), configured=True)
-    assert ctx["night_pending"] and ctx["sleep_hours"] is None
-    assert ctx["nap_hours"] == "0.4"
+    assert ctx["night_pending"] and ctx["sleep_parts"] is None
+    assert ctx["nap_parts"] == [("22", "m")], "1290 s is 22 minutes, not 0.4 of something"
 
 
 def test_split_windows_handles_naive_and_missing_timestamps():
@@ -257,6 +257,57 @@ def test_an_unexpected_exception_becomes_a_problem_not_a_500():
     svc = FiService(EMAIL, PASSWORD, client_factory=explode)
     snap = svc.snapshot()
     assert not snap.has_data and "Unexpected error" in snap.problem
+    assert "something we did not anticipate" not in snap.problem
+
+
+def test_simultaneous_first_visitors_share_one_fi_fetch(monkeypatch):
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+
+    svc = service()
+    entered, release = threading.Event(), threading.Event()
+    calls = []
+    answer = FiSnapshot(fetched_at=NOW)
+
+    def fetch():
+        calls.append(1)
+        entered.set()
+        assert release.wait(3)
+        return answer
+
+    monkeypatch.setattr(svc, "_fetch", fetch)
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        first = pool.submit(svc.snapshot)
+        assert entered.wait(2)
+        others = [pool.submit(svc.snapshot) for _ in range(3)]
+        try:
+            # All followers must wait for the first result, without fetching.
+            with pytest.raises(TimeoutError):
+                others[-1].result(timeout=0.05)
+        finally:
+            release.set()
+        assert all(f.result(timeout=3) is answer for f in [first, *others])
+    assert len(calls) == 1
+
+
+def test_a_retained_route_is_not_promoted_to_a_new_current_walk(monkeypatch):
+    from kona_tracker.fi.parse import CollarStatus, LocationPoint
+
+    svc = service()
+    old = FiSnapshot(
+        fetched_at=NOW,
+        status=CollarStatus(activity="walk", positions=(LocationPoint(30.26, -97.74, NOW),)),
+    )
+    new = FiSnapshot(fetched_at=NOW + timedelta(hours=1), status=CollarStatus(activity="walk"))
+    answers = iter([old, new])
+    monkeypatch.setattr(svc, "_fetch", lambda: next(answers))
+    svc.snapshot()
+    svc._refresh()
+    snapshot = svc.peek()
+    assert snapshot.status.positions == old.status.positions
+    assert snapshot.status.positions_carried
+    assert activity_json(snapshot, configured=True)["positions_carried"] is True
+    assert activity_context(snapshot, configured=True)["map_kind"] == "last"
 
 
 # --------------------------------------------------------------------------
@@ -282,14 +333,15 @@ def test_context_shows_raw_seconds_when_the_unit_is_not_credible():
         activity=snap.activity,
     )
     ctx = activity_context(broken, configured=True)
-    assert ctx["sleep_hours"] is None
+    assert ctx["sleep_parts"] is None
     assert ctx["sleep_raw"] == 30600 * 60 and ctx["unit_suspect"]
     assert ctx["dial_offset"] == TRACK  # nothing drawn we cannot justify
 
 
 def test_context_of_nothing_at_all_is_all_dashes():
     ctx = activity_context(None, configured=False)
-    assert ctx["sleep_hours"] is None and ctx["steps"] is None and ctx["as_of"] is None
+    assert ctx["sleep_parts"] is None and ctx["steps"] is None and ctx["as_of"] is None
+    assert ctx["ring"] == {"percent": 0, "arc": 0.0, "overflow": 0.0}
     assert ctx["has_data"] is False and ctx["dial_offset"] == TRACK
 
 
@@ -309,8 +361,9 @@ def web_client(fi_service=None, **kw) -> TestClient:
 def test_activity_page_renders_real_numbers():
     with web_client(service()) as c:
         body = c.get("/activity").text
-        assert "8.5" in body and "4,210" in body and "9,000" in body
-        assert "0.4" in body and "so far today" in body  # today's naps, not last night's
+        assert "8<small>h</small>30<small>m</small>" in body and "4,210" in body
+        assert "9,000" in body
+        assert "22<small>m</small>" in body and "so far today" in body  # today's naps
         assert "31,000" in body and "This week" in body  # replaced the distance tile
         assert "raw units" not in body
         assert PASSWORD not in body and EMAIL not in body
@@ -481,7 +534,10 @@ def test_walk_positions_are_validated_sorted_and_exposed_behind_auth():
     with web_client(service(walking)) as c:
         page = c.get("/activity").text
         api = c.get("/activity.json").json()
-        assert 'id="kona-map"' in page and "tile.openstreetmap.org" in page
+        assert 'id="kona-map"' in page and 'id="map-points"' in page
+        from kona_tracker.web.app import HERE
+
+        assert "tile.openstreetmap.org" in (HERE / "static" / "map.js").read_text("utf-8")
         assert "Current walk" in page and "Updated" in page
         assert "30.2672" in page and len(api["positions"]) == 2
 
@@ -556,8 +612,14 @@ def test_snapshot_carries_profile_and_status_and_a_collar_failure_is_partial():
         return fake_fi_handler(request)
 
     snap = service(status_fails).snapshot()
-    assert snap.sleep_hours == 8.5 and snap.status is None and snap.profile is None
+    assert snap.sleep_hours == 8.5 and snap.profile is None
+    # The collar document failed, but her position comes from its own
+    # document and survives: a status that knows where she is and nothing
+    # else, rather than no status at all.
+    assert snap.status.battery_percent is None and snap.status.activity is None
+    assert snap.status.rest_position is not None
     assert snap.partial and snap.problem.startswith("Collar:")
+    assert activity_context(snap, configured=True)["map_kind"] == "rest"
 
 
 def test_activity_json_exposes_the_collar_without_the_photo_url():
@@ -589,7 +651,8 @@ def test_preview_is_obviously_sample_data_and_never_changes_live_json():
         preview = c.get("/activity?preview=1").text
         live = c.get("/activity.json").json()
     assert "Sample preview" in preview and "not Kona's live collar data" in preview
-    assert "18,240" in preview and "8.2" in preview and 'id="kona-map"' in preview
+    assert "18,240" in preview and "8<small>h</small>12<small>m</small>" in preview
+    assert 'id="kona-map"' in preview
     assert live["steps"] == 4210, "preview mode must not enter Fi's cache or API"
 
 
@@ -732,3 +795,245 @@ def test_a_shape_change_in_the_collar_blob_is_a_partial_not_a_blank_page():
     assert snap.sleep_hours == 8.5, "sleep survived the collar blob changing shape"
     assert snap.status is not None and snap.status.battery_percent is None
     assert snap.problem is None
+
+
+# --------------------------------------------------------------------------
+# her position while resting
+# --------------------------------------------------------------------------
+
+
+def test_resting_position_is_parsed_from_its_own_query():
+    """Shape sourced from pytryfi's `... on OngoingRest { position }`, the
+    field the Home Assistant tracker reads. NOT yet measured on Kona's
+    collar: `tests/fixtures/whereabouts.json` is pytryfi's shape, and the
+    next `kona probe` run replaces it with the real body or refutes it."""
+    from kona_tracker.fi.parse import rest_position_from
+
+    point = rest_position_from(fixture("whereabouts")["data"])
+    assert (point.latitude, point.longitude) == (30.2675, -97.7429)
+    assert point.recorded_at == datetime(2026, 9, 10, 20, 24, 44, 315000, tzinfo=UTC)
+    assert point.accuracy_m is None, "Fi does not say; we do not invent one"
+
+    # She is walking: the document selects nothing on OngoingWalk.
+    assert rest_position_from(fixture("location")["data"]) is None
+    # Off the planet, hostile, or absent: None, never a raise.
+    bad = json.loads(json.dumps(fixture("whereabouts")["data"]))
+    bad["pet"]["ongoingActivity"]["position"]["latitude"] = 999
+    assert rest_position_from(bad) is None
+    assert rest_position_from({"pet": {"ongoingActivity": "nope"}}) is None
+    assert rest_position_from({"pet": {"ongoingActivity": {"position": [1, 2]}}}) is None
+    assert rest_position_from(None) is None
+
+
+def test_resting_position_reaches_the_map_with_its_own_words():
+    with web_client(service()) as c:
+        page = c.get("/activity").text
+        data = c.get("/activity.json").json()
+        ctx = activity_context(c.app.state.fi.snapshot(), configured=True)
+    assert ctx["map_kind"] == "rest" and ctx["location_live"] is False
+    assert ctx["map_points"] == [{"lat": 30.2675, "lon": -97.7429, "accuracy": None}]
+    assert "Resting at Home" in page and "Last report" in page
+    assert "Current walk" not in page and "Last GPS fix" not in page
+    assert data["rest_position"] == {
+        "latitude": 30.2675,
+        "longitude": -97.7429,
+        "reported_at": "2026-09-10T20:24:44.315000+00:00",
+    }
+    assert data["home_position"] == {"latitude": 30.2672, "longitude": -97.7431}
+
+
+def test_a_rejected_position_field_costs_only_the_map_point():
+    """The reason the field lives in its own document.
+
+    Nobody has seen Fi's answer to `position` on OngoingRest yet. If it is a
+    validation error, that error fails the whole document it is in -- so it
+    must not be in the one that carries battery, signal and the escape flag.
+    The message below is the hypothetical rejection in graphql-js's shape,
+    not a recorded one."""
+
+    def rejects_position(request):
+        if (
+            request.url.path == "/graphql"
+            and "KonaWhereabouts" in json.loads(request.content)["query"]
+        ):
+            return httpx.Response(
+                200,
+                json={
+                    "errors": [{"message": 'Cannot query field "position" on type "OngoingRest".'}],
+                    "data": None,
+                },
+            )
+        return fake_fi_handler(request)
+
+    with web_client(service(rejects_position)) as c:
+        snap = c.app.state.fi.snapshot()
+        page = c.get("/activity").text
+        data = c.get("/activity.json").json()
+    assert snap.status.battery_percent == 57 and snap.status.on_base is True
+    assert snap.profile.breed == "Labrador Retriever"
+    assert snap.status.rest_position is None
+    assert snap.partial and not snap.stale
+    assert snap.problem.startswith("Location:") and "kona probe" in snap.problem
+    ctx = activity_context(snap, configured=True)
+    assert ctx["map_kind"] == "home", "the saved home pin is the honest fallback"
+    assert "Part of this didn" in page and 'id="kona-map"' in page
+    assert "Saved Home location · not Kona's reported position" in page
+    assert data["rest_position"] is None and data["battery_percent"] == 57
+
+
+def test_a_stale_resting_fix_is_last_seen_not_resting():
+    """`stale` means Fi stopped answering. The fix is still real and still
+    drawn, with its time, but the page may not say she is resting *now*."""
+    from kona_tracker.fi.parse import CollarStatus, LocationPoint
+
+    fix = LocationPoint(30.2675, -97.7429, NOW - timedelta(hours=3))
+    fresh = FiSnapshot(fetched_at=NOW, status=CollarStatus(activity="rest", rest_position=fix))
+    assert activity_context(fresh, configured=True)["map_kind"] == "rest"
+    stale = FiSnapshot(
+        fetched_at=NOW, status=CollarStatus(activity="rest", rest_position=fix), stale=True
+    )
+    ctx = activity_context(stale, configured=True)
+    assert ctx["map_kind"] == "last" and ctx["location_updated"] is not None
+    assert ctx["map_points"][0]["lat"] == 30.2675
+
+
+def test_resting_position_wins_over_a_carried_forward_walk():
+    """After a walk, `_refresh` keeps the old route in case Fi sends nothing
+    newer. A resting position is newer by definition, so the map shows it."""
+    from kona_tracker.fi.parse import CollarStatus, LocationPoint
+
+    route = (LocationPoint(30.26, -97.74, NOW - timedelta(hours=2), 8),)
+    fix = LocationPoint(30.2675, -97.7429, NOW - timedelta(minutes=5))
+    snap = FiSnapshot(
+        fetched_at=NOW,
+        status=CollarStatus(activity="rest", positions=route, rest_position=fix),
+    )
+    ctx = activity_context(snap, configured=True)
+    assert ctx["map_kind"] == "rest" and len(ctx["map_points"]) == 1
+    assert ctx["map_points"][0]["lat"] == 30.2675
+
+
+# --------------------------------------------------------------------------
+# a person asking for fresh numbers
+# --------------------------------------------------------------------------
+
+
+def test_a_forced_refresh_asks_fi_now_but_never_faster_than_the_floor():
+    """Pull-to-refresh must mean something -- the plain `snapshot()` only
+    starts a background refresh past the 300 s TTL, so a pull would redraw
+    the same numbers. Forced, it asks Fi on this request. Floored, because a
+    thumb must never become a request loop against a private API."""
+    from kona_tracker.fi.service import PULL_REFRESH_FLOOR_SECONDS
+
+    logins = {"n": 0}
+    clock = {"now": NOW}
+
+    def counting(request):
+        if request.url.path == "/auth/login":
+            logins["n"] += 1
+        return fake_fi_handler(request)
+
+    svc = service(counting, clock=lambda: clock["now"])
+    first = svc.snapshot()
+    assert logins["n"] == 1
+    assert svc.snapshot(force=True) is first and logins["n"] == 1, "under the floor: the cache"
+    clock["now"] = NOW + timedelta(seconds=PULL_REFRESH_FLOOR_SECONDS)
+    second = svc.snapshot(force=True)
+    assert logins["n"] == 2 and second.fetched_at == clock["now"], "on this request, not later"
+    assert svc.snapshot(force=True) is second and logins["n"] == 2
+
+
+def test_the_fresh_page_is_the_same_template_with_the_swap_hooks():
+    with web_client(service()) as c:
+        page = c.get("/activity?fresh=1").text
+    assert 'id="activity-body"' in page and 'class="freshness" data-as-of="' in page
+    assert 'class="activity-page"' in page.split("<main")[0], "body carries the page class"
+
+
+def test_healthz_never_asks_fi_and_reports_the_reading_age():
+    logins = {"n": 0}
+
+    def counting(request):
+        if request.url.path == "/auth/login":
+            logins["n"] += 1
+        return fake_fi_handler(request)
+
+    settings = Settings(passcode="4242", secret="test-secret")
+    app = create_app(
+        settings, source_factory=lambda: FakeSource(fps=100), fi_service=service(counting)
+    )
+    with TestClient(app) as c:
+        health = c.get("/healthz").json()
+        assert logins["n"] == 0, "an unauthenticated ping must not make us talk to Fi"
+        assert health["fi"] == "pending" and health["fi_age_s"] is None
+        c.post("/login", data={"passcode": "4242"})
+        c.get("/activity")
+        health = c.get("/healthz").json()
+        assert logins["n"] == 1 and isinstance(health["fi_age_s"], int)
+        assert "30.26" not in json.dumps(health) and "password" not in json.dumps(health)
+
+
+def test_fi_failures_are_logged_for_the_morning_after(caplog):
+    import logging
+
+    def rest_fails(request):
+        if request.url.path == "/graphql" and "KonaRest" in json.loads(request.content)["query"]:
+            return httpx.Response(200, json={"errors": [{"message": "boom"}]})
+        return fake_fi_handler(request)
+
+    with caplog.at_level(logging.WARNING, logger="kona_tracker.fi"):
+        service(rest_fails).snapshot()
+    assert any("Fi refresh partial: Sleep:" in r.getMessage() for r in caplog.records)
+
+
+# --------------------------------------------------------------------------
+# whose clock
+# --------------------------------------------------------------------------
+
+
+def test_times_are_konas_when_fi_names_her_timezone_and_say_so():
+    """`.astimezone()` was the server's zone: right while the PC sits at home
+    with her, wrong the moment the app is hosted elsewhere, and unlabelled
+    for a reader in another zone. Fi's `timezone` on Pet was accepted in
+    round 3; its VALUE is redacted by the probe, so "America/Chicago" in the
+    fixture is an assumed IANA name, and a bad one must fall back cleanly."""
+    from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+    from kona_tracker.fi.parse import profile_from
+
+    assert profile_from(fixture("status")["data"]).timezone == "America/Chicago"
+    try:
+        chicago = ZoneInfo("America/Chicago")
+    except ZoneInfoNotFoundError:
+        # Windows without the tzdata package: the fallback branch below is
+        # what runs there, and that is the honest thing to assert.
+        chicago = None
+
+    with web_client(service()) as c:
+        ctx = activity_context(c.app.state.fi.snapshot(), configured=True)
+        data = c.get("/activity.json").json()
+        page = c.get("/activity").text
+    if chicago is not None:
+        expected = NOW.astimezone(chicago)
+        assert ctx["as_of"] == expected.strftime("%H:%M")
+        assert ctx["clock_zone"] == expected.strftime("%Z") and ctx["clock_zone"]
+        assert data["clock"] == "fi" and data["timezone"] == "America/Chicago"
+        assert f"Updated {ctx['as_of']} {ctx['clock_zone']}" in page
+    else:
+        assert ctx["as_of"] == NOW.astimezone().strftime("%H:%M")
+        assert ctx["clock_zone"] is None and data["clock"] == "server"
+
+
+def test_an_unloadable_timezone_falls_back_to_the_servers_clock():
+    from kona_tracker.fi.parse import ActivityStats, PetProfile
+
+    snap = FiSnapshot(
+        fetched_at=NOW,
+        pet_name="Kona",
+        activity=ActivityStats(10, 100, 0),
+        profile=PetProfile(name="Kona", timezone="Mars/Olympus_Mons"),
+    )
+    ctx = activity_context(snap, configured=True)
+    assert ctx["as_of"] == NOW.astimezone().strftime("%H:%M") and ctx["clock_zone"] is None
+    assert activity_json(snap, configured=True)["clock"] == "server"
+    assert activity_json(None, configured=False)["clock"] is None

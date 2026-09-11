@@ -37,6 +37,33 @@ body { min-height: 100dvh; display: flex; flex-direction: column; -webkit-font-s
           background: var(--t1); color: var(--t5); display: grid; place-items: center;
           font-weight: 700; font-size: 18px; position: relative; text-decoration: none; }
 .avatar img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+/* Tappable controls: no double-tap zoom on a button, which is the jarring
+   part of "pinch-to-zoom" on a phone. Pinch itself stays -- it is how
+   someone with poor eyesight reads this page -- and nothing here reaches
+   inside the map, where pinch is how you zoom it. .nub keeps `none`
+   because press-and-hold must not scroll. */
+.seg a, .avatar, .shutter, .pill, .settings-link, .login button, .logout { touch-action: manipulation; }
+
+/* Pull to refresh (app.js). The body, not main, owns the viewport scroll,
+   so `overscroll-behavior` goes there: it keeps Safari's own
+   pull-to-reload from firing on top of ours in the browser tab. */
+body.activity-page { overscroll-behavior-y: contain; }
+.pull { position: fixed; top: 0; left: 0; right: 0; z-index: 5; display: flex; justify-content: center;
+        padding-top: max(10px, env(safe-area-inset-top)); pointer-events: none;
+        transform: translateY(-48px); transition: transform .15s ease-out; }
+.pull[hidden] { display: none; }
+.pull span { font-size: 12px; font-weight: 600; color: var(--ink2); background: var(--bg2);
+             border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; }
+.pull.ready span { color: var(--on); background: var(--t4); border-color: transparent; }
+.pull span { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; }
+.pull span::before { content: ''; width: 9px; height: 9px; border-right: 1.5px solid currentColor;
+                     border-bottom: 1.5px solid currentColor; transform: rotate(45deg); margin: -4px 2px 0; }
+.pull.ready span::before { transform: rotate(225deg); margin-top: 4px; }
+.pull.busy { transform: translateY(64px); }
+.pull.busy span::before { width: 12px; height: 12px; margin: 0; border: 1.5px solid currentColor;
+                         border-right-color: transparent; border-radius: 50%; animation: refresh-spin .8s linear infinite; }
+@keyframes refresh-spin { to { transform: rotate(405deg); } }
+
 .seg { display: flex; padding: 3px; border-radius: 999px; background: var(--bg2); }
 .seg a { padding: 8px 18px; border-radius: 999px; font-size: 13px; font-weight: 600; color: var(--ink2); text-decoration: none; }
 .seg a.on { background: var(--ink); color: var(--bg); font-weight: 700; }
@@ -70,13 +97,16 @@ body { min-height: 100dvh; display: flex; flex-direction: column; -webkit-font-s
 
 .location-card { margin: 18px 0 0; overflow: hidden; border: 1px solid var(--line); border-radius: 18px; background: var(--bg2); }
 .location-card.urgent { border-color: color-mix(in srgb, var(--warn) 48%, transparent); }
-.location-heading { min-height: 62px; padding: 13px 14px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.location-heading { min-height: 62px; padding: 16px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; }
 .location-heading > div { display: flex; flex-direction: column; gap: 3px; }
 .location-heading strong { font-size: 16px; letter-spacing: -.025em; }
 .location-heading > span { color: var(--ink2); font-size: 11px; white-space: nowrap; }
 .map { height: 214px; width: 100%; background: var(--t1); }
-.map-empty { height: 150px; padding: 24px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
-             border-top: 1px solid var(--line); color: var(--ink2); text-align: center; font-size: 12px; line-height: 1.4; }
+.location-note { margin: -4px 16px 14px; color: var(--ink2); font-size: 12px; line-height: 1.5; }
+.location-note.warn { color: var(--warn); }
+.map-empty { min-height: 144px; padding: 24px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+             border-top: 1px solid var(--line); color: var(--ink2); text-align: center; font-size: 13px; line-height: 1.5; }
+.map-empty span { max-width: 28ch; }
 .map-empty svg { width: 28px; height: 28px; fill: none; stroke: var(--t4); stroke-width: 1.7; }
 .kona-map-marker { border: 0; background: none; }
 .kona-map-marker span { width: 34px; height: 34px; display: grid; place-items: center; border: 3px solid #fff; border-radius: 50%;
@@ -96,6 +126,10 @@ body { min-height: 100dvh; display: flex; flex-direction: column; -webkit-font-s
 .goal-ring circle { fill: none; stroke-width: 18; }
 .goal-ring .track { stroke: var(--t1); }
 .goal-ring .value { stroke: var(--t5); stroke-linecap: round; animation: goal-fill 1s cubic-bezier(.22,1,.36,1); }
+/* Past the goal: a second lap over the first, in the next ramp step so the
+   surplus reads as a different green rather than a ring that stopped at
+   "done". It starts sweeping when the first lap has finished. */
+.goal-ring .over { stroke: var(--t3); animation-delay: .9s; animation-fill-mode: both; }
 .goal-ring strong { font-size: 19px; letter-spacing: -.04em; font-variant-numeric: tabular-nums; }
 @keyframes goal-fill { from { stroke-dashoffset: 100; } }
 
@@ -109,6 +143,7 @@ body { min-height: 100dvh; display: flex; flex-direction: column; -webkit-font-s
 .week-row { display: flex; justify-content: space-between; align-items: end; padding: 20px 0; border-bottom: 1px solid var(--line); color: var(--ink2); font-size: 12px; }
 .week-row > span:first-child { display: flex; flex-direction: column; gap: 8px; }
 .week-row strong { color: var(--ink); font-size: 30px; }
+.week-row strong.phrase { font-size: 17px; letter-spacing: -.02em; }
 .freshness { padding-top: 16px; }
 .dimmed { opacity: .55; }
 .note { font-size: 13px; color: var(--ink2); line-height: 1.45; margin-top: 18px; }
@@ -134,6 +169,7 @@ body { min-height: 100dvh; display: flex; flex-direction: column; -webkit-font-s
 .cam-page .hdr { padding-left: 20px; padding-right: 20px; }
 .cam { position: relative; margin: 12px 0 0; overflow: hidden; background: #0b0e0c; }
 .cam img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; }
+.cam img.unavailable { visibility: hidden; }
 .cam .top { position: absolute; left: 16px; right: 16px; top: 14px; display: flex; justify-content: flex-end; align-items: center; color: #fff; }
 .live { display: flex; align-items: center; gap: 8px; font-size: 11px; letter-spacing: .14em; font-weight: 700;
         padding: 6px 12px; border-radius: 999px; background: rgba(0,0,0,.45); border: 1px solid rgba(255,255,255,.15); }
@@ -171,8 +207,14 @@ body { min-height: 100dvh; display: flex; flex-direction: column; -webkit-font-s
 .error { color: var(--bad); margin: 0; font-size: 14px; }
 .logout { font-size: 12px; color: var(--ink3); background: none; border: 0; padding: 20px 0 0; font: inherit; text-align: center; }
 
-/* profile + settings: personal actions live behind the photo, not in the feed */
-.profile-hero { display: flex; align-items: center; gap: 18px; padding: 30px 0 26px; border-bottom: 1px solid var(--line); }
+/* profile + settings: personal actions live behind the photo, not in the feed.
+   No tab bar: the page is pushed from the avatar and popped by the back link,
+   which sits where the header would, so the top edge lines up across pages. */
+.subnav { display: flex; align-items: center; min-height: 64px; padding-top: max(12px, env(safe-area-inset-top)); }
+.back { display: inline-flex; align-items: center; gap: 2px; margin-left: -8px; padding: 8px 10px 8px 4px; border-radius: 999px;
+        color: var(--t4); font-size: 15px; font-weight: 600; text-decoration: none; touch-action: manipulation; }
+.back svg { width: 22px; height: 22px; }
+.profile-hero { display: flex; align-items: center; gap: 18px; padding: 8px 0 26px; border-bottom: 1px solid var(--line); }
 .profile-photo { width: 88px; height: 88px; border-radius: 50%; overflow: hidden; flex: none; position: relative;
                  display: grid; place-items: center; background: var(--t1); color: var(--t5); font-size: 34px; font-weight: 700; }
 .profile-photo img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
@@ -183,13 +225,22 @@ body { min-height: 100dvh; display: flex; flex-direction: column; -webkit-font-s
 .settings-row { display: flex; justify-content: space-between; gap: 20px; padding: 10px 0; font-size: 14px; }
 .settings-row span { color: var(--ink2); }
 .settings-row strong { text-align: right; }
+.camera-status { align-items: baseline; }
+.camera-status strong { display: inline-flex; justify-content: flex-end; align-items: center; gap: 8px; line-height: 1.4; }
+.camera-status .status-dot { display: inline-block; background: var(--t4); }
+.camera-problem { flex-direction: column; gap: 6px; margin: 8px 0; padding: 14px 0; border-top: 1px solid var(--line); }
+.camera-problem > span { font-size: 12px; font-weight: 600; }
+.camera-problem p { margin: 0; color: var(--ink2); font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
 .settings-link { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 10px 0 14px;
                  color: var(--ink); text-decoration: none; }
 .settings-link > span:first-child { display: flex; flex-direction: column; gap: 4px; }
 .settings-link strong { font-size: 14px; }
 .settings-link small { color: var(--ink2); font-size: 11px; line-height: 1.35; }
-.settings-link > span:last-child { color: var(--ink3); font-size: 28px; }
-.settings-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 24px; }
+/* The same chevron as the back link, turned around and sat on the row's
+   centre line, instead of a 28px text glyph riding high on its own. */
+.settings-link .go { display: grid; place-items: center; flex: none; color: var(--ink3); }
+.settings-link .go svg { width: 18px; height: 18px; transform: rotate(180deg); }
+.settings-actions { display: flex; align-items: center; justify-content: center; gap: 12px; padding-top: 24px; }
 .settings-actions .logout { padding: 12px 0; cursor: pointer; }
 
 /* Pan/tilt pad. Only rendered for cameras with motors; a fixed camera
@@ -247,4 +298,7 @@ body { min-height: 100dvh; display: flex; flex-direction: column; -webkit-font-s
   .dial .val, .stat { animation: none; }
   .dot.on { animation: none; opacity: 1; }
   .nub, .shutter { transition: none; }
+  /* `.pull.busy span` outranks `.pull span`, so it is named here too. */
+  .pull, .pull span, .pull.busy span { transition: none; animation: none; }
+  .pull.busy span::before { animation: none; }
 }

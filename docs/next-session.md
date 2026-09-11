@@ -26,7 +26,14 @@ It went well beyond the templates-and-CSS scope it was given -- Python,
 camera, settings, a new template, new tests. That is fine, and it is why
 this is a real review rather than a rubber stamp.
 
-## 1. Map: keep it, but it must not depend on a CDN being up
+## 1. Map: keep it, but it must not depend on a CDN being up — **DONE 2026-09-11**
+
+> Leaflet 1.9.4 now lives in `web/static/leaflet/` (js, css, images,
+> license), byte-identical to the npm release: a test pins the same sha256
+> values the unpkg SRI attributes carried. `.gitattributes` keeps those
+> bytes off Windows autocrlf. Nothing in the templates loads from unpkg.
+> The "blank coloured box" failure below therefore cannot happen; the honest
+> empty state is what shows when there are no points.
 
 **Decided: keep the map.** Two things to fix before merge.
 

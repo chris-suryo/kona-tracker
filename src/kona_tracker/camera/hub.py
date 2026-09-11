@@ -20,11 +20,22 @@ as a supervisor over disposable reader threads:
 
 Capture starts on the first viewer and stops after an idle grace so the
 camera is not held open (and a webcam LED goes off) when nobody is watching.
+
+That grace used to be five hard-coded seconds, which meant a glance at the
+Activity tab closed the webcam and coming back reopened it. A USB webcam
+that is closed and reopened in quick succession is the textbook way to
+wedge it on Windows: it opens cleanly, lights its LED and delivers nothing
+until it is physically replugged (docs/device-capabilities.md). So the
+grace is now a setting with a long default, and every close is followed by
+a cooldown before the next open, whatever caused the close. Neither is a
+proven fix for the black screen Chris sees; both remove a way for this app
+to manufacture that fault itself, and only his hardware can say more.
 """
 
 from __future__ import annotations
 
 import asyncio
+import logging
 import threading
 import time
 from collections.abc import AsyncIterator, Callable
@@ -35,6 +46,8 @@ from kona_tracker.camera.redact import redact_url
 from kona_tracker.camera.source import CameraFrameError, FrameSource
 
 BOUNDARY = "kona-frame"
+
+log = logging.getLogger("kona_tracker.camera")
 
 IDLE = "idle"
 CONNECTING = "connecting"
@@ -47,7 +60,8 @@ class CameraHub:
     def __init__(
         self,
         open_source: Callable[[], FrameSource],
-        idle_stop_seconds: float = 5.0,
+        idle_stop_seconds: float = 120.0,
+        reopen_cooldown_seconds: float = 2.0,
         max_fps: float = 15.0,
         stale_after: float = 3.0,
         hang_after: float = 10.0,
@@ -58,6 +72,7 @@ class CameraHub:
     ):
         self._open_source = open_source
         self._idle_stop = idle_stop_seconds
+        self._reopen_cooldown = reopen_cooldown_seconds
         self._min_interval = 1.0 / max_fps
         self.stale_after = stale_after
         self._hang_after = hang_after
@@ -77,6 +92,14 @@ class CameraHub:
         self._generation = 0
         self._reader_alive = False
         self._reader_started_at = 0.0
+        # When a source was last released, so the next open can keep its
+        # distance; and whether the supervisor is in that pause right now,
+        # which the status reports as connecting rather than as a failure.
+        self._last_close_at = 0.0
+        self._reopening = False
+        # A blocked C call cannot be killed. Permit one replacement, then
+        # wait for a slot instead of leaking a thread on every retry forever.
+        self._readers: set[threading.Thread] = set()
         self._backoff = backoff_base
         self._fails = 0  # bumps whenever a reader dies; wakes waiting viewers
 
@@ -93,6 +116,8 @@ class CameraHub:
             age = (time.monotonic() - self._last_frame_at) if self._frame else None
             if not supervising:
                 state = IDLE
+            elif self._reopening:
+                state = CONNECTING
             elif not self._reader_alive:
                 state = DISCONNECTED
             elif self._frame is None or age is None:
@@ -109,6 +134,7 @@ class CameraHub:
                 "reconnects": self.reconnects,
                 "last_error": self.last_error,
                 "last_error_kind": self.last_error_kind,
+                "readers": len(self._readers),
             }
 
     # -- lifecycle ----------------------------------------------------------
@@ -134,6 +160,14 @@ class CameraHub:
         first = True
         try:
             while not self._stop.is_set() and not self._idle():
+                with self._lock:
+                    if len(self._readers) >= 2:
+                        self.last_error = (
+                            "camera readers are stuck; unplug USB or restart the server"
+                        )
+                        self.last_error_kind = "reader_limit"
+                        self._lock.wait(timeout=0.1)
+                        continue
                 if not first:
                     self.reconnects += 1
                     # Interruptible backoff so stop() never waits on a sleep.
@@ -143,15 +177,34 @@ class CameraHub:
                         break
                     self._backoff = min(self._backoff * 2, self._backoff_max)
                 first = False
+                # A close is always followed by a pause before the next open,
+                # whether the close was idle, a failure or an abandoned
+                # reader finally returning. Interruptible, like the backoff.
+                with self._lock:
+                    pause = self._reopen_cooldown - (time.monotonic() - self._last_close_at)
+                    self._reopening = pause > 0
+                if pause > 0:
+                    try:
+                        if self._stop.wait(pause) or self._idle():
+                            break
+                    finally:
+                        with self._lock:
+                            self._reopening = False
                 with self._lock:
                     self._generation += 1
                     gen = self._generation
                     self._reader_alive = True
+                    self._frame = None  # a previous generation is never live
                     self._reader_started_at = time.monotonic()
+                    reader = threading.Thread(
+                        target=self._reader_task,
+                        args=(gen,),
+                        name=f"kona-camera-reader-{gen}",
+                        daemon=True,
+                    )
+                    self._readers.add(reader)
+                    reader.start()
                     self._lock.notify_all()
-                threading.Thread(
-                    target=self._read, args=(gen,), name=f"kona-camera-reader-{gen}", daemon=True
-                ).start()
                 # Watch this generation until it dies or hangs.
                 while not self._stop.is_set() and not self._idle():
                     with self._lock:
@@ -167,6 +220,7 @@ class CameraHub:
                             self._reader_alive = False  # abandon; reader sees gen != current
                             self.last_error = f"no frames for {self._hang_after:.0f}s; reconnecting"
                             self.last_error_kind = "hung"
+                            log.warning("camera hung: %s", self.last_error)
                             self._fails += 1
                             self._lock.notify_all()
                         break
@@ -175,7 +229,21 @@ class CameraHub:
             with self._lock:
                 self._generation += 1  # invalidates any lingering reader
                 self._reader_alive = False
+                self._reopening = False
                 self._frame = None
+                self._supervisor = None
+                self._lock.notify_all()
+                # A viewer may arrive between the last idle check and here.
+                # It must not inherit a supervisor that is about to exit.
+                if self._viewers and not self._stop.is_set():
+                    self._ensure_running()
+
+    def _reader_task(self, gen: int) -> None:
+        try:
+            self._read(gen)
+        finally:
+            with self._lock:
+                self._readers.discard(threading.current_thread())
                 self._lock.notify_all()
 
     def _current(self, gen: int) -> bool:
@@ -190,6 +258,7 @@ class CameraHub:
                 if gen == self._generation:
                     self.last_error = redact_url(f"{type(e).__name__}: {e}")
                     self.last_error_kind = "open"
+                    log.warning("camera open: %s", self.last_error)
                     self._reader_alive = False
                     self._fails += 1
                     self._lock.notify_all()
@@ -203,15 +272,18 @@ class CameraHub:
                     jpeg = source.read_jpeg()
                 except Exception as e:
                     with self._lock:
+                        if not self._current(gen):
+                            break
                         self.last_error = redact_url(f"{type(e).__name__}: {e}")
                         self.last_error_kind = (
                             "black_frame" if isinstance(e, CameraFrameError) else "read"
                         )
+                        log.warning("camera %s: %s", self.last_error_kind, self.last_error)
                     break
                 if jpeg:
                     misses = 0
                     with self._lock:
-                        if gen != self._generation:
+                        if not self._current(gen):
                             break  # abandoned while we were blocked; drop the frame
                         self._frame = jpeg
                         self._seq += 1
@@ -222,8 +294,11 @@ class CameraHub:
                     misses += 1
                     if misses >= self._max_misses:
                         with self._lock:
+                            if not self._current(gen):
+                                break
                             self.last_error = f"{misses} consecutive empty reads"
                             self.last_error_kind = "empty_frames"
+                            log.warning("camera empty_frames: %s", self.last_error)
                         break
                     time.sleep(0.05)
                 elapsed = time.monotonic() - started
@@ -235,6 +310,7 @@ class CameraHub:
             except Exception:
                 pass
             with self._lock:
+                self._last_close_at = time.monotonic()
                 if gen == self._generation:
                     self._reader_alive = False
                     self._fails += 1
@@ -247,6 +323,13 @@ class CameraHub:
         t = self._supervisor
         if t and t.is_alive():
             t.join(timeout=5)
+        # Let cooperative readers release the device before lifespan exits.
+        # A native hang must not turn this cleanup into another endless wait.
+        deadline = time.monotonic() + 1.0
+        with self._lock:
+            readers = tuple(self._readers)
+        for reader in readers:
+            reader.join(timeout=max(0.0, deadline - time.monotonic()))
 
     # -- viewers ------------------------------------------------------------
 
@@ -275,7 +358,12 @@ class CameraHub:
                     return None, after_seq
                 self._lock.wait(remaining)
             if self._seq > after_seq:
-                return self._frame, self._seq
+                fresh = (
+                    self._reader_alive
+                    and not self._stop.is_set()
+                    and time.monotonic() - self._last_frame_at < self.stale_after
+                )
+                return self._frame if fresh else None, self._seq
             return None, after_seq  # stopped, or the reader died: caller shows the placeholder
 
     def snapshot(self, timeout: float = 3.0) -> tuple[bytes, str]:
@@ -286,6 +374,8 @@ class CameraHub:
             with self._lock:
                 fresh = (
                     self._frame is not None
+                    and self._reader_alive
+                    and not self._stop.is_set()
                     and time.monotonic() - self._last_frame_at < self.stale_after
                 )
                 frame, seq = self._frame, self._seq
@@ -324,12 +414,12 @@ class CameraHub:
                 frame, new_seq = await loop.run_in_executor(None, self._wait_frame, seq, wait)
                 if self._stop.is_set():
                     break
+                seq = new_seq
                 if frame is None:
                     state = self.status()["state"]
                     yield self._part(self._placeholder, state)
                     showing_placeholder = True
                 else:
-                    seq = new_seq
                     yield self._part(frame, LIVE)
                     showing_placeholder = False
                 sent += 1

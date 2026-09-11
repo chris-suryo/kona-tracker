@@ -2,7 +2,11 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  {# Zoom is off page-wide at Chris's explicit request, 2026-09-11. This half
+     of it is what Chrome and Android honour; iOS Safari ignores user-scalable
+     and is handled in app.js. The map is exempt in both. See
+     docs/device-capabilities.md, "Zoom is off on purpose". #}
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="theme-color" content="#F3F1EA" media="(prefers-color-scheme: light)">
@@ -17,13 +21,15 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/app.js" defer></script>
   {% block head %}{% endblock %}
 </head>
-<body>
-  <main class="page {% block pageclass %}{% endblock %}">
+<body class="{% block pageclass %}{% endblock %}">
+  <div id="pull" class="pull" hidden aria-live="polite"><span>Pull to refresh</span></div>
+  <main class="page {{ self.pageclass() }}">
   {% if tab %}
   <header class="hdr">
-    <a class="avatar" href="/settings" aria-label="Open Kona's profile and settings">K<img src="/avatar.jpg" alt="" onerror="this.remove()"></a>
+    <a class="avatar" href="/settings" aria-label="Open Kona's profile and settings">K<img src="/avatar.jpg" alt="" data-optional></a>
     <nav class="seg" aria-label="Sections">
       <a href="/activity" class="{{ 'on' if tab == 'activity' else '' }}">Activity</a>
       <a href="/camera" class="{{ 'on' if tab == 'camera' else '' }}">Camera</a>

@@ -37,7 +37,10 @@ capabilities come from `KONA_CAMERA_MODEL`, and any value not in
 `USB` set.)
 
 The app detects repeated black frames and shows CHECK CAMERA instead of
-calling transport-only activity LIVE. It has no motors or presets, so the UI
+calling transport-only activity LIVE. Since 2026-09-11 "black" means all
+zero or flat (no sensor noise), so a genuinely dark room -- low mean, noise
+present -- is shown as the dark picture it is, not as a broken camera. The
+dark-room half of that rule is documented, not yet measured. It has no motors or presets, so the UI
 intentionally shows capture/share and no directional controls.
 
 Abilities are **data**, not assumptions in a template. `KONA_CAMERA_MODEL`
@@ -252,10 +255,41 @@ their shapes do not. Each needs a subfield guess and another correction.
 - `overnightRestSummary` on `Pet` — Fi's own "last night". Should replace
   the previous-completed-window heuristic once its shape is known.
 - `restFeed`, `activityFeed`, `stepFeed` — history feeds.
-- `timezone` on `Pet`; `homeLocation.position` and resting `place` are now shaped.
+- `timezone` on `Pet` is now selected by the page and assumed to be an IANA
+  name; the probe redacts its value, so check `/activity.json`'s `"clock"`
+  instead -- `"fi"` means it loaded, `"server"` means it did not (or the PC
+  lacks the `tzdata` package). `homeLocation.position` and resting `place`
+  are shaped.
 - `heatmap`, `packs`, `packFeed`, `activity` on `Pet`.
 - `carrier`, `hardwareRevision`, `firmwareUpdate` on `Device`;
   `uncertaintyInfo` on `OngoingActivity`.
+
+### Round 5, queued 2026-09-11: her position while resting
+
+Chris caught the wrong claim in an earlier draft of the punchlist: the Fi
+app shows her location whether she is walking or asleep, and our query never
+asked for it. `pet_status` selected `OngoingRest { place { id name } }` and
+nothing else.
+
+**Sourced, not yet measured:** pytryfi's `FRAGMENT_ONGOING_ACTIVITY_DETAILS`
+selects `... on OngoingRest { position { latitude longitude } }`, and its
+`setCurrentLocation` reads `activityJSON['position']` for a rest — that is
+the field hass-tryfi's `device_tracker` reports. We already use the
+`OngoingWalk` half of that same fragment, verified on the 2026-09-10 walk.
+
+The page now asks for it in `pet_whereabouts` — **a document of its own**,
+because a rejected field fails the whole document and the verified collar
+fields must not go down with a guess. If Fi rejects it the page says
+"Location: Fi rejected the query" and draws the saved home pin as before.
+The probe sends the identical document, so the next run settles it. It also
+asks, one unknown each: `position { date }` on OngoingRest (a `Location`
+with a date, or a bare `Position`?), `uncertaintyInfo { __typename }`,
+`path` on OngoingWalk, and `lastLocation` / `currentLocation` on `Device`
+next to the confirmed `nextLocationUpdateExpectedBy`.
+
+The mock in `tests/conftest.py` answers `KonaWhereabouts` with pytryfi's
+shape. That is an assumption, not a measurement, and the tests say so; the
+one thing they prove is that a rejection costs exactly the map point.
 
 ### The redaction gap the walk exposed
 
@@ -293,6 +327,39 @@ not to the page:
 
 The probe fetches these; the next `summary.md` says which are real. Until
 then they stay out of the UI.
+
+## 2b. Zoom is off on purpose
+
+Chris asked for zoom gone page-wide, was told what it costs, and said it
+again: *"On an actual app, you don't do that."* So this is a decision, not
+an oversight, and it is written here so nobody quietly "fixes" it later.
+
+**What it costs.** This is a WCAG 1.4.4 failure. Anyone who enlarges text to
+read a screen cannot do it here. The app has two readers and its owner chose
+that trade for his own app; it is not a pattern to carry to anything with a
+wider audience.
+
+**What it takes, because one half is not enough.** Chrome and Android honour
+`maximum-scale=1, user-scalable=no` in the viewport meta. iOS Safari has
+ignored `user-scalable` since iOS 10, so `app.js` also cancels Safari's own
+`gesturestart` / `gesturechange` / `gestureend`, and cancels any `touchmove`
+carrying more than one finger, since a two-finger drag is not a gesture
+event. Both listeners must be non-passive or `preventDefault` does nothing.
+
+**The map is exempt, deliberately.** Leaflet takes `touch-action: none` on
+`.leaflet-container.leaflet-touch-drag.leaflet-touch-zoom` and does its own
+pinch, so pinching the map moves the map. `app.js` skips anything inside
+`.leaflet-container`; without that exemption the map would freeze at one
+zoom level and the location tab would be much less useful.
+
+**Verified in Chromium with iPhone emulation, 2026-09-11:** a synthetic
+two-finger `touchmove` and a `gesturestart` are both cancelled over the page
+and both left alone over the map, and the one-finger pull-to-refresh still
+fires. Tests pin all of it.
+
+**To undo it**, should Chris ever change his mind: drop `maximum-scale=1,
+user-scalable=no` from `base.html` and delete the last block of `app.js`.
+Two edits, nothing else depends on it.
 
 ## 3. Apple TV and general home automation
 
@@ -336,8 +403,11 @@ Controls that **must not** appear:
 - hold-to-talk — impossible on Tapo, on any model
 - pan/tilt on a fixed camera — the page must ask, never assume
 
-The Activity tab now uses only the confirmed fields above. Its free MVP map
-uses Leaflet 1.9.4 and OpenStreetMap's standard raster tiles. At rest it uses
-the verified `homeLocation.position`; on a walk it switches to Fi's live
-route, then preserves and labels the last fix. It never geocodes or invents
-a coordinate.
+The Activity tab now uses only the confirmed fields above, plus the
+sourced-but-unmeasured resting position (Round 5). Its free MVP map uses
+Leaflet 1.9.4 and OpenStreetMap's standard raster tiles. On a walk it draws
+Fi's live route; at rest it draws the resting position with the time of
+Fi's last report; if Fi has stopped answering, the same fix is labelled
+"Last seen"; with no fix at all it falls back to the verified
+`homeLocation.position`, labelled Home. It never geocodes or invents a
+coordinate.

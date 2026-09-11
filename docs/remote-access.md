@@ -31,19 +31,34 @@ gate is what protects it, which is why Part 2 exists and is not optional.
 
 ---
 
-## Part 0 — the gap to close first
+## Part 0 — two settings the tunnel needs (built 2026-09-11)
 
-**The session cookie is not marked `Secure`.** In
-`src/kona_tracker/web/app.py` the login handler sets `httponly=True` and
-`samesite="lax"` but no `secure=True`. Behind a Cloudflare tunnel the public
-side is always HTTPS so in practice it is not exposed, but the same cookie is
-also issued over plain HTTP on your LAN, and "in practice" is not a security
-argument. It is a one-line change plus a test, and it should be made before
-the URL goes to anyone.
+Both live in `.env`, both are **off by default**, and both are wrong to turn
+on for a plain LAN. Turn them on together when the app gets its HTTPS URL.
 
-Deliberately not fixed in the same pass that wrote this doc: it is a code
-change with a test, not a doc edit. It is the first item in
-`docs/next-session.md`.
+**`KONA_TRUSTED_PROXY_HEADER=CF-Connecting-IP`.** `cloudflared` connects to
+the app over localhost, so without this every visitor on earth arrives as
+`127.0.0.1` and shares one login lockout: five wrong guesses from a stranger
+would lock you and your sister out too. With it, the lockout counts per
+visitor address, read from the header Cloudflare sets. It is deliberately
+not `X-Forwarded-For`: anyone can send that header and pick their own
+bucket. `kona serve` also tells uvicorn *not* to honour forwarded headers on
+its own, so this setting is the only path. And the header is believed only
+when the request comes from the tunnel's own address
+(`KONA_TRUSTED_PROXY_IPS`, loopback by default): port 8000 stays open on
+the Wi-Fi next to the tunnel, and a visitor there who sends a fresh
+`CF-Connecting-IP` per guess must not get a fresh lockout bucket per guess.
+The security review of 2026-09-11 caught exactly that gap.
+
+**`KONA_SECURE_COOKIES=true`.** Marks the session cookie `Secure` so it only
+travels over HTTPS. Do not set this while you still open
+`http://192.168.x.x:8000` on the LAN -- the browser silently refuses to send
+a Secure cookie over http and the login just never takes. The app warns on
+startup if the proxy header is set and this is not.
+
+Nothing here has been run against a real tunnel yet; the tests cover both
+states of each setting, not Cloudflare's behaviour. Part 1 is where that
+gets proven.
 
 ---
 
@@ -156,20 +171,53 @@ cloudflared tunnel run kona
 whether `cloudflared service install` picks up a per-user config from
 `%USERPROFILE%\.cloudflared\` or wants it elsewhere. Check the banner output.
 
-### 3b. Keep the PC awake
+### 3b. Keep the PC awake, without paying for it around the clock
 
-**PowerShell as Administrator:**
+The old advice here was `powercfg /change standby-timeout-ac 0`: never
+sleep, ever. That works and it is the wrong tool. It is a setting you forget
+you made, and an idle desktop left awake all year is real money.
+
+Rough figures. Rates and machines vary, so treat these as the shape of the
+problem rather than your bill; measure with a plug meter if you want the
+real number. Assumes electricity at 17 cents per kWh and the screen asleep.
+
+| Host, awake all year | Watts, idle | Per year | Per month |
+|---|---|---|---|
+| Desktop PC | 70 | 613 kWh, about $104 | about $8.70 |
+| Laptop, lid closed | 20 | 175 kWh, about $30 | about $2.50 |
+| Raspberry Pi 5 with the webcam | 5 | 44 kWh, about $7 | under $1 |
+
+So the Pi is not just tidier, it is roughly a tenth the running cost of the
+desktop. That is the argument for moving once it is unboxed.
+
+**Until then, do not switch sleep off.** Set `KONA_KEEP_AWAKE=true` in
+`.env` instead. The app then asks Windows to hold off sleep *while it is
+running*, and releases the hold the moment it stops, so:
+
+- Sleep stays enabled in your power plan. Nothing is permanently changed.
+- The machine is only awake for the hours you are actually serving Kona.
+  Stop the app when you are home and the PC sleeps like it always did.
+- The **screen still sleeps**, which is most of the idle draw. The app never
+  asks for the display.
+- If the request is refused, or you are not on Windows, `kona serve` says so
+  on startup rather than leaving you believing the page will be reachable.
+
+The one thing to still set by hand is the lid, if this ends up on a laptop,
+because closing it sleeps the machine whatever a running program asks for:
 
 ```powershell
-powercfg /change standby-timeout-ac 0     # never sleep on mains power
-powercfg /change hibernate-timeout-ac 0   # never hibernate
-powercfg /change monitor-timeout-ac 10    # screen off after 10 min is fine
+# PowerShell as Administrator. 0 = do nothing when the lid closes, on mains.
+powercfg /setacvalueindex SCHEME_CURRENT SUB_BUTTONS LIDACTION 0
+powercfg /setactive SCHEME_CURRENT
 ```
 
-The screen turning off is harmless. Sleep is not: a sleeping PC drops the
-tunnel and the camera. Verify with `powercfg /query` rather than trusting
-that the setting took — Windows power plans have a habit of being overridden
-by the active plan.
+Verify with `powercfg /query` rather than trusting that it took: Windows
+power plans have a habit of being overridden by the active plan.
+
+**Unverified:** none of this has been run on Chris's PC. The keep-awake code
+path is Windows-only and the sandbox that wrote it is Linux, so the tests
+cover the refusal path, not the success path. First person to run it owns
+making this true.
 
 ### 3c. Start the app on boot
 
@@ -177,7 +225,7 @@ by the active plan.
 
 The obvious approach — a Scheduled Task running as `SYSTEM` at startup — is
 likely to break the camera. Windows gates camera access behind per-user
-privacy settings (the same Settings ▸ Camera switch that already stole the
+privacy settings (the same Settings > Camera switch that already stole the
 webcam from us once), and a service-account session is not a desktop
 session. A task that runs, reports success, and serves a dead camera tab is
 the worst possible outcome.
@@ -190,17 +238,94 @@ user, and run the task **at log on as that user**, not at startup as SYSTEM.
 $action  = New-ScheduledTaskAction -Execute "$env:USERPROFILE\.local\bin\uv.exe" `
            -Argument "run kona serve" -WorkingDirectory "C:\Users\harim\kona-tracker"
 $trigger = New-ScheduledTaskTrigger -AtLogOn
-Register-ScheduledTask -TaskName "kona-tracker" -Action $action -Trigger $trigger
+$settings = New-ScheduledTaskSettingsSet `
+           -ExecutionTimeLimit ([TimeSpan]::Zero) `
+           -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) `
+           -MultipleInstances IgnoreNew `
+           -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
+           -StartWhenAvailable
+Register-ScheduledTask -TaskName "kona-tracker" -Action $action -Trigger $trigger `
+           -Settings $settings
 ```
 
+Three of those settings are not decoration, and leaving any of them out
+produces a task that looks fine and is not:
+
+1. **`-ExecutionTimeLimit ([TimeSpan]::Zero)`.** Scheduled tasks default to
+   being killed after three days. Without this the app dies every 72 hours
+   and you would be hunting a phantom.
+2. **`-RestartCount` / `-RestartInterval`.** Otherwise a crash is permanent
+   until the next log-on. Three restarts a minute apart is a speed bump, not
+   a supervisor; 3d is what tells you it ran out of retries.
+3. **`-AllowStartIfOnBatteries -DontStopIfGoingOnBatteries`.** On a laptop,
+   the default is to refuse to start and to stop when unplugged.
+
 Then **reboot and check the camera tab from your phone**, not just that the
-process is running. Confirming the task started is not confirming the camera
+task started. Confirming the task started is not confirming the camera
 works. If the tab shows CHECK CAMERA after a reboot but works when you run
 `uv run kona serve` by hand, the log-on-session theory is wrong and it needs
 rethinking — say so rather than papering over it.
 
 `cloudflared` gets the same treatment, or `cloudflared service install` if
 the service account turns out to be fine for it (it has no camera to lose).
+
+**Unverified:** every command in this section. The settings names come from
+`New-ScheduledTaskSettingsSet`'s documented parameters, not from a run on a
+real machine. If PowerShell rejects `-RestartCount`, drop that pair and rely
+on 3d to tell you when it is down.
+
+### 3d. Something has to watch it (built 2026-09-11, not yet pointed at a tunnel)
+
+If `kona serve` dies at 2am the page is simply unreachable and nobody is
+told. `/healthz` is public and answers without touching Fi or the camera:
+
+```json
+{"status": "ok", "camera": "idle", "camera_error": null, "fi": "ok", "fi_age_s": 212}
+```
+
+`camera` is `idle` whenever nobody is watching (the webcam is released
+after `KONA_CAMERA_IDLE_SECONDS`, two minutes by default) -- that is normal; `disconnected` with a
+`camera_error` of `open`, `hung` or `black_frame` is the wedged-USB
+signature and means a replug. `fi` is `stale` when Fi has stopped
+answering; `fi_age_s` says how old the numbers on the page are.
+
+There are two shapes of this, and today only one of them can work.
+
+**A push, which works right now.** Set `KONA_HEARTBEAT_URL` to a ping URL
+from healthchecks.io's free tier. The app pings it every five minutes, and
+the service emails you when the pings *stop*. That is the only way to hear
+about the failures that silence the machine itself: sleep, crash, power cut,
+a dropped connection. Nothing running on the PC can report those, because
+the PC is what died.
+
+It works today because it needs no inbound reachability and no fixed
+address, so the quick tunnel's URL changing on every restart does not
+matter. Set it up in about two minutes:
+
+1. Make a free healthchecks.io account and add a check named `kona`.
+2. Set its period to 5 minutes and its grace to 5 minutes.
+3. Copy the ping URL into `.env` as `KONA_HEARTBEAT_URL=`.
+4. Restart `kona serve`. The first ping goes out immediately, so the check
+   should turn green while you are still looking at it. If it does not,
+   the reason is in the log, not on the page.
+
+The ping body carries the same summary `/healthz` serves, so the check's
+event log shows what the app was doing each time. A wedged camera does
+**not** fail the heartbeat, on purpose: that alarm already exists on
+`/settings`, and folding it in here would turn one clear alarm into a flappy
+one you end up muting.
+
+**A poll, once there is a domain.** Point UptimeRobot or Better Stack at
+`https://kona.yourdomain.com/healthz`, alerting on anything but HTTP 200.
+This adds what the push cannot see: whether your sister can actually reach
+the app from outside. Worth having in addition, not instead. It is pointless
+before a named tunnel, since there is no stable URL to give it.
+
+Set `KONA_LOG_DIR=C:\Users\harim\kona-tracker\logs` in `.env` so the
+access log and every camera or Fi failure land in a rotating `kona.log`
+that survives the PowerShell window closing. On Windows a rotation can
+fail with a PermissionError while another program (an editor, a tail) holds
+the file open; that is printed, not fatal.
 
 ---
 

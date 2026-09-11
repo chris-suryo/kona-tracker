@@ -42,7 +42,7 @@ Not a blank box, not an error: nothing. Which matches what Chris sees.
 - `"positions": []` and `"home_position": null` → this is A1. Expected.
 - `"positions"` has entries, or `home_position` is set → it is **A2**.
 
-### A2. The points exist but Leaflet never loads
+### A2. The points exist but Leaflet never loads — **DONE 2026-09-11** (vendored, hash-pinned)
 
 `activity.html` pulls `leaflet.css` and `leaflet.js` from **unpkg.com** with
 SRI hashes. If unpkg is slow, blocked, or the hash mismatches, `L` is
@@ -57,6 +57,17 @@ transition**. `base.html` already loads Google Fonts; Leaflet's CSS is the
 second one.
 
 ### CORRECTION 2026-09-11: Fi has her location always. We never asked for it.
+
+> **BUILT 2026-09-11, awaiting the probe.** pytryfi's fragment confirmed the
+> prime hypothesis on paper: `... on OngoingRest { position { latitude
+> longitude } }` is what the Home Assistant tracker reads. The page now
+> sends it as `pet_whereabouts`, a one-field document of its own, so a
+> rejection costs the map point and nothing else; the map has a `Resting at
+> Home · Last report HH:MM` tier, and `/activity.json` carries
+> `rest_position`. The Fi API is unreachable from the cloud sandbox, so the
+> field is **unmeasured until Chris runs** `uv run kona probe --out
+> probe-out\round5` and reads `whereabouts:kona` in `summary.md`. Details
+> in `docs/device-capabilities.md`, "Round 5".
 
 An earlier draft of this file said "Fi returns position points only while
 the dog is on a walk." **That is wrong, and Chris caught it.** The Fi app
@@ -108,7 +119,15 @@ explicit "we do not know" panel rather than a blank box -- the same
 discipline as the camera's NO SIGNAL. Never render a stale position styled
 like a live one.
 
-## B. Turn off pinch-to-zoom
+## B. Turn off pinch-to-zoom — **DONE 2026-09-11, page-wide, as asked**
+
+> First built narrow: `touch-action: manipulation` on every tappable
+> control, so a tap never double-tap-zooms. Chris then confirmed he meant
+> zoom gone everywhere, after being told it is a WCAG 1.4.4 trade, so the
+> viewport meta and a gesture blocker in `app.js` now stop page zoom on
+> Android and iOS both. The map keeps its pinch. The decision, its cost and
+> the two-edit revert are recorded in `docs/device-capabilities.md` §2b.
+
 
 **Chris:** "I want to turn off the pinch-to-zoom."
 
@@ -146,7 +165,19 @@ inside `#kona-map`.
 
 ---
 
-## C. Pull-to-refresh
+## C. Pull-to-refresh — **DONE 2026-09-11**
+
+> Built in `static/app.js`: pull past 60 px at the top of the Activity page
+> (map drags excluded), or come back to the app, and it fetches
+> `/activity?fresh=1` -- which makes `FiService` ask Fi *on that request*,
+> floored at 30 s so a thumb cannot become a request loop -- and swaps the
+> rendered `#activity-body` in. One template renders both the page and the
+> refresh, so there is no second copy of the numbers or the stale wording.
+> No `location.reload()`. On failure the numbers stay with their time and
+> the note says the refresh, not Fi, did not answer. `overscroll-behavior-y:
+> contain` stops Safari's own pull-to-reload doubling up; that line is the
+> one thing here that wants a real iPhone to confirm.
+
 
 **Chris:** "I want to be able to scroll to pull down to refresh."
 
@@ -183,7 +214,18 @@ Read against the threat model that matters now: **a public URL, handed to a
 sister, pointing at a live camera inside a house.** On a LAN most of this is
 academic. Behind a tunnel it is not.
 
-### D1. The lockout collapses behind the tunnel — **fix before going public**
+### D1. The lockout collapses behind the tunnel — **DONE 2026-09-11**
+
+> Built: `KONA_TRUSTED_PROXY_HEADER` (unset by default), `client_key()` in
+> `web/auth.py`, `Lockout` no longer grows with strangers, and `kona serve`
+> passes `proxy_headers=False` to uvicorn -- whose *default* silently
+> rewrites the client address from `X-Forwarded-For` for any 127.0.0.1 peer,
+> which is the unconditional trust this item rules out. The header is
+> believed only from the tunnel's own peer (`KONA_TRUSTED_PROXY_IPS`,
+> loopback by default) -- the session's security review caught that a
+> Wi-Fi visitor could otherwise pick a fresh bucket per guess. Tests cover
+> both states. What remains is Chris's: set it behind the real tunnel.
+
 
 `app.py:170`:
 
@@ -208,14 +250,27 @@ default, read only when set, falling back to `request.client.host`.
 
 This is the single most important item in this file.
 
-### D2. Session cookie is not `Secure`
+### D2. Session cookie is not `Secure` — **DONE 2026-09-11**
+
+> Built: `KONA_SECURE_COOKIES` (off by default; a typo is a startup error,
+> not a silent off), set and cleared with matching attributes, and a startup
+> warning when the proxy header is on but this is not. Tests for both states.
+
 
 Already written up in `remote-access.md` Part 0 and `next-session.md` §2b.
 Needs a settings key rather than a hard-coded `True`, because
 `secure=True` breaks LAN access over `http://192.168.x.x:8000` — the browser
 silently refuses to send the cookie and the login just never takes.
 
-### D3. No security headers at all
+### D3. No security headers at all — **DONE 2026-09-11**
+
+> Built: CSP (`script-src 'self'`, no nonce -- every inline script became a
+> file under `/static`, and the map's points travel as a JSON data block),
+> `frame-ancestors 'none'` + `X-Frame-Options: DENY`, `Referrer-Policy:
+> no-referrer`, `nosniff`, on every response including 401s and static
+> files. Verified in a real Chromium with zero CSP violations (see the
+> session wrap). No HSTS: the LAN address is http on purpose.
+
 
 No `Content-Security-Policy`, `X-Frame-Options`, or `Referrer-Policy`
 anywhere in `app.py`. For a public page with a camera on it:
@@ -266,25 +321,49 @@ dishonest about the code:
 
 My own read, ordered by what would actually bite first.
 
-1. **Nothing watches the watcher.** If `kona serve` dies at 2am, the page is
+1. **DONE 2026-09-11:** `/healthz` reports camera state, last camera error
+   kind, Fi freshness and reading age, and `KONA_HEARTBEAT_URL` pushes that
+   same summary to a dead-man's-switch service every five minutes, so the
+   alarm survives the machine it is reporting on. A poll against the tunnel
+   is the complement, and waits for a domain. `docs/remote-access.md` 3d.
+   *Original:* Nothing watches the watcher. If `kona serve` dies at 2am, the page is
    simply unreachable and no one is told. `/healthz` exists and nothing
    polls it. The cheapest honest fix is an external uptime ping against the
    tunnel URL; a Windows service restart policy is the fuller one.
-2. **No logs worth reading after the fact.** When Chris says "it was broken
+2. **DONE 2026-09-11:** `KONA_LOG_DIR` writes a rotating `kona.log` with
+   uvicorn's access log plus every camera and Fi failure, attached at app
+   startup because uvicorn's own logging config would otherwise swallow the
+   access lines. *Original:* No logs worth reading after the fact. When Chris says "it was broken
    this morning", there is currently no way to find out what happened.
    Uvicorn's access log goes to a console window that closes.
-3. **The camera is one USB webcam in one room.** Already known, but worth
+3. **DONE 2026-09-11 (the remote-health half):** `/settings` now shows the
+   camera source, state, last frame age, reconnects and the last problem in
+   `camera-doctor`'s own words, from the same hub statistics. *Original:* The camera is one USB webcam in one room. Already known, but worth
    stating: the wedged-USB failure recurs, and nothing detects it remotely —
    `camera-doctor` must be run at the machine, which is exactly where Chris
    is not when he needs it. A "camera health" line on the settings page,
    reading the same statistics, would close that.
-4. **`frame_is_unusable` has never been tested in a dark room.** Threshold
+4. **CHANGED 2026-09-11, still owed the night test:** `frame_is_unusable`
+   now uses the noise rule `_classify` documents -- all-zero or flat (sd
+   below 1.0) is unusable; dark-but-noisy is a real, dark picture. The
+   wedged signature (mean 0.00 / sd 0.00) is measured; the dark room is
+   not, and one lights-off evening is still the verification. *Original:*
+   `frame_is_unusable` has never been tested in a dark room. Threshold
    `mean <= 0.25`. Every run so far was in a lit room. "CHECK CAMERA" when
    the truth is "the light is off at night" is precisely the confident-wrong
    output this project refuses — and night is when a sleeping dog is most
    worth looking at. One evening's test. Carried over from
    `next-session.md` §2.
-5. **No timezone handling that has been thought about.** `views.py` uses
+5. **DECIDED AND BUILT 2026-09-11:** times are Kona's. `pet_status` now
+   selects Fi's `timezone` (accepted in round 3; its value is redacted by
+   the probe so an IANA name is assumed), the page formats every HH:MM in
+   it and labels them (`Updated 18:48 CDT`), and `/activity.json` says
+   whose clock it used (`"clock": "fi" | "server"`). The fallback is the
+   server's clock, unlabelled -- the same thing while the PC is at home.
+   **Needs Chris:** Windows has no timezone database, so on the PC this
+   only takes effect with the `tzdata` package (`uv add tzdata`); a
+   dependency, so it is his call, and until then the JSON will say
+   `"server"`. *Original:* No timezone handling that has been thought about. `views.py` uses
    `.astimezone()` — the *server's* local zone. Correct while the PC and the
    phone are in the same house. Wrong the moment Chris is on the road in
    another timezone, which is the entire point of `remote-access.md`. Decide

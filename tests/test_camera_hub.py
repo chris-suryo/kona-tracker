@@ -29,6 +29,8 @@ class ScriptedSource:
         self._script = list(script)
         self._inner = FakeSource(fps=fps)
         self.closed = False
+        self.opened_at = time.monotonic()
+        self.closed_at = None
         self.release = threading.Event()
 
     def read_jpeg(self):
@@ -55,6 +57,7 @@ class ScriptedSource:
 
     def close(self):
         self.closed = True
+        self.closed_at = time.monotonic()
 
 
 def make_hub(scripts, **kw):
@@ -72,6 +75,7 @@ def make_hub(scripts, **kw):
 
     defaults = dict(
         idle_stop_seconds=0.2,
+        reopen_cooldown_seconds=0.0,  # the tests below opt in to it by name
         stale_after=0.3,
         hang_after=0.6,
         max_misses=3,
@@ -118,6 +122,46 @@ def test_snapshot_live_then_idle_stop():
     assert hub.status()["state"] == LIVE
     assert wait_for(lambda: sources[0].closed and hub.status()["state"] == IDLE)
     assert hub.opens == 1 and hub.reconnects == 0
+
+
+@pytest.mark.parametrize("ending", ["idle", "failure"])
+def test_a_close_is_always_followed_by_a_pause_before_the_next_open(ending):
+    """The hub used to release the webcam five seconds after the last viewer
+    left and reopen it the instant one returned: a close-then-open cycle on
+    every tab switch, which is the known way to wedge a USB webcam. Whatever
+    ended the first source, the second open keeps its distance."""
+    first = [] if ending == "idle" else [2, OSError("camera unplugged")]
+    hub, sources = make_hub([first, []], idle_stop_seconds=0.05, reopen_cooldown_seconds=0.4)
+    try:
+        frame, state = hub.snapshot()
+        assert state == LIVE
+        if ending == "idle":
+            assert wait_for(lambda: sources[0].closed and hub.status()["state"] == IDLE)
+            hub._add_viewer()  # someone comes back
+        else:
+            hub._add_viewer()  # someone stays through the failure
+            assert wait_for(lambda: sources[0].closed)
+        # While it waits, the page is told "connecting", not that something
+        # is broken: nothing has failed, the hub is keeping its distance.
+        assert wait_for(lambda: hub.status()["state"] == CONNECTING, timeout=0.3)
+        assert wait_for(lambda: len(sources) == 2 and hub.status()["state"] == LIVE)
+        # 50 ms of slack: Windows advances the clock in roughly 16 ms steps.
+        assert sources[1].opened_at - sources[0].closed_at >= 0.35
+    finally:
+        hub._remove_viewer()
+        hub.stop()
+
+
+def test_the_first_open_and_a_stop_never_wait_for_the_cooldown():
+    hub, sources = make_hub([[]], reopen_cooldown_seconds=5.0)
+    started = time.monotonic()
+    _, state = hub.snapshot()
+    assert state == LIVE and time.monotonic() - started < 2.0
+    hub._add_viewer()
+    hub._remove_viewer()
+    started = time.monotonic()
+    hub.stop()
+    assert time.monotonic() - started < 2.0 and sources[0].closed
 
 
 def test_two_viewers_share_one_source_and_get_distinct_frames():
@@ -249,6 +293,96 @@ def test_backoff_grows_and_resets():
         hub.stop()
 
 
+def test_a_new_viewer_never_gets_a_stale_frame_marked_live():
+    hub, sources = make_hub([[1, "forever"]], hang_after=5, stale_after=0.1)
+    hub._add_viewer()
+    try:
+        assert wait_for(lambda: hub.status()["state"] == LIVE)
+        assert wait_for(lambda: hub.status()["state"] == STALE)
+        chunk = collect(hub, 1)[0]
+        assert part_state(chunk) != LIVE
+        assert part_body(chunk) == NO_SIGNAL_JPEG
+    finally:
+        sources[0].release.set()
+        hub._remove_viewer()
+        hub.stop()
+
+
+def test_permanent_hangs_have_a_bounded_reader_count_and_can_recover():
+    hub, sources = make_hub([["forever"], ["forever"], []], hang_after=0.1)
+    hub._add_viewer()
+    try:
+        assert wait_for(lambda: hub.status()["last_error_kind"] == "reader_limit")
+        assert len(sources) == hub.status()["readers"] == 2
+        time.sleep(0.3)  # several retry opportunities, no third blocked thread
+        assert len(sources) == 2
+        sources[0].release.set()
+        assert wait_for(lambda: hub.status()["state"] == LIVE)
+        assert len(sources) == 3
+    finally:
+        for source in sources:
+            source.release.set()
+        hub._remove_viewer()
+        hub.stop()
+
+
+def test_abandoned_reader_cannot_replace_current_error():
+    entered, release = threading.Event(), threading.Event()
+
+    class LateError(ScriptedSource):
+        def read_jpeg(self):
+            entered.set()
+            release.wait(3)
+            raise OSError("obsolete reader error")
+
+    old = LateError([])
+    calls = []
+
+    def source():
+        calls.append(1)
+        return old if len(calls) == 1 else FakeSource(fps=100)
+
+    hub = CameraHub(source, hang_after=0.1, backoff_base=0.01)
+    hub._add_viewer()
+    try:
+        assert entered.wait(2)
+        assert wait_for(lambda: hub.status()["state"] == LIVE)
+        release.set()
+        assert wait_for(lambda: old.closed)
+        assert "obsolete" not in hub.status()["last_error"]
+        assert hub.status()["state"] == LIVE
+    finally:
+        release.set()
+        hub._remove_viewer()
+        hub.stop()
+
+
+def test_viewer_arriving_during_idle_shutdown_gets_a_new_supervisor(monkeypatch):
+    hub, sources = make_hub([[], []], idle_stop_seconds=0.01)
+    leaving, proceed = threading.Event(), threading.Event()
+    original_idle = hub._idle
+
+    def idle():
+        answer = original_idle()
+        if answer and not leaving.is_set():
+            leaving.set()
+            assert proceed.wait(3)
+        return answer
+
+    monkeypatch.setattr(hub, "_idle", idle)
+    hub._add_viewer()
+    try:
+        assert wait_for(lambda: hub.status()["state"] == LIVE)
+        hub._remove_viewer()
+        assert leaving.wait(2)
+        hub._add_viewer()  # sees the old supervisor still alive
+        proceed.set()
+        assert wait_for(lambda: len(sources) >= 2 and hub.status()["state"] == LIVE)
+    finally:
+        proceed.set()
+        hub.stop()
+
+
 @pytest.mark.parametrize("n", [1, 2])
 def test_stop_ends_streams(n):
     hub, _ = make_hub([["forever"]])
@@ -300,12 +434,24 @@ def test_the_fake_source_without_a_control_is_unchanged():
     assert frame_number(plain) == 1
 
 
-def test_nearly_black_pixels_are_not_a_usable_webcam_picture():
+def test_noise_not_brightness_separates_a_dead_camera_from_a_dark_room():
+    """A wedged USB device (measured: mean 0.00, sd 0.00) and a closed
+    shutter hand back identical pixels. A real sensor in a dark room has
+    read noise. "CHECK CAMERA" when the truth is "the light is off" is the
+    confident-wrong output this project refuses, and night is when a
+    sleeping dog is most worth looking at. The dark-room frame here is
+    synthetic; the real one is still owed a lights-off evening."""
     np = pytest.importorskip("numpy")
     from kona_tracker.camera.source import frame_is_unusable
 
     black = np.zeros((480, 640, 3), dtype=np.uint8)
-    black[0, 0, 0] = 240  # a hot pixel does not make the room visible
-    visible = np.full((480, 640, 3), 2, dtype=np.uint8)
+    assert frame_is_unusable(black), "all zero: wedged or covered"
+    black[0, 0, 0] = 240  # one hot pixel is not a picture either
     assert frame_is_unusable(black)
-    assert not frame_is_unusable(visible)
+    flat = np.full((480, 640, 3), 2, dtype=np.uint8)
+    assert frame_is_unusable(flat), "no sensor has zero noise"
+    rng = np.random.default_rng(1)
+    dark_room = rng.integers(0, 6, size=(480, 640, 3), dtype=np.uint8)  # mean ~2.5, sd ~1.7
+    assert not frame_is_unusable(dark_room), "dark but noisy is a real, dark picture"
+    lit = np.full((480, 640, 3), 90, dtype=np.uint8)
+    assert not frame_is_unusable(lit), "plainly lit frames skip the noise check"

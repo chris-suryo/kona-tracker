@@ -10,7 +10,11 @@ kit: 3e06b156508b881bef26345c0bb7a63c90db4824 · stamped by dos new
 
 ## Status (2026-09-10, chapter 2)
 
-`main` carries slices 1-3. Chapter-2 work is on `claude/nice-bohr-6tnfn0`.
+**`main` is stale.** The current work is on `claude/elegant-sagan-tit1xp`,
+fifteen commits ahead, CI green on ubuntu and windows, 220 tests. Work from
+that branch; Chris merges. `docs/production-punchlist.md` is the queue and
+carries the reasoning behind every item; `docs/chatgpt-handoff.md` is the
+brief for a visiting assistant.
 
 - **Slice 1:** `kona probe` dumps every Fi API field, redacted. Still
   unverified against the real API. `docs/slice-1-probe-plan.md`.
@@ -38,28 +42,47 @@ kit: 3e06b156508b881bef26345c0bb7a63c90db4824 · stamped by dos new
   sweeps up and the stats stagger in. All CSS, no build step, all inside
   `prefers-reduced-motion` guards. `docs/design-brief.md` explains why the app
   is HTML and not React, and is the block to paste into a design session.
-- **Hardware:** Fi collar delivered 2026-09-10, not yet paired. Tapo C120
-  ordered, arriving 2026-09-11. Blink Mini 2K+ and Wyze v4 do NOT work
-  without unofficial bridges. Raspberry Pi 5 kit bought; not set up.
+- **Slice 5 (production pass, 2026-09-11):** her resting position on the map
+  with honest tiers, a login lockout that survives a tunnel, Secure cookies
+  by setting, a CSP with every script in a file, vendored Leaflet,
+  pull-to-refresh that repaints without dropping the video, page zoom off by
+  request, camera health readable from a phone, a rotating log, times in
+  Kona's timezone, and an outbound heartbeat so a dead PC still raises an
+  alarm. `docs/production-punchlist.md` marks what is done and what is left.
+- **Hardware:** Fi collar paired and live since 2026-09-10. The USB webcam
+  (Logitech, fixed) works; its recurring failure is a **wedged USB device**,
+  cleared by a replug, not a code or resolution problem. Blink Mini 2K+ and
+  Wyze v4 do NOT work without unofficial bridges. Raspberry Pi 5 kit bought,
+  still unopened, and now the intended always-on host: it draws about a
+  tenth of the desktop's idle power and never sleeps.
 
 **next:**
 
-*Anywhere, any machine with internet:*
-1. `git pull`, restart `kona serve`. The dial shows last night; naps are
-   today's; the third tile is weekly steps.
-2. `uv run kona probe` again and share `summary.md`. It now inlines the
-   profile/device/location bodies (redacted) and runs five speculative
-   queries, one per known type. Read the "did you mean" hints, add the
-   near-misses they name, repeat until they stop teaching anything.
-3. Then wire what the bodies confirm: Kona's photo into the avatar,
-   `areaName` and collar signal onto the page.
+*Needs Chris, and blocks the rest:*
+1. **Probe round 5.** `uv run kona probe --out probe-out\round5` **from the
+   branch above**, then read `whereabouts` in `summary.md`. It settles
+   whether Fi returns `... on OngoingRest { position }`, which is the one
+   field the map's resting tier rests on. Sourced from pytryfi, not yet
+   measured on Kona's collar. If Fi rejects it the page already says so and
+   falls back to the home pin, so nothing is broken either way.
+2. **Merge the branch**, so `main` stops being stale.
 
-*At home only (the camera stream originates there):*
-3. Tapo C120 on the Wi-Fi + camera account -> `uv run kona camera-test` ->
-   `uv run kona serve` -> iPhone on the same Wi-Fi.
+*The road to always-on, in order, and nothing here has been run:*
+3. `docs/remote-access.md` Part 1: a Cloudflare quick tunnel, about fifteen
+   minutes, no domain needed. The proving step.
+4. `KONA_HEARTBEAT_URL` against healthchecks.io, so a sleeping or dead PC
+   raises an alarm. Part 3d.
+5. `KONA_KEEP_AWAKE=true` while serving, rather than switching sleep off in
+   the power plan. Part 3b has the electricity arithmetic.
+6. A domain, then a named tunnel, so the URL survives a restart. Part 3a.
+   Without it the quick tunnel hands out a new address every time.
+7. The Pi as the real host. Everything above is a patch on a machine that
+   was never meant to be a server.
 
-Then: a design round using `docs/design-brief.md` on data we have actually
-seen, and Pi + tunnel for remote viewing.
+*Still owed, needs the hardware:*
+8. One lights-off evening to check the camera's black-frame rule behaves in
+   a genuinely dark room. The wedged-device half is measured; the dark-room
+   half is reasoned.
 
 ## Ownership
 
@@ -67,7 +90,7 @@ seen, and Pi + tunnel for remote viewing.
 |---|---|
 | Claude Code (cloud) | code, tests, CI, docs. Cannot see hardware, LAN, or the Fi API. |
 | Chris | runs the local steps (`docs/first-run.md`), hardware, `.env`, merges. |
-| Astro (ChatGPT) | paused (out of credit). Its PR #1 is absorbed. |
+| Astro (ChatGPT) | visual and copy passes. Brief it with `docs/chatgpt-handoff.md`, which lists the constraints that now fail silently (CSP, vendored Leaflet, zoom). |
 | Claude Design | Meadow direction chosen; further visual passes edit `web/templates` + `static/app.css`. |
 
 Shared only via GitHub. One branch per assistant.

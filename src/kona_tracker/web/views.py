@@ -9,10 +9,18 @@ as `None`, and the template renders the muted dash for it.
 from __future__ import annotations
 
 import re
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta, tzinfo
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from kona_tracker.fi.parse import ActivityStats, CollarStatus, LocationPoint, PetProfile, RestWindow
+from kona_tracker.fi.parse import (
+    ActivityStats,
+    CollarStatus,
+    LocationPoint,
+    PetProfile,
+    RestWindow,
+    hours_from_duration,
+)
 from kona_tracker.fi.service import FiSnapshot
 
 # The dial's visible track is a 270 degree arc; 603 is its length in user
@@ -38,8 +46,81 @@ def _location_label(status: Any) -> str | None:
     return status.place_name
 
 
-def _hours(value: float | None) -> str | None:
-    return f"{value:.1f}".rstrip("0").rstrip(".") if value is not None else None
+def kona_zone(timezone: str | None) -> tzinfo | None:
+    """Kona's timezone, from Fi, or None when it cannot be loaded.
+
+    Times on the page are *her* times -- "last night" means her night, and
+    the map's "Last report" is when it happened where she is, whatever zone
+    the phone reading it is in. None falls back to the server's clock, which
+    is the same thing while the PC sits at home with her, and is labelled in
+    the JSON so it is never mistaken for the deliberate answer. Windows has
+    no timezone database of its own: without the `tzdata` package this is
+    always None there.
+    """
+    if not timezone:
+        return None
+    try:
+        return ZoneInfo(timezone)
+    except (ZoneInfoNotFoundError, ValueError, OSError):
+        return None
+
+
+def _clock(moment: datetime, zone: tzinfo | None) -> datetime:
+    return moment.astimezone(zone) if zone else moment.astimezone()
+
+
+def duration_parts(seconds: int | float | None) -> list[tuple[str, str]] | None:
+    """`30600` -> `[("8", "h"), ("30", "m")]`; `1290` -> `[("22", "m")]`.
+
+    Pairs rather than a string so the template keeps its display-numeral
+    look: a big tabular figure with a small unit beside it. Zero is a real
+    reading (`[("0", "m")]`, "no naps yet"), and only a figure that seconds
+    cannot explain comes back as None, the same plausibility rule the hours
+    used to go through, so a unit change still shows as raw rather than as
+    a confident wrong number.
+    """
+    if seconds is None:
+        return None
+    if seconds != 0 and hours_from_duration(seconds) is None:
+        return None
+    minutes = int(round(float(seconds) / 60.0))
+    hours, minutes = divmod(minutes, 60)
+    parts: list[tuple[str, str]] = []
+    if hours:
+        parts.append((str(hours), "h"))
+    if minutes or not hours:
+        parts.append((str(minutes), "m"))
+    return parts
+
+
+def step_ring(steps: int | float | None, goal: int | float | None) -> dict[str, Any]:
+    """The goal ring's three numbers, none of them capped at "exactly done".
+
+    `percent` is the true figure for the label; `arc` is the first lap,
+    which stops at 100; `overflow` is the surplus drawn as a second lap on
+    top of the first, also capped at 100. A day at 150% shows a full ring
+    with half of a brighter one over it. A third lap would only paint over
+    the second and say nothing new, hence the second cap. No goal, or no
+    steps, is an empty ring rather than a division by zero in the template.
+    """
+    if not steps or not goal or goal <= 0:
+        return {"percent": 0, "arc": 0.0, "overflow": 0.0}
+    percent = float(steps) / float(goal) * 100.0
+    return {
+        "percent": int(round(percent)),
+        "arc": round(min(percent, 100.0), 1),
+        "overflow": round(min(max(percent - 100.0, 0.0), 100.0), 1),
+    }
+
+
+def _since(moment: datetime | None, now: datetime | None, zone: tzinfo | None) -> str | None:
+    """`10:42`, or `9 Sep 22:10` once it is no longer today. Kona's clock."""
+    if moment is None or now is None:
+        return None
+    local = _clock(moment, zone)
+    if local.date() == now.date():
+        return local.strftime("%H:%M")
+    return f"{_day(local)} {local:%H:%M}"
 
 
 def _count(value: int | float | None) -> str | None:
@@ -94,19 +175,32 @@ def activity_context(snapshot: FiSnapshot | None, configured: bool) -> dict[str,
     profile = snapshot.profile if snapshot else None
     status = snapshot.status if snapshot else None
     sleep_hours = snapshot.sleep_hours if snapshot else None
+    zone = kona_zone(profile.timezone if profile else None)
+    fetched_local = _clock(snapshot.fetched_at, zone) if snapshot else None
     positions = status.positions if status else ()
-    last_position = positions[-1] if positions else None
+    rest_position = status.rest_position if status else None
     home_position = status.home_location if status else None
-    map_positions = positions or ((home_position,) if home_position else ())
-    map_kind = (
-        "current"
-        if positions and status and status.activity == "walk" and not snapshot.stale
-        else "last"
-        if positions
-        else "home"
-        if home_position
-        else None
+    stale = bool(snapshot and snapshot.stale)
+    walking = bool(
+        positions and status and status.activity == "walk" and not status.positions_carried
     )
+    # What the map may claim, most current first. Only `current` and `rest`
+    # speak about now, so both need a fresh snapshot; a fix Fi sent before it
+    # stopped answering is still real, but it is "last seen", not "resting".
+    if walking and not stale:
+        map_kind, map_positions = "current", positions
+    elif rest_position and not stale:
+        map_kind, map_positions = "rest", (rest_position,)
+    elif rest_position:
+        map_kind, map_positions = "last", (rest_position,)
+    elif positions:
+        map_kind, map_positions = "last", positions
+    elif home_position:
+        map_kind, map_positions = "home", (home_position,)
+    else:
+        map_kind, map_positions = None, ()
+    # The home pin is a saved place, not a fix: it carries no time.
+    last_position = map_positions[-1] if map_positions and map_kind != "home" else None
     location_label = _location_label(status)
 
     return {
@@ -114,7 +208,7 @@ def activity_context(snapshot: FiSnapshot | None, configured: bool) -> dict[str,
         # the design lands. Nothing here is rendered yet.
         "has_photo": bool(profile and profile.photo_url),
         "breed": profile.breed if profile else None,
-        "age": age_label(profile.birthday, snapshot.fetched_at) if profile and snapshot else None,
+        "age": age_label(profile.birthday, fetched_local) if profile and fetched_local else None,
         "battery": _count(status.battery_percent) if status else None,
         # No "days left" here on purpose. `timeToEmptyS` read 4.3 days on
         # the charger and 12 hours once cellular and GPS were running: it is
@@ -123,6 +217,9 @@ def activity_context(snapshot: FiSnapshot | None, configured: bool) -> dict[str,
         "on_base": status.on_base if status else None,
         "signal": _count(status.signal_percent) if status else None,
         "activity": status.activity if status else None,
+        # When the current rest or walk began, so "Resting" can say for how
+        # long. Fi already sends it; the page used to throw it away.
+        "activity_since": (_since(status.activity_since, fetched_local, zone) if status else None),
         "escaped": status.escaped if status else None,
         "lost": status.lost if status else None,
         # Metres, walk-only, verified 2026-09-10: a 285.8 m OngoingWalk
@@ -141,27 +238,35 @@ def activity_context(snapshot: FiSnapshot | None, configured: bool) -> dict[str,
         ],
         "map_kind": map_kind,
         "location_updated": (
-            last_position.recorded_at.astimezone().strftime("%H:%M")
+            _clock(last_position.recorded_at, zone).strftime("%H:%M")
             if last_position and last_position.recorded_at
             else None
         ),
-        "location_live": bool(
-            positions and status and status.activity == "walk" and not snapshot.stale
-        ),
+        "location_live": walking and not stale,
         "data_start_label": (
             "today"
-            if snapshot and snapshot.data_start == snapshot.fetched_at.date()
+            if snapshot and fetched_local and snapshot.data_start == fetched_local.date()
             else _day(snapshot.data_start)
             if snapshot and snapshot.data_start
             else None
         ),
         "historical_totals_hidden": bool(snapshot and snapshot.historical_totals_hidden),
+        # The day the weekly total stops being able to include the previous
+        # collar: `data_start` plus the seven days FiService withholds. A date
+        # to act on, rather than a sentence about our own data hygiene.
+        "week_available_label": (
+            _day(snapshot.data_start + timedelta(days=7))
+            if snapshot and snapshot.data_start and snapshot.historical_totals_hidden
+            else None
+        ),
         "tab": "activity",
         "configured": configured,
         "has_data": bool(snapshot and snapshot.has_data),
         "pet_name": (snapshot.pet_name if snapshot else "") or "Kona",
-        "sleep_hours": _hours(sleep_hours),
-        "nap_hours": _hours(snapshot.nap_hours if snapshot else None),
+        # `8h 30m` as (figure, unit) pairs. None when there is nothing to say
+        # or the figure is not credible as seconds; `sleep_raw` covers that.
+        "sleep_parts": duration_parts(window.sleep if window else None),
+        "nap_parts": duration_parts(today.nap if today else None),
         # The collar was paired today: there is a day in progress but no
         # completed night yet. Say so, rather than "no data".
         "night_pending": window is None and today is not None,
@@ -181,15 +286,18 @@ def activity_context(snapshot: FiSnapshot | None, configured: bool) -> dict[str,
         # Distance is deliberately not here: it came back 0 for a day with
         # 3,383 steps, so until it is understood it lives in the JSON only.
         "week_steps": _count(week.steps if week else None),
+        "ring": step_ring(
+            activity.steps if activity else None, activity.step_goal if activity else None
+        ),
         "dial_offset": dial_offset(sleep_hours),
         "dial_scale": f"{DIAL_SCALE_HOURS:.0f}",
         # Only stamped when there is something for it to date. "As of 18:48"
         # over an empty dial reads as "we checked and she slept nothing".
-        "as_of": (
-            snapshot.fetched_at.astimezone().strftime("%H:%M")
-            if snapshot and snapshot.has_data
-            else None
-        ),
+        "as_of": (fetched_local.strftime("%H:%M") if fetched_local and snapshot.has_data else None),
+        # Shown next to the times only when they are Kona's, so a reader in
+        # another timezone knows whose 18:48 that is. Blank on the fallback:
+        # the server's clock has no name worth printing.
+        "clock_zone": fetched_local.strftime("%Z") if zone and fetched_local else None,
         "problem": snapshot.problem if snapshot else None,
     }
 
@@ -221,6 +329,7 @@ def preview_activity_context() -> dict[str, Any]:
             on_base=False,
             signal_percent=78,
             activity="walk",
+            activity_since=now - timedelta(minutes=14),
             walk_distance=420,
             area_name="Sample walk",
             positions=(
@@ -244,6 +353,7 @@ def activity_json(snapshot: FiSnapshot | None, configured: bool) -> dict[str, An
     profile = snapshot.profile if snapshot else None
     status = snapshot.status if snapshot else None
     home_position = status.home_location if status else None
+    rest_position = status.rest_position if status else None
     return {
         "configured": configured,
         "breed": profile.breed if profile else None,
@@ -283,6 +393,18 @@ def activity_json(snapshot: FiSnapshot | None, configured: bool) -> dict[str, An
             if home_position
             else None
         ),
+        "positions_carried": status.positions_carried if status else None,
+        "rest_position": (
+            {
+                "latitude": rest_position.latitude,
+                "longitude": rest_position.longitude,
+                "reported_at": (
+                    rest_position.recorded_at.isoformat() if rest_position.recorded_at else None
+                ),
+            }
+            if rest_position
+            else None
+        ),
         "data_start": snapshot.data_start.isoformat() if snapshot and snapshot.data_start else None,
         "historical_totals_hidden": snapshot.historical_totals_hidden if snapshot else None,
         "fetched_at": snapshot.fetched_at.isoformat() if snapshot else None,
@@ -302,4 +424,54 @@ def activity_json(snapshot: FiSnapshot | None, configured: bool) -> dict[str, An
         "week_distance_m": week.distance if week else None,
         "problem": snapshot.problem if snapshot else None,
         "stale": bool(snapshot and snapshot.stale),
+        # Whose clock the page's HH:MM strings follow: Fi's timezone for the
+        # pet, or this server's when that could not be loaded.
+        "timezone": profile.timezone if profile else None,
+        "clock": (
+            None
+            if snapshot is None
+            else "fi"
+            if kona_zone(profile.timezone if profile else None)
+            else "server"
+        ),
+    }
+
+
+#: `CameraHub.status()` in words a phone can act on. The error kinds are the
+#: hub's own; the sentences are `camera-doctor`'s verdicts, so the settings
+#: page says from the road what the doctor would say at the machine.
+_CAMERA_STATES = {
+    "live": "Delivering frames",
+    "stale": "Frames have stopped",
+    "connecting": "Opening the camera",
+    "disconnected": "Not connected",
+    "idle": "Released (nobody is watching)",
+}
+_CAMERA_PROBLEMS = {
+    "black_frame": (
+        "Image fully dark. Lens cover, or a wedged USB device: "
+        "unplug the camera and plug it back in."
+    ),
+    "open": "Could not open the camera. Another program may be holding it.",
+    "hung": "The camera stopped answering. A reconnect was requested.",
+    "reader_limit": (
+        "Camera recovery is stuck. For USB, unplug and reconnect; otherwise restart the server."
+    ),
+    "read": "Reading frames failed.",
+    "empty_frames": "The camera opened but delivered no frames: unplug it and plug it back in.",
+}
+
+
+def camera_health(status: dict[str, Any]) -> dict[str, Any]:
+    """Rows for the settings page. Nothing here is invented: an unknown
+    state or error kind is shown as the raw word, never dressed up."""
+    state = status.get("state")
+    kind = status.get("last_error_kind")
+    age = status.get("last_frame_age")
+    return {
+        "state": _CAMERA_STATES.get(state, str(state)),
+        "live": state == "live",
+        "last_frame": None if age is None else f"{age:.0f} s ago",
+        "problem": _CAMERA_PROBLEMS.get(kind, kind) if kind else None,
+        "reconnects": status.get("reconnects") or 0,
     }

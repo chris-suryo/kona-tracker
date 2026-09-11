@@ -2,7 +2,7 @@ from datetime import date
 
 import pytest
 
-from kona_tracker.web.settings import SettingsError, load_settings
+from kona_tracker.web.settings import Settings, SettingsError, load_settings
 
 
 def test_missing_passcode_is_a_clear_error(tmp_path, monkeypatch):
@@ -78,3 +78,93 @@ def test_fi_data_start_is_an_iso_date(tmp_path, monkeypatch):
     monkeypatch.setenv("KONA_FI_DATA_START", "09/10/2026")
     with pytest.raises(SettingsError, match="YYYY-MM-DD"):
         load_settings(tmp_path / "none.env")
+
+
+def test_tunnel_settings_are_off_by_default_and_parsed_strictly(tmp_path, monkeypatch, capsys):
+    for k in ("KONA_TRUSTED_PROXY_HEADER", "KONA_SECURE_COOKIES"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("KONA_PASSCODE", "123456")
+    monkeypatch.setenv("KONA_SECRET", "s")
+    s = load_settings(tmp_path / "none.env", fake_camera=True)
+    assert s.trusted_proxy_header == "" and s.secure_cookies is False
+
+    monkeypatch.setenv("KONA_TRUSTED_PROXY_HEADER", "CF-Connecting-IP")
+    s = load_settings(tmp_path / "none.env", fake_camera=True)
+    assert s.trusted_proxy_header == "CF-Connecting-IP"
+    assert s.trusted_proxy_ips == ("127.0.0.1", "::1"), "loopback unless told otherwise"
+    monkeypatch.setenv("KONA_TRUSTED_PROXY_IPS", " 10.0.0.5, ::1 ")
+    assert load_settings(tmp_path / "none.env", fake_camera=True).trusted_proxy_ips == (
+        "10.0.0.5",
+        "::1",
+    )
+    monkeypatch.delenv("KONA_TRUSTED_PROXY_IPS")
+    # A tunnel is HTTPS; say so when the cookie is still allowed over http.
+    assert "KONA_SECURE_COOKIES" in capsys.readouterr().err
+
+    monkeypatch.setenv("KONA_SECURE_COOKIES", "true")
+    s = load_settings(tmp_path / "none.env", fake_camera=True)
+    assert s.secure_cookies is True
+    assert "KONA_SECURE_COOKIES" not in capsys.readouterr().err
+
+    # A typo in a security switch must not silently mean "off".
+    monkeypatch.setenv("KONA_SECURE_COOKIES", "yes please")
+    with pytest.raises(SettingsError, match="KONA_SECURE_COOKIES"):
+        load_settings(tmp_path / "none.env", fake_camera=True)
+
+
+def test_log_dir_is_optional(tmp_path, monkeypatch):
+    monkeypatch.delenv("KONA_LOG_DIR", raising=False)
+    monkeypatch.setenv("KONA_PASSCODE", "123456")
+    monkeypatch.setenv("KONA_SECRET", "s")
+    assert load_settings(tmp_path / "none.env", fake_camera=True).log_dir == ""
+    monkeypatch.setenv("KONA_LOG_DIR", str(tmp_path / "logs"))
+    assert load_settings(tmp_path / "none.env", fake_camera=True).log_dir == str(tmp_path / "logs")
+
+
+def test_keep_awake_is_off_unless_asked(tmp_path, monkeypatch):
+    monkeypatch.delenv("KONA_KEEP_AWAKE", raising=False)
+    monkeypatch.setenv("KONA_PASSCODE", "123456")
+    monkeypatch.setenv("KONA_SECRET", "s")
+    assert load_settings(tmp_path / "none.env", fake_camera=True).keep_awake is False
+    monkeypatch.setenv("KONA_KEEP_AWAKE", "true")
+    assert load_settings(tmp_path / "none.env", fake_camera=True).keep_awake is True
+    monkeypatch.setenv("KONA_KEEP_AWAKE", "sometimes")
+    with pytest.raises(SettingsError, match="KONA_KEEP_AWAKE"):
+        load_settings(tmp_path / "none.env", fake_camera=True)
+
+
+def test_the_profile_page_describes_the_camera_in_plain_words():
+    """ "usb index 0" is for the console. A phone gets a sentence, and the
+    RTSP sentence names the host and nothing that could hold a password."""
+    usb = Settings(passcode="p", secret="s")
+    assert usb.camera_label() == "usb index 0", "the console wording is unchanged"
+    assert usb.camera_description() == "Webcam on this computer"
+    second = Settings(passcode="p", secret="s", camera_index=1)
+    assert second.camera_description() == "Webcam on this computer, camera 1"
+    rtsp = Settings(
+        passcode="p",
+        secret="s",
+        camera_source="rtsp",
+        rtsp_url="rtsp://192.168.1.40:554/stream1",
+        rtsp_user="kona",
+        rtsp_password="hunter2",
+    )
+    assert rtsp.camera_description() == "Network camera at 192.168.1.40"
+    fake = Settings(passcode="p", secret="s", camera_source="fake")
+    assert fake.camera_description() == "Test pattern, no camera"
+
+
+def test_the_camera_stays_open_for_minutes_not_seconds(tmp_path, monkeypatch):
+    """Five hard-coded idle seconds turned every tab switch into a webcam
+    close-and-reopen, the known way to wedge a USB device. Both timings are
+    settings now, with defaults on the safe side."""
+    for k in ("KONA_CAMERA_IDLE_SECONDS", "KONA_CAMERA_REOPEN_SECONDS"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("KONA_PASSCODE", "123456")
+    monkeypatch.setenv("KONA_SECRET", "s")
+    s = load_settings(tmp_path / "none.env", fake_camera=True)
+    assert s.camera_idle_seconds == 120.0 and s.camera_reopen_seconds == 2.0
+    monkeypatch.setenv("KONA_CAMERA_IDLE_SECONDS", "600")
+    monkeypatch.setenv("KONA_CAMERA_REOPEN_SECONDS", "5")
+    s = load_settings(tmp_path / "none.env", fake_camera=True)
+    assert s.camera_idle_seconds == 600.0 and s.camera_reopen_seconds == 5.0

@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import sys
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI, Form, Request, Response
 from fastapi.responses import (
@@ -20,12 +23,41 @@ from kona_tracker.camera.control import CameraControl, ControlUnsupported, FakeC
 from kona_tracker.camera.hub import BOUNDARY, CameraHub
 from kona_tracker.camera.source import FakeSource, FrameSource, OpenCVSource, RtspSource
 from kona_tracker.fi.service import FiService
-from kona_tracker.web.auth import COOKIE_NAME, Lockout, PasscodeAuth
+from kona_tracker.web.auth import COOKIE_NAME, Lockout, PasscodeAuth, client_key
+from kona_tracker.web.awake import allow_sleep, keep_awake
+from kona_tracker.web.heartbeat import Heartbeat
+from kona_tracker.web.logs import attach_file_logging, detach_file_logging
 from kona_tracker.web.settings import Settings
-from kona_tracker.web.views import activity_context, activity_json, preview_activity_context
+from kona_tracker.web.views import (
+    activity_context,
+    activity_json,
+    camera_health,
+    preview_activity_context,
+)
 
 HERE = Path(__file__).parent
 PUBLIC_PATHS = {"/login", "/healthz"}
+
+#: Sent with every response, static files and 401s included. Read against the
+#: threat that matters once there is a public URL: a page with a live camera
+#: on it. Nothing here is a nonce -- every script the pages use is a file
+#: under /static, so `script-src 'self'` is enough and the JS stays cacheable.
+#: `data:` is for Leaflet, which points aborted tile images at a base64 GIF.
+#: `img-src` names OpenStreetMap's tile host, a decision already recorded in
+#: docs/handoff.md; `Referrer-Policy: no-referrer` means it learns a tile
+#: area and nothing else. No HSTS: the LAN address is plain http on purpose.
+SECURITY_HEADERS = {
+    "Content-Security-Policy": (
+        "default-src 'self'; script-src 'self'; "
+        "style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; "
+        "img-src 'self' data: https://tile.openstreetmap.org; connect-src 'self'; "
+        "frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; "
+        "manifest-src 'self'"
+    ),
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "no-referrer",
+    "X-Content-Type-Options": "nosniff",
+}
 
 #: Kona's photo is a few hundred KB; anything bigger is not a photo.
 AVATAR_MAX_BYTES = 5 * 1024 * 1024
@@ -110,8 +142,42 @@ def create_app(
 ):
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-        yield
-        hub.stop()  # release the webcam on shutdown
+        log_handler = attach_file_logging(Path(settings.log_dir)) if settings.log_dir else None
+        # The hold belongs to this thread and dies with the process, which is
+        # the point: stopping the app gives the machine its power plan back.
+        holding = keep_awake() if settings.keep_awake else False
+        app.state.keeping_awake = holding
+        beat = (
+            Heartbeat(
+                settings.heartbeat_url,
+                lambda: app.state.health_summary(),
+                settings.heartbeat_seconds,
+            )
+            if settings.heartbeat_url
+            else None
+        )
+        app.state.heartbeat = beat
+        if beat is not None:
+            beat.start()
+        if settings.keep_awake and not holding:
+            # Never let a failed hold pass for a working one: the whole reason
+            # to ask is so the page is reachable while nobody is at the PC.
+            print(
+                "KONA_KEEP_AWAKE is set but this machine would not hold sleep off "
+                "(not Windows, or the request was refused). The app will still serve, "
+                "but the PC may sleep and take the camera and tunnel with it.",
+                file=sys.stderr,
+            )
+        try:
+            yield
+        finally:
+            hub.stop()  # release the webcam on shutdown
+            if beat is not None:
+                beat.stop()
+            if holding:
+                allow_sleep()
+            if log_handler is not None:
+                detach_file_logging(log_handler)
 
     app = FastAPI(
         title="kona-tracker", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan
@@ -129,6 +195,8 @@ def create_app(
     capabilities = control.capabilities
     hub = CameraHub(
         source_factory or default_source_factory(settings, control),
+        idle_stop_seconds=settings.camera_idle_seconds,
+        reopen_cooldown_seconds=settings.camera_reopen_seconds,
         max_fps=settings.camera_fps,
         stale_after=settings.stale_seconds,
         hang_after=settings.hang_seconds,
@@ -155,9 +223,47 @@ def create_app(
             return Response(status_code=401)
         return RedirectResponse("/login", status_code=303)
 
+    # Registered after `gate`, which makes it the outer layer: the headers
+    # land on the login redirect, the 401 for an <img>, and /static too.
+    @app.middleware("http")
+    async def security_headers(request: Request, call_next):
+        response = await call_next(request)
+        for name, value in SECURITY_HEADERS.items():
+            response.headers.setdefault(name, value)
+        return response
+
+    def health_summary() -> dict[str, Any]:
+        """Is the process up, is the camera delivering, how old is the Fi
+        reading. Deliberately nothing else -- no error text (it can carry a
+        redacted camera host), no coordinates, and no Fi round trip, so a
+        stranger cannot make us talk to Fi. Shared by the public /healthz and
+        the outbound heartbeat so the two can never disagree."""
+        camera = hub.status()
+        snapshot = fi.peek() if fi else None
+        age = (datetime.now(UTC) - snapshot.fetched_at).total_seconds() if snapshot else None
+        return {
+            "status": "ok",
+            "camera": camera["state"],
+            "camera_error": camera["last_error_kind"],
+            "fi": "unconfigured"
+            if fi is None
+            else "pending"
+            if snapshot is None
+            else "stale"
+            if snapshot.stale
+            else "unavailable"
+            if not snapshot.has_data
+            else "partial"
+            if snapshot.partial
+            else "ok",
+            "fi_age_s": None if age is None else round(age),
+        }
+
+    app.state.health_summary = health_summary
+
     @app.get("/healthz")
-    def healthz() -> dict[str, str]:
-        return {"status": "ok"}
+    def healthz() -> dict[str, Any]:
+        return health_summary()
 
     @app.get("/login", response_class=HTMLResponse)
     def login_page(request: Request):
@@ -167,7 +273,12 @@ def create_app(
 
     @app.post("/login", response_class=HTMLResponse)
     def login(request: Request, passcode: str = Form("")):
-        key = request.client.host if request.client else "?"
+        key = client_key(
+            request.headers,
+            request.client.host if request.client else "?",
+            settings.trusted_proxy_header,
+            settings.trusted_proxy_ips,
+        )
         if auth.lockout.blocked(key):
             return templates.TemplateResponse(
                 request,
@@ -188,13 +299,17 @@ def create_app(
             max_age=settings.cookie_max_age,
             httponly=True,
             samesite="lax",
+            secure=settings.secure_cookies,
         )
         return resp
 
     @app.post("/logout")
     def logout():
         resp = RedirectResponse("/login", status_code=303)
-        resp.delete_cookie(COOKIE_NAME)
+        # Same attributes as when it was set, or the browser keeps the old one.
+        resp.delete_cookie(
+            COOKIE_NAME, httponly=True, samesite="lax", secure=settings.secure_cookies
+        )
         return resp
 
     @app.get("/")
@@ -208,8 +323,10 @@ def create_app(
         )
 
     @app.get("/activity", response_class=HTMLResponse)
-    def activity(request: Request, preview: bool = False):
-        snapshot = fi.snapshot() if fi and not preview else None
+    def activity(request: Request, preview: bool = False, fresh: bool = False):
+        # `fresh` is the pull-to-refresh gesture: ask Fi on this request,
+        # within the floor FiService enforces, so the swap-in is current.
+        snapshot = fi.snapshot(force=fresh) if fi and not preview else None
         context = (
             preview_activity_context()
             if preview
@@ -221,7 +338,15 @@ def create_app(
     def profile_settings(request: Request):
         snapshot = fi.snapshot() if fi else None
         context = activity_context(snapshot, configured=fi is not None)
-        context["tab"] = "settings"
+        # Not a tab. With `tab` set the header drew the Activity/Camera
+        # toggle with neither selected, which read as broken, plus a second
+        # avatar over the hero's. This page is reached from the avatar and
+        # left by its own back link, so it carries no header at all.
+        context["tab"] = None
+        # The same statistics camera-doctor reads, so a wedged USB device
+        # can be diagnosed from a phone instead of at the machine.
+        context["camera"] = camera_health(hub.status())
+        context["camera_description"] = settings.camera_description()
         return templates.TemplateResponse(request, "settings.html", context)
 
     @app.get("/avatar.jpg")

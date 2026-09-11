@@ -73,6 +73,96 @@ def test_lockout_after_repeated_failures(client):
     assert login(client, "4242").status_code == 429  # even the right code waits
 
 
+def _app(**kw):
+    settings = Settings(passcode="4242", secret="s", lockout_attempts=2, lockout_seconds=60, **kw)
+    return create_app(settings, source_factory=lambda: FakeSource(fps=100))
+
+
+def test_a_forwarded_header_is_ignored_unless_it_is_trusted():
+    """Unset by default: a stranger cannot pick their own bucket by sending
+    CF-Connecting-IP, and everyone behind one peer address shares one --
+    which is the LAN behaviour, and the reason the setting exists."""
+    app = _app()
+    with TestClient(app) as c:
+        for ip in ("203.0.113.1", "203.0.113.2"):
+            r = c.post(
+                "/login",
+                data={"passcode": "0000"},
+                headers={"CF-Connecting-IP": ip},
+                follow_redirects=False,
+            )
+            assert r.status_code == 401
+        r = c.post("/login", data={"passcode": "4242"}, follow_redirects=False)
+        assert r.status_code == 429, "two failures under two forged addresses still add up"
+    app.state.hub.stop()
+
+
+def test_a_trusted_proxy_header_gives_each_visitor_their_own_lockout():
+    """Behind cloudflared every peer is 127.0.0.1. With the header trusted,
+    a stranger locking themselves out does not lock out the household."""
+    app = _app(trusted_proxy_header="CF-Connecting-IP")
+    with TestClient(app, client=("127.0.0.1", 50000)) as c:
+        stranger = {"CF-Connecting-IP": "203.0.113.1"}
+        sister = {"CF-Connecting-IP": "198.51.100.7"}
+        for _ in range(2):
+            assert c.post("/login", data={"passcode": "0000"}, headers=stranger).status_code == 401
+        assert c.post("/login", data={"passcode": "4242"}, headers=stranger).status_code == 429
+        r = c.post("/login", data={"passcode": "4242"}, headers=sister, follow_redirects=False)
+        assert r.status_code == 303, "a different visitor is a different bucket"
+        # No header at all (a LAN visitor bypassing the tunnel) falls back to
+        # the peer address, and that bucket is untouched by the stranger.
+        r = c.post("/login", data={"passcode": "4242"}, follow_redirects=False)
+        assert r.status_code == 303
+    app.state.hub.stop()
+
+
+def test_a_wifi_visitor_cannot_dodge_the_lockout_by_sending_the_header():
+    """Port 8000 stays reachable on the LAN next to the tunnel. A peer that
+    is not the tunnel keeps its own address as the key whatever it sends;
+    otherwise a fresh header value per guess would mean no lockout."""
+    app = _app(trusted_proxy_header="CF-Connecting-IP")
+    with TestClient(app, client=("192.168.1.20", 50000)) as c:
+        for n in (1, 2):
+            r = c.post(
+                "/login",
+                data={"passcode": "0000"},
+                headers={"CF-Connecting-IP": f"10.0.0.{n}"},
+                follow_redirects=False,
+            )
+            assert r.status_code == 401
+        r = c.post(
+            "/login",
+            data={"passcode": "4242"},
+            headers={"CF-Connecting-IP": "10.0.0.3"},
+            follow_redirects=False,
+        )
+        assert r.status_code == 429, "two guesses from one Wi-Fi peer, whatever it claims"
+    app.state.hub.stop()
+
+
+def test_session_cookie_is_secure_only_when_asked():
+    """`secure=True` would break http://192.168.x.x on the LAN -- the browser
+    silently stops sending the cookie -- so it is a setting, off by default,
+    and the logout must clear the cookie with the same attributes."""
+    app = _app()
+    with TestClient(app) as c:
+        r = login(c)
+        assert "secure" not in r.headers["set-cookie"].lower()
+        r = c.post("/logout", follow_redirects=False)
+        assert "secure" not in r.headers["set-cookie"].lower()
+    app.state.hub.stop()
+
+    app = _app(secure_cookies=True)
+    with TestClient(app, base_url="https://testserver") as c:
+        r = login(c)
+        cookie = r.headers["set-cookie"].lower()
+        assert "secure" in cookie and "httponly" in cookie and "samesite=lax" in cookie
+        assert c.get("/camera").status_code == 200
+        r = c.post("/logout", follow_redirects=False)
+        assert "secure" in r.headers["set-cookie"].lower()
+    app.state.hub.stop()
+
+
 def test_forged_cookie_is_rejected(client):
     client.cookies.set(COOKIE_NAME, "ok.forged.signature")
     assert client.get("/camera", follow_redirects=False).status_code == 303
@@ -97,7 +187,10 @@ def test_snapshot_and_stream_with_cookie(client):
 def test_usb_camera_offers_capture_and_share_but_no_motion_controls(client):
     login(client)
     page = client.get("/camera").text
-    assert 'id="capture"' in page and "navigator.share" in page
+    assert 'id="capture"' in page and 'src="/static/camera.js"' in page
+    from kona_tracker.web.app import HERE
+
+    assert "navigator.share" in (HERE / "static" / "camera.js").read_text(encoding="utf-8")
     assert 'class="ptz"' not in page and "Left corner" not in page
 
 
@@ -233,3 +326,326 @@ def test_motion_is_opt_in_and_respects_the_accessibility_setting():
     reduce = css[css.index("@media (prefers-reduced-motion: reduce)") :]
     assert "@view-transition { navigation: none; }" in reduce
     assert ".dial .val, .stat { animation: none; }" in reduce
+    assert ".pull, .pull span, .pull.busy span { transition: none; animation: none; }" in reduce
+
+
+def test_zoom_is_off_page_wide_but_the_map_still_pinches():
+    """Chris asked for zoom off everywhere and reaffirmed it after being told
+    the cost: this is a WCAG 1.4.4 failure, made deliberately, on his own
+    two-reader app. Pinned here so it can never look like an accident.
+
+    It takes both halves. Chrome and Android honour the viewport meta; iOS
+    Safari has ignored `user-scalable` since iOS 10 and needs `gesture*` and
+    multi-touch `touchmove` cancelled instead. The map is exempt in both,
+    because Leaflet does its own pinch and that must keep working."""
+    from kona_tracker.web.app import HERE
+
+    base = (HERE / "templates" / "base.html").read_text(encoding="utf-8")
+    assert "user-scalable=no" in base and "maximum-scale=1" in base
+
+    js = (HERE / "static" / "app.js").read_text(encoding="utf-8")
+    for event in ("gesturestart", "gesturechange", "gestureend"):
+        assert event in js, event
+    assert "e.touches.length > 1" in js, "a two-finger drag is not a gesture event"
+    assert js.count("{ passive: false }") >= 2, "preventDefault needs a non-passive listener"
+    assert js.count("overTheMap(e.target)") == 2, "both paths must exempt the map"
+    assert "WCAG 1.4.4" in js, "the trade stays written down where it is made"
+
+    # Double-tap zoom on a control was the other half of the complaint.
+    css = (HERE / "static" / "app.css").read_text(encoding="utf-8")
+    assert (
+        ".seg a, .avatar, .shutter, .pill, .settings-link, .login button, .logout "
+        "{ touch-action: manipulation; }"
+    ) in css
+    assert "touch-action: none" in css.split(".nub {")[1].split("}")[0], "press-and-hold"
+    for line in css.splitlines():
+        if "touch-action" in line:
+            assert "kona-map" not in line and "leaflet" not in line and ".map" not in line
+
+
+def test_the_map_keeps_its_own_touch_action_from_leaflet():
+    """The exemption above is only real if Leaflet still claims the gesture."""
+    from kona_tracker.web.app import HERE
+
+    leaflet = (HERE / "static" / "leaflet" / "leaflet.css").read_text(encoding="utf-8")
+    # Leaflet stamps these classes on the container when it is handling touch,
+    # and takes `touch-action: none` so the browser hands it every gesture.
+    # That is what makes pinching the map move the map, not the page.
+    block = leaflet.split(".leaflet-container.leaflet-touch-drag.leaflet-touch-zoom {")[1]
+    assert "touch-action: none" in block.split("}")[0]
+
+
+def test_the_windows_hold_asks_for_the_system_but_never_the_display(monkeypatch):
+    """Exercises the Windows path from any platform, which is the point.
+
+    Before this, the success path ran only on the Windows CI leg, so a wrong
+    assumption about it survived a green local run. Here the call is faked,
+    so the flags are pinned everywhere. The display flag is the one that
+    matters for the electricity argument: a dark monitor is most of an idle
+    desktop's draw, and the whole reason to hold sleep off is that nobody is
+    sitting at the PC.
+    """
+    import ctypes
+
+    from kona_tracker.web import awake
+
+    calls = []
+
+    class FakeKernel:
+        def SetThreadExecutionState(self, flags):
+            calls.append(flags)
+            return 1  # the previous state; anything non-zero means it took
+
+    monkeypatch.setattr(awake.sys, "platform", "win32")
+    monkeypatch.setattr(
+        ctypes, "windll", type("W", (), {"kernel32": FakeKernel()})(), raising=False
+    )
+
+    assert awake.keep_awake() is True
+    assert calls == [awake.ES_CONTINUOUS | awake.ES_SYSTEM_REQUIRED]
+    assert not calls[0] & 0x00000002, "ES_DISPLAY_REQUIRED: the screen may still sleep"
+
+    assert awake.allow_sleep() is True
+    assert calls[1] == awake.ES_CONTINUOUS, "releasing is the bare continuous flag"
+
+    # Windows refusing the request reads as a refusal, not a success.
+    class Refuses:
+        def SetThreadExecutionState(self, flags):
+            return 0
+
+    monkeypatch.setattr(ctypes, "windll", type("W", (), {"kernel32": Refuses()})(), raising=False)
+    assert awake.keep_awake() is False
+
+
+def test_keep_awake_is_opt_in_and_never_pretends_it_worked(capsys):
+    """A keep-awake that silently failed is worse than none: it promises the
+    page will be reachable while nobody is at the PC, and then is not.
+
+    The expected answer depends on the platform, so the test asks the
+    platform rather than assuming one. The first version of this asserted
+    False outright and passed happily in a Linux sandbox, because there the
+    assumption and the truth coincide; the Windows CI leg is the only place
+    the success path runs at all, and it failed the moment it did. Encoding
+    "this machine is not Windows" as if it were a fact about the code is the
+    same mistake as a mock that answers every query.
+    """
+    import sys
+
+    from kona_tracker.web.awake import allow_sleep, keep_awake
+
+    on_windows = sys.platform == "win32"
+
+    assert keep_awake() is on_windows, "Windows can hold sleep off; nothing else can"
+    assert allow_sleep() is on_windows
+    if on_windows:
+        allow_sleep()  # never leave a CI runner holding the hold
+
+    settings = Settings(passcode="4242", secret="s", camera_source="fake")
+    assert settings.keep_awake is False, "off unless asked"
+    app = create_app(settings, source_factory=lambda: FakeSource(fps=100))
+    with TestClient(app) as c:
+        assert c.get("/healthz").status_code == 200
+        assert app.state.keeping_awake is False, "never held unless asked for"
+    app.state.hub.stop()
+    assert "KONA_KEEP_AWAKE" not in capsys.readouterr().err
+
+    app = create_app(
+        Settings(passcode="4242", secret="s", camera_source="fake", keep_awake=True),
+        source_factory=lambda: FakeSource(fps=100),
+    )
+    with TestClient(app) as c:
+        assert c.get("/healthz").status_code == 200
+        assert app.state.keeping_awake is on_windows
+    app.state.hub.stop()
+
+    warning = capsys.readouterr().err
+    if on_windows:
+        assert warning == "" or "KONA_KEEP_AWAKE is set" not in warning, "it worked; stay quiet"
+    else:
+        # The whole point of the warning: never let a refused hold pass for a
+        # working one, or you walk away believing the page will be reachable.
+        assert "KONA_KEEP_AWAKE is set" in warning and "may sleep" in warning
+
+
+def test_leaflet_is_vendored_and_is_the_exact_release_the_page_used_to_pin():
+    """A CDN is a dependency, and one that was measured to leave a blank
+    coloured box when unreachable. The copies in static/ are the npm
+    release: these are the SRI hashes activity.html carried for unpkg."""
+    import base64
+    import hashlib
+
+    from kona_tracker.web.app import HERE
+
+    vendored = HERE / "static" / "leaflet"
+    expected = {
+        "leaflet.js": "20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=",
+        "leaflet.css": "p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=",
+    }
+    for name, sha in expected.items():
+        digest = hashlib.sha256((vendored / name).read_bytes()).digest()
+        assert base64.b64encode(digest).decode() == sha, f"{name} is not Leaflet 1.9.4 as published"
+    assert (vendored / "LICENSE").read_text(encoding="utf-8").startswith("BSD 2-Clause")
+    for image in ("layers.png", "layers-2x.png", "marker-icon.png"):
+        assert (vendored / "images" / image).exists(), "leaflet.css references these"
+
+
+def test_the_map_page_loads_no_third_party_script(client):
+    login(client)
+    page = client.get("/activity?preview=1").text
+    assert "unpkg.com" not in page and "/static/leaflet/leaflet.js" in page
+    assert client.get("/static/leaflet/leaflet.css").status_code == 200
+    assert client.get("/static/leaflet/images/layers.png").status_code == 200
+
+
+def test_every_response_carries_the_security_headers(client):
+    """Once the URL is public this is a page with a live camera on it: it
+    must not be frameable, must not hand OpenStreetMap a referrer, and may
+    run only its own scripts. The headers ride the outer middleware so a
+    login redirect, an <img> 401 and a static file all get them."""
+    from kona_tracker.web.app import SECURITY_HEADERS
+
+    csp = SECURITY_HEADERS["Content-Security-Policy"]
+    assert "frame-ancestors 'none'" in csp and "script-src 'self'" in csp
+    assert "unsafe-inline" not in csp and "nonce" not in csp
+    assert "https://tile.openstreetmap.org" in csp and "data:" in csp
+
+    responses = [
+        client.get("/login"),
+        client.get("/camera", follow_redirects=False),  # 303
+        client.get("/stream.mjpg", follow_redirects=False),  # 401
+        client.get("/static/app.css"),
+        client.get("/healthz"),
+    ]
+    login(client)
+    responses += [client.get("/camera"), client.get("/activity"), client.get("/settings")]
+    for r in responses:
+        for name, value in SECURITY_HEADERS.items():
+            assert r.headers.get(name) == value, (r.request.url, name)
+    # The avatar route sets nosniff itself; the middleware must not clobber it.
+    assert client.get("/avatar.jpg").headers["x-content-type-options"] == "nosniff"
+
+
+def test_pages_have_no_inline_script_and_no_inline_handlers(client):
+    """CSP script-src 'self' would silently kill any of these. The map's
+    points travel as a JSON data block, which is data, not script."""
+    import re
+
+    login(client)
+    for path in ("/login", "/camera", "/activity", "/activity?preview=1", "/settings"):
+        page = client.get(path).text
+        for tag in re.findall(r"<script\b[^>]*>", page):
+            assert 'src="/static/' in tag or 'type="application/json"' in tag, (path, tag)
+        assert not re.search(r"\son[a-z]+\s*=", page), path
+        assert "javascript:" not in page, path
+    preview = client.get("/activity?preview=1").text
+    assert '<script type="application/json" id="map-points">' in preview
+    assert 'src="/static/map.js"' in preview and 'src="/static/app.js"' in preview
+    assert "data-optional" in preview, "the avatar fallback moved from onerror= to app.js"
+
+
+def test_healthz_is_public_and_says_only_what_a_pinger_needs(client):
+    """Nothing watches the watcher today; an outside uptime ping against
+    this is the cheapest honest fix. It is unauthenticated, so it must not
+    leak error text or coordinates, and must not touch Fi."""
+    r = client.get("/healthz")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["status"] == "ok" and data["fi"] == "unconfigured"
+    assert data["camera"] in ("idle", "connecting", "live", "stale", "disconnected")
+    assert set(data) == {"status", "camera", "camera_error", "fi", "fi_age_s"}
+
+
+def test_log_dir_writes_a_file_that_outlives_the_console(tmp_path):
+    import logging
+
+    log_dir = tmp_path / "logs"
+    settings = Settings(passcode="4242", secret="s", camera_source="fake", log_dir=str(log_dir))
+    app = create_app(settings, source_factory=lambda: FakeSource(fps=100))
+    with TestClient(app) as c:
+        login(c)
+        logging.getLogger("kona_tracker.camera").warning("camera open: a redacted reason")
+    app.state.hub.stop()
+    text = (log_dir / "kona.log").read_text(encoding="utf-8")
+    assert "WARNING kona_tracker.camera: camera open: a redacted reason" in text
+    # Detached on shutdown: nothing more lands, and the file is closed.
+    logging.getLogger("kona_tracker.camera").warning("after shutdown")
+    assert "after shutdown" not in (log_dir / "kona.log").read_text(encoding="utf-8")
+
+
+def test_settings_page_reports_camera_health_from_the_road(client):
+    """camera-doctor must be run at the machine, which is where Chris is not
+    when he needs it. The settings page reads the same hub statistics."""
+    login(client)
+    client.get("/snapshot.jpg")  # wakes the camera
+    page = client.get("/settings").text
+    assert 'id="camera-settings-title"' in page and "Webcam on this computer" in page
+    assert "Delivering frames" in page or "Opening the camera" in page
+
+
+def test_the_profile_page_is_a_destination_not_a_broken_tab(client):
+    """From Chris's screenshot, 2026-09-11: two avatars on one screen, a
+    "Profile" eyebrow over a huge "Kona", "Back to Activity" right under an
+    Activity tab, a tab bar with nothing selected, and "usb index 0". The
+    page is reached from the avatar and left by its own back link, so it
+    carries no header to duplicate and no tab to leave unselected."""
+    login(client)
+    page = client.get("/settings").text
+    assert 'class="hdr"' not in page and 'class="seg"' not in page
+    assert page.count('src="/avatar.jpg"') == 1
+    assert ">Profile<" not in page and "Back to Activity" not in page
+    assert 'class="back" href="/activity"' in page
+    assert "usb index" not in page and "\u203a" not in page
+    # The tabs are still the tabs everywhere else.
+    assert 'class="seg"' in client.get("/activity").text
+
+
+def test_camera_health_words_are_the_doctors_verdicts():
+    from kona_tracker.web.views import camera_health
+
+    wedged = camera_health(
+        {"state": "disconnected", "last_error_kind": "black_frame", "reconnects": 3}
+    )
+    assert wedged["state"] == "Not connected" and wedged["live"] is False
+    assert "unplug" in wedged["problem"] and wedged["reconnects"] == 3
+    live = camera_health({"state": "live", "last_frame_age": 0.4, "last_error_kind": None})
+    assert live["live"] and live["last_frame"] == "0 s ago" and live["problem"] is None
+    # Unknown words are shown raw, never dressed up as something known.
+    odd = camera_health({"state": "weird", "last_error_kind": "newkind"})
+    assert odd["state"] == "weird" and odd["problem"] == "newkind"
+
+
+@pytest.mark.parametrize("kind", ["pending", "unavailable", "partial", "stale", "ok"])
+def test_healthz_distinguishes_no_reading_failure_and_partial_data(kind):
+    from datetime import UTC, datetime
+    from types import SimpleNamespace
+
+    from kona_tracker.fi.parse import CollarStatus
+    from kona_tracker.fi.service import FiSnapshot
+
+    snapshot = (
+        None
+        if kind == "pending"
+        else FiSnapshot(
+            fetched_at=datetime.now(UTC),
+            status=None if kind == "unavailable" else CollarStatus(battery_percent=50),
+            problem="test failure" if kind in ("unavailable", "partial", "stale") else None,
+            stale=kind == "stale",
+        )
+    )
+    app = create_app(
+        Settings(passcode="test-only", secret="test-only", camera_source="fake"),
+        fi_service=SimpleNamespace(peek=lambda: snapshot),
+    )
+    with TestClient(app) as c:
+        assert c.get("/healthz").json()["fi"] == kind
+
+
+def test_the_app_hands_the_camera_timings_to_the_hub():
+    """create_app used to leave idle_stop_seconds at the hub's default, so
+    no setting could change it. Private attributes on purpose: the timings
+    are not something /status.json should advertise."""
+    settings = Settings(
+        passcode="4242", secret="s", camera_idle_seconds=300, camera_reopen_seconds=4
+    )
+    app = create_app(settings, source_factory=lambda: FakeSource(fps=100))
+    assert app.state.hub._idle_stop == 300 and app.state.hub._reopen_cooldown == 4

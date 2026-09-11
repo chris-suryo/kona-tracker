@@ -34,9 +34,33 @@ class CameraFrameError(RuntimeError):
     """The camera opened, but its frames cannot be presented as a picture."""
 
 
+#: Above this mean the picture is plainly lit and the (costlier) noise check
+#: is skipped; it runs on every frame, and `std()` over 1280x720x3 is not free.
+_PLAINLY_LIT_MEAN = 8.0
+#: Below this pixel-to-pixel spread there is no sensor noise, so no sensor.
+_FLAT_STDDEV = 1.0
+
+
 def frame_is_unusable(frame: Any) -> bool:
-    """True for an effectively all-black image, including a few hot pixels."""
-    return float(frame.mean()) <= 0.25
+    """True when the frame is not a picture: all zero, or flat.
+
+    The load-bearing distinction is **noise**, not brightness (see
+    `_classify`). A wedged USB device or a closed shutter hands back
+    identical pixels; a real sensor in a dark room still has read noise, so
+    its mean is low but its spread is not. The old rule (`mean <= 0.25`)
+    would have called a genuinely dark room CHECK CAMERA -- and night is
+    when a sleeping dog is most worth looking at. A dark-but-noisy frame is
+    a real, dark picture, and the page shows it as one.
+
+    Measured: a wedged C270 read mean 0.00 / sd 0.00. **Not yet measured:**
+    a real dark room at night; that test is still owed, and until it is run
+    this rule is the documented verdict, not a verified one.
+    """
+    if float(frame.mean()) > _PLAINLY_LIT_MEAN:
+        return False
+    if float(frame.max()) == 0:
+        return True
+    return float(frame.std()) < _FLAT_STDDEV
 
 
 @dataclass(frozen=True)

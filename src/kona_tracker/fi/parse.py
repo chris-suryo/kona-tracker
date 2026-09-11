@@ -78,6 +78,10 @@ class PetProfile:
     #: own `/avatar.jpg` so it never reaches the browser and a dead link
     #: degrades to the initial.
     photo_url: str | None = None
+    #: Fi's `timezone` on Pet: accepted in round 3, value format unmeasured
+    #: (the probe redacts it). Assumed IANA, e.g. "America/Chicago"; the
+    #: page falls back to the server's clock when it does not load.
+    timezone: str | None = None
 
 
 @dataclass(frozen=True)
@@ -123,9 +127,17 @@ class CollarStatus:
     area_name: str | None = None
     place_name: str | None = None
     home_location: LocationPoint | None = None
-    #: Fi currently returns positions only on OngoingWalk. Keep a bounded
-    #: route so an unexpectedly long activity cannot grow the page forever.
+    #: The walk route, from `OngoingWalk.positions`. Bounded so an
+    #: unexpectedly long activity cannot grow the page forever.
     positions: tuple[LocationPoint, ...] = ()
+    #: Local cache provenance, never a Fi field. A retained route is not a
+    #: current walk when a later response says "walk" but supplies no fixes.
+    positions_carried: bool = False
+    #: Where she is while resting, from `pet_whereabouts`. Sourced from
+    #: pytryfi's `... on OngoingRest { position }` and not yet measured on
+    #: Kona's collar; `recorded_at` is the activity's `lastReportTimestamp`
+    #: because the position itself carries no date.
+    rest_position: LocationPoint | None = None
 
 
 @dataclass(frozen=True)
@@ -240,11 +252,13 @@ def profile_from(data: Any) -> PetProfile:
     photo = _dict(_dict(_dict(pet.get("photos")).get("first")).get("image"))
     url = photo.get("fullSize")
     breed = _dict(pet.get("breed")).get("name")
+    timezone = pet.get("timezone")
     return PetProfile(
         name=str(pet.get("name") or ""),
         breed=breed if isinstance(breed, str) and breed else None,
         birthday=birthday,
         photo_url=url if isinstance(url, str) and url.startswith("https://") else None,
+        timezone=timezone if isinstance(timezone, str) and timezone else None,
     )
 
 
@@ -315,4 +329,34 @@ def status_from(data: Any) -> CollarStatus:
         place_name=place_name if isinstance(place_name, str) and place_name else None,
         home_location=home_location,
         positions=tuple(positions[-MAX_LOCATION_POINTS:]),
+    )
+
+
+def _coordinates(position: Any) -> tuple[float, float] | None:
+    """A (latitude, longitude) pair that is on the planet, or None."""
+    position = _dict(position)
+    latitude = _num(position.get("latitude"))
+    longitude = _num(position.get("longitude"))
+    if latitude is None or longitude is None:
+        return None
+    if not (-90 <= latitude <= 90 and -180 <= longitude <= 180):
+        return None
+    return float(latitude), float(longitude)
+
+
+def rest_position_from(data: Any) -> LocationPoint | None:
+    """Kona's resting position from `pet_whereabouts`, or None.
+
+    None covers every honest case at once: she is walking (the document
+    selects nothing on `OngoingWalk`), Fi sent no position, or the shape
+    changed. The page then falls back to the home pin rather than guessing.
+    """
+    ongoing = _dict(_dict(_dict(data).get("pet")).get("ongoingActivity"))
+    point = _coordinates(ongoing.get("position"))
+    if point is None:
+        return None
+    return LocationPoint(
+        latitude=point[0],
+        longitude=point[1],
+        recorded_at=_moment(ongoing.get("lastReportTimestamp")),
     )

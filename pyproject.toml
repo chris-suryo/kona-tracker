@@ -12,6 +12,7 @@ dependencies = [
     "opencv-python-headless>=5.0.0.93",
     "python-multipart>=0.0.32",
     "typer>=0.12",
+    "tzdata>=2026.3",
     "uvicorn[standard]>=0.52.4",
 ]
 

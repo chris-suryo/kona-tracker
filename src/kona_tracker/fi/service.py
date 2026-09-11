@@ -13,6 +13,7 @@ day pays the round trip.
 
 from __future__ import annotations
 
+import logging
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass, replace
@@ -29,12 +30,26 @@ from kona_tracker.fi.parse import (
     pets_from,
     profile_from,
     rest_from,
+    rest_position_from,
     split_windows,
     status_from,
 )
-from kona_tracker.fi.queries import CURRENT_USER_PETS, pet_activity, pet_rest, pet_status
+from kona_tracker.fi.queries import (
+    CURRENT_USER_PETS,
+    pet_activity,
+    pet_rest,
+    pet_status,
+    pet_whereabouts,
+)
+
+log = logging.getLogger("kona_tracker.fi")
 
 DEFAULT_REFRESH_SECONDS = 300.0
+#: How often a *person* may make us ask Fi again (pull-to-refresh, coming back
+#: to the app). Well under the background TTL, well above a thumb twitch: Fi's
+#: API is private and undocumented, and a request loop against it is the one
+#: thing a refresh gesture must never become.
+PULL_REFRESH_FLOOR_SECONDS = 30.0
 
 
 @dataclass(frozen=True)
@@ -191,6 +206,17 @@ def fetch_snapshot(
         status = status_from(data)
     except FiError as e:
         problems.append(f"Collar: {_explain(e)}")
+    try:
+        # Its own round trip on purpose: the field is sourced from pytryfi,
+        # not yet seen from her collar, and a rejected field fails the whole
+        # document it is in. Here that costs the map point and nothing else.
+        rest_position = rest_position_from(client.graphql(pet_whereabouts(pet.id)))
+        if status is not None:
+            status = replace(status, rest_position=rest_position)
+        elif rest_position is not None:
+            status = CollarStatus(rest_position=rest_position)
+    except FiError as e:
+        problems.append(f"Location: {_explain(e)}")
 
     return FiSnapshot(
         fetched_at=now,
@@ -226,7 +252,7 @@ class FiService:
         self._client_factory = client_factory
         self._clock = clock
         self._data_start = data_start
-        self._lock = threading.Lock()
+        self._lock = threading.Condition()
         self._snapshot: FiSnapshot | None = None
         self._refreshing = False
         # When we last *tried*, as opposed to when we last succeeded. A run
@@ -255,13 +281,22 @@ class FiService:
         except FiError as e:
             fresh, problem = None, str(e)
         except Exception as e:  # a bug here must not kill the page
-            fresh, problem = None, f"Unexpected error talking to Fi: {type(e).__name__}: {e}"
+            fresh, problem = (
+                None,
+                f"Unexpected error talking to Fi: {type(e).__name__} (details omitted)",
+            )
+        if fresh is None:
+            log.warning("Fi refresh failed: %s", problem)
+        elif fresh.problem:
+            log.warning("Fi refresh partial: %s", fresh.problem)
         with self._lock:
             self._attempted_at = self._clock()
             if fresh is not None:
-                # OngoingRest has no coordinates. Preserve the last fix seen
-                # by this process and let its own timestamp say how old it is;
-                # never relabel it as a current location.
+                # A walk's route comes only with the walk. Once she is back
+                # to resting, keep the last route seen by this process and let
+                # its own timestamps say how old it is; the page prefers the
+                # resting position when Fi sends one, and never relabels an
+                # old fix as a current location.
                 previous_status = self._snapshot.status if self._snapshot else None
                 if (
                     fresh.status is not None
@@ -271,7 +306,11 @@ class FiService:
                 ):
                     fresh = replace(
                         fresh,
-                        status=replace(fresh.status, positions=previous_status.positions),
+                        status=replace(
+                            fresh.status,
+                            positions=previous_status.positions,
+                            positions_carried=True,
+                        ),
                     )
                 self._snapshot = fresh
             elif self._snapshot is not None:
@@ -285,20 +324,39 @@ class FiService:
                     fetched_at=self._clock(), problem=problem, data_start=self._data_start
                 )
             self._refreshing = False
+            self._lock.notify_all()
 
-    def _stale(self) -> bool:
+    def peek(self) -> FiSnapshot | None:
+        """What the cache holds, without asking Fi for anything.
+
+        For the unauthenticated health check: a stranger pinging the URL
+        must not be able to make this process talk to Fi.
+        """
+        with self._lock:
+            return self._snapshot
+
+    def _since_attempt(self) -> float:
         if self._attempted_at is None:
-            return True
-        return (self._clock() - self._attempted_at).total_seconds() >= self._ttl
+            return float("inf")
+        return (self._clock() - self._attempted_at).total_seconds()
 
-    def snapshot(self) -> FiSnapshot:
+    def snapshot(self, force: bool = False) -> FiSnapshot:
         """The best answer available now.
 
         The first call blocks on Fi because there is nothing else to return.
         Every later call returns immediately and, if the cache has aged out,
         kicks off a refresh that some later request will benefit from.
+
+        `force` is a person asking (pull-to-refresh): refresh *now*, on this
+        request, so the page they get back is current -- unless the last
+        attempt was under `PULL_REFRESH_FLOOR_SECONDS` ago, in which case the
+        cache is the answer and its "Updated" time says so honestly.
         """
         with self._lock:
+            # Two first visitors must share one fetch, just like warm-cache
+            # visitors. Previously both saw None and logged in independently.
+            while self._snapshot is None and self._refreshing:
+                self._lock.wait()
             cached = self._snapshot
             if cached is None:
                 self._refreshing = True
@@ -308,9 +366,15 @@ class FiService:
                 return self._snapshot  # type: ignore[return-value]
 
         with self._lock:
-            due = self._stale() and not self._refreshing
+            since = self._since_attempt()
+            wanted = since >= self._ttl or (force and since >= PULL_REFRESH_FLOOR_SECONDS)
+            due = wanted and not self._refreshing
             if due:
                 self._refreshing = True
+        if due and force:
+            self._refresh()
+            with self._lock:
+                return self._snapshot  # type: ignore[return-value]
         if due:
             threading.Thread(target=self._refresh, name="fi-refresh", daemon=True).start()
         return cached

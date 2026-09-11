@@ -86,7 +86,20 @@ def serve(
         typer.echo(str(e), err=True)
         raise typer.Exit(code=2) from None
     typer.echo(f"kona-tracker on http://{host}:{port}  (camera: {settings.camera_label()})")
-    uvicorn.run(create_app(settings), host=host, port=port, log_level="info")
+    # proxy_headers=False: uvicorn would otherwise rewrite the client address
+    # from X-Forwarded-For whenever the peer is 127.0.0.1 -- which is every
+    # request through a local tunnel. The lockout must key on exactly the
+    # header KONA_TRUSTED_PROXY_HEADER names, and on nothing when it is unset.
+    # MJPEG responses are endless. Bound the response drain so lifespan
+    # cleanup (which stops the camera) is reached even with a phone connected.
+    uvicorn.run(
+        create_app(settings),
+        host=host,
+        port=port,
+        log_level="info",
+        proxy_headers=False,
+        timeout_graceful_shutdown=5,
+    )
 
 
 @app.command()
