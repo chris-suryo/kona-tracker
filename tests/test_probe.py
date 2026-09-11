@@ -151,7 +151,7 @@ def test_rest_history_probe_asks_for_more_windows_than_the_page_uses(fake_client
     assert "limit: 2" not in asked
 
     fake_client.login("chris@example.com", "correct")
-    report = run_probe(fake_client, tmp_path)
+    run_probe(fake_client, tmp_path)
 
     assert (tmp_path / "pet-kona-rest-history.json").exists()
     summary = (tmp_path / "summary.md").read_text(encoding="utf-8")
