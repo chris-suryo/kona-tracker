@@ -61,6 +61,76 @@ can start. Once stuck it stays stuck, which matches the symptom.
 Full evidence table, the alternatives, and the one check that separates them
 are in `docs/device-capabilities.md` §2c. Read that before acting.
 
+## Bug 2, diagnosed: the server accumulates abandoned streams
+
+Four observations from Chris's iPhone, in sequence, settle it.
+
+1. **Restarting `kona serve` fixes it instantly.** The picture appears
+   immediately on a phone that had been stuck on "Connecting…".
+2. **One tab switch breaks it again.** Camera, then Activity, then back to
+   Camera, and it hangs. A single round trip is enough.
+3. **It recovers on its own.** Opening the page in Chrome and returning to
+   Safari brings Safari back, as does simply waiting.
+4. **The server is healthy the entire time.** `/status.json` during a hang:
+   `state: live`, `last_frame_age: 0.04`, `reconnects: 0`. Status polls
+   answer normally; only `/stream.mjpg` delivers nothing.
+
+A server restart curing it is the decisive one. **This is our bug, not
+Safari's.** Safari is merely worse at tearing down a held connection than
+Chrome is, which is why Chrome looks steadier.
+
+### The mechanism
+
+When a viewer goes away without a clean close — a force-closed iOS app, a
+navigation, a page frozen into Safari's back/forward cache — the server does
+not learn it. The `mjpeg()` generator stays alive writing frames into a
+socket nobody reads.
+
+Each of those waits on `loop.run_in_executor(None, ...)` in
+`camera/hub.py`, which is **asyncio's default executor**, sized at roughly
+`min(32, cpu_count + 4)`. Starlette's sync endpoints such as `/status.json`
+run in **anyio's** threadpool instead, which defaults to 40. Two separate
+pools, and only the stream one gets saturated.
+
+That is exactly the reported signature: a live server, status polls
+answering fine, and video that never arrives. It also explains the
+self-healing. Frames written to a dead socket eventually fail, the generator
+exits, a thread frees, and the next stream gets through.
+
+Suspected aggravators on iOS, neither confirmed: Safari's back/forward cache
+keeps a navigated-away page alive with its connection, and the app's
+cross-document view transitions (`@view-transition { navigation: auto; }`)
+hold the outgoing document during the animation. Both delay teardown, and
+both are absent on desktop Chrome.
+
+## The plan, awaiting approval
+
+Three parts, in order of what actually gets a reliable picture on the phone.
+
+**1. Poll `/snapshot.jpg` instead of holding an MJPEG stream.** Confirmed
+viable: `fetch('/snapshot.jpg')` on Chris's iPhone Safari returned
+`200 image/jpeg` with `X-Kona-State: live`. Two to three frames a second,
+swapping the image, using the existing state header to decide live against
+NO SIGNAL so the honesty rules are untouched. A short request cannot become
+a zombie: it completes, frees its thread and its connection slot, and a
+failure is retried 300 ms later. Every failure chased today, on both sides,
+is one that polling does not have. The badge, the overlay, the capture
+button and the reduced-motion rules all keep working as they do.
+
+**2. Stop abandoned streams from accumulating.** Worth doing even if MJPEG
+only ever serves desktop: give the stream waits a dedicated bounded pool
+rather than the shared default executor, and drop a viewer that has not
+taken a frame within a timeout, so a dead socket cannot hold a slot
+indefinitely.
+
+**3. Report viewers in `/status.json`.** It reports `readers` but not
+connected viewers. Four zombies would have been visible in that JSON and
+this would have been a ten-minute diagnosis. Approved by Chris.
+
+Open decisions: whether the MJPEG path stays for desktop or is deleted, and
+the poll rate. Recommendation is two per second and, eventually, one path
+rather than two for a two-person household.
+
 ## What has been ruled out, with evidence
 
 Do not re-litigate any of these.
