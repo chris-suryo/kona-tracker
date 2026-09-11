@@ -239,7 +239,15 @@ Needs a settings key rather than a hard-coded `True`, because
 `secure=True` breaks LAN access over `http://192.168.x.x:8000` — the browser
 silently refuses to send the cookie and the login just never takes.
 
-### D3. No security headers at all
+### D3. No security headers at all — **DONE 2026-09-11**
+
+> Built: CSP (`script-src 'self'`, no nonce -- every inline script became a
+> file under `/static`, and the map's points travel as a JSON data block),
+> `frame-ancestors 'none'` + `X-Frame-Options: DENY`, `Referrer-Policy:
+> no-referrer`, `nosniff`, on every response including 401s and static
+> files. Verified in a real Chromium with zero CSP violations (see the
+> session wrap). No HSTS: the LAN address is http on purpose.
+
 
 No `Content-Security-Policy`, `X-Frame-Options`, or `Referrer-Policy`
 anywhere in `app.py`. For a public page with a camera on it:

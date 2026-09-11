@@ -17,13 +17,14 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/app.js" defer></script>
   {% block head %}{% endblock %}
 </head>
 <body>
   <main class="page {% block pageclass %}{% endblock %}">
   {% if tab %}
   <header class="hdr">
-    <a class="avatar" href="/settings" aria-label="Open Kona's profile and settings">K<img src="/avatar.jpg" alt="" onerror="this.remove()"></a>
+    <a class="avatar" href="/settings" aria-label="Open Kona's profile and settings">K<img src="/avatar.jpg" alt="" data-optional></a>
     <nav class="seg" aria-label="Sections">
       <a href="/activity" class="{{ 'on' if tab == 'activity' else '' }}">Activity</a>
       <a href="/camera" class="{{ 'on' if tab == 'camera' else '' }}">Camera</a>

@@ -27,6 +27,27 @@ from kona_tracker.web.views import activity_context, activity_json, preview_acti
 HERE = Path(__file__).parent
 PUBLIC_PATHS = {"/login", "/healthz"}
 
+#: Sent with every response, static files and 401s included. Read against the
+#: threat that matters once there is a public URL: a page with a live camera
+#: on it. Nothing here is a nonce -- every script the pages use is a file
+#: under /static, so `script-src 'self'` is enough and the JS stays cacheable.
+#: `data:` is for Leaflet, which points aborted tile images at a base64 GIF.
+#: `img-src` names OpenStreetMap's tile host, a decision already recorded in
+#: docs/handoff.md; `Referrer-Policy: no-referrer` means it learns a tile
+#: area and nothing else. No HSTS: the LAN address is plain http on purpose.
+SECURITY_HEADERS = {
+    "Content-Security-Policy": (
+        "default-src 'self'; script-src 'self'; "
+        "style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; "
+        "img-src 'self' data: https://tile.openstreetmap.org; connect-src 'self'; "
+        "frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; "
+        "manifest-src 'self'"
+    ),
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "no-referrer",
+    "X-Content-Type-Options": "nosniff",
+}
+
 #: Kona's photo is a few hundred KB; anything bigger is not a photo.
 AVATAR_MAX_BYTES = 5 * 1024 * 1024
 #: Raster only. SVG is an image type that can carry script, and this is
@@ -154,6 +175,15 @@ def create_app(
         if path.startswith(("/stream", "/snapshot", "/avatar")):
             return Response(status_code=401)
         return RedirectResponse("/login", status_code=303)
+
+    # Registered after `gate`, which makes it the outer layer: the headers
+    # land on the login redirect, the 401 for an <img>, and /static too.
+    @app.middleware("http")
+    async def security_headers(request: Request, call_next):
+        response = await call_next(request)
+        for name, value in SECURITY_HEADERS.items():
+            response.headers.setdefault(name, value)
+        return response
 
     @app.get("/healthz")
     def healthz() -> dict[str, str]:

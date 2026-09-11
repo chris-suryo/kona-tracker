@@ -163,7 +163,10 @@ def test_snapshot_and_stream_with_cookie(client):
 def test_usb_camera_offers_capture_and_share_but_no_motion_controls(client):
     login(client)
     page = client.get("/camera").text
-    assert 'id="capture"' in page and "navigator.share" in page
+    assert 'id="capture"' in page and 'src="/static/camera.js"' in page
+    from kona_tracker.web.app import HERE
+
+    assert "navigator.share" in (HERE / "static" / "camera.js").read_text(encoding="utf-8")
     assert 'class="ptz"' not in page and "Left corner" not in page
 
 
@@ -329,3 +332,49 @@ def test_the_map_page_loads_no_third_party_script(client):
     assert "unpkg.com" not in page and "/static/leaflet/leaflet.js" in page
     assert client.get("/static/leaflet/leaflet.css").status_code == 200
     assert client.get("/static/leaflet/images/layers.png").status_code == 200
+
+
+def test_every_response_carries_the_security_headers(client):
+    """Once the URL is public this is a page with a live camera on it: it
+    must not be frameable, must not hand OpenStreetMap a referrer, and may
+    run only its own scripts. The headers ride the outer middleware so a
+    login redirect, an <img> 401 and a static file all get them."""
+    from kona_tracker.web.app import SECURITY_HEADERS
+
+    csp = SECURITY_HEADERS["Content-Security-Policy"]
+    assert "frame-ancestors 'none'" in csp and "script-src 'self'" in csp
+    assert "unsafe-inline" not in csp and "nonce" not in csp
+    assert "https://tile.openstreetmap.org" in csp and "data:" in csp
+
+    responses = [
+        client.get("/login"),
+        client.get("/camera", follow_redirects=False),  # 303
+        client.get("/stream.mjpg", follow_redirects=False),  # 401
+        client.get("/static/app.css"),
+        client.get("/healthz"),
+    ]
+    login(client)
+    responses += [client.get("/camera"), client.get("/activity"), client.get("/settings")]
+    for r in responses:
+        for name, value in SECURITY_HEADERS.items():
+            assert r.headers.get(name) == value, (r.request.url, name)
+    # The avatar route sets nosniff itself; the middleware must not clobber it.
+    assert client.get("/avatar.jpg").headers["x-content-type-options"] == "nosniff"
+
+
+def test_pages_have_no_inline_script_and_no_inline_handlers(client):
+    """CSP script-src 'self' would silently kill any of these. The map's
+    points travel as a JSON data block, which is data, not script."""
+    import re
+
+    login(client)
+    for path in ("/login", "/camera", "/activity", "/activity?preview=1", "/settings"):
+        page = client.get(path).text
+        for tag in re.findall(r"<script\b[^>]*>", page):
+            assert 'src="/static/' in tag or 'type="application/json"' in tag, (path, tag)
+        assert not re.search(r"\son[a-z]+\s*=", page), path
+        assert "javascript:" not in page, path
+    preview = client.get("/activity?preview=1").text
+    assert '<script type="application/json" id="map-points">' in preview
+    assert 'src="/static/map.js"' in preview and 'src="/static/app.js"' in preview
+    assert "data-optional" in preview, "the avatar fallback moved from onerror= to app.js"
