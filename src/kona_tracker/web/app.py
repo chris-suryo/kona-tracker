@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, Form, Request, Response
+from fastapi import FastAPI, Form, Query, Request, Response
 from fastapi.responses import (
     HTMLResponse,
     JSONResponse,
@@ -385,14 +385,32 @@ def create_app(
         )
 
     @app.get("/snapshot.jpg")
-    def snapshot():
-        # Always an image (an <img> fallback can show it); the header is the truth.
-        frame, state = hub.snapshot()[:2]
-        return Response(
-            content=frame,
-            media_type="image/jpeg",
-            headers={"Cache-Control": "no-store", "X-Kona-State": state},
-        )
+    def snapshot(after: int = Query(0, ge=0)):
+        """One frame, and the truth about it in the same response.
+
+        `after` is the seq the caller last received. The hub holds the
+        request until a newer frame exists, for at most `stale_after`, so a
+        polling page costs one request per frame and a slow link skips
+        frames rather than queueing them. `after=0` returns the current
+        frame at once; that is the capture button and a page's first poll.
+
+        The body is always an image so an <img> can show it; the headers are
+        the truth. `X-Kona-State: live` means a real frame. The placeholder
+        never travels as live, because the hub waits at least `stale_after`
+        before giving up and a frame older than that is stale by definition.
+        `X-Kona-Error` is the hub's last error *kind*, a short token, never
+        the message, which can carry a redacted camera host.
+        """
+        snap = hub.snapshot(after_seq=after)
+        headers = {
+            "Cache-Control": "no-store",
+            "X-Kona-State": snap.state,
+            "X-Kona-Seq": str(snap.seq),
+            "X-Kona-Error": snap.error_kind or "",
+        }
+        if snap.frame_age is not None:
+            headers["X-Kona-Frame-Age"] = f"{snap.frame_age:.2f}"
+        return Response(content=snap.jpeg, media_type="image/jpeg", headers=headers)
 
     @app.get("/status.json")
     def status():

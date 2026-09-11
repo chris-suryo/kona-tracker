@@ -1,7 +1,7 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from kona_tracker.camera.source import FakeSource
+from kona_tracker.camera.source import FakeSource, frame_number
 from kona_tracker.web.app import create_app
 from kona_tracker.web.auth import COOKIE_NAME
 from kona_tracker.web.settings import Settings
@@ -51,6 +51,9 @@ def test_snapshot_shows_placeholder_with_honest_state_when_camera_fails():
         snap = c.get("/snapshot.jpg")
         assert snap.status_code == 200 and snap.content == NO_SIGNAL_JPEG
         assert snap.headers["x-kona-state"] in ("disconnected", "connecting")  # never 'live'
+        # The reason travels as a short kind, never the message with its host.
+        assert snap.headers["x-kona-error"] == "open" and "hunter2" not in str(snap.headers)
+        assert "x-kona-frame-age" not in snap.headers, "no frame has ever existed"
         status = c.get("/status.json").json()
         assert "hunter2" not in status["last_error"] and "***@10.0.0.9" in status["last_error"]
     app.state.hub.stop()
@@ -161,6 +164,28 @@ def test_session_cookie_is_secure_only_when_asked():
         r = c.post("/logout", follow_redirects=False)
         assert "secure" in r.headers["set-cookie"].lower()
     app.state.hub.stop()
+
+
+def test_snapshot_long_poll_returns_the_next_frame_with_identity_headers(client):
+    """The phone sends back the seq it has and is held for the one after it:
+    one request per frame, with the words about that frame in the same
+    response as its pixels."""
+    login(client)
+    first = client.get("/snapshot.jpg")
+    assert first.headers["x-kona-state"] == "live" and first.headers["x-kona-error"] == ""
+    seq = int(first.headers["x-kona-seq"])
+    assert seq >= 1 and float(first.headers["x-kona-frame-age"]) < 3.0
+    second = client.get("/snapshot.jpg", params={"after": seq})
+    assert second.status_code == 200 and second.headers["x-kona-state"] == "live"
+    assert int(second.headers["x-kona-seq"]) > seq
+    assert frame_number(second.content) > frame_number(first.content)
+
+
+def test_snapshot_after_rejects_garbage_and_stays_behind_the_gate(client):
+    assert client.get("/snapshot.jpg?after=5", follow_redirects=False).status_code == 401
+    login(client)
+    assert client.get("/snapshot.jpg", params={"after": "abc"}).status_code == 422
+    assert client.get("/snapshot.jpg", params={"after": -1}).status_code == 422
 
 
 def test_forged_cookie_is_rejected(client):
