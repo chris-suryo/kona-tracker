@@ -23,7 +23,7 @@ it should not. Three ways across that line:
 | | What it costs | Why not |
 |---|---|---|
 | **Port forwarding** | Free | Opens a port on your home router to the whole internet, permanently, pointed at a webcam. No. |
-| **Tailscale** | Free | Solid, but every viewer must install it and be added to your network. Your sister would need an account. |
+| **Tailscale** | Free | Solid, but every viewer must install it and be added to your network. Your sister would need an account. **That objection is about handing someone else a link — for watching your own dog on your own phone it is the simpler option. See "Tailscale, for yourself" below.** |
 | **Cloudflare Tunnel** | Free | The app makes an *outbound* connection; nothing is opened inbound. Viewers get a normal HTTPS URL. **This is the pick.** |
 
 Cloudflare Tunnel wins because your sister just gets a link. The passcode
@@ -34,6 +34,79 @@ cellular spends cellular data: roughly 340 KB/s, about 1.2 GB an hour, per
 viewer at the default 1280x720. Nobody has measured it on a real carrier
 connection yet. `docs/scaling-limits.md` §1 has the numbers and the two
 knobs that exist today.
+
+---
+
+## Tailscale, for yourself
+
+The table above picks Cloudflare because your sister gets a plain link. When
+the viewer is *you*, that reason evaporates and Tailscale is the better tool:
+nothing in the path but your own devices, and **the address never changes**.
+
+Reach for it when it is one person on their own phone, or when the quick
+tunnel is down and you need something working now -- which is exactly what
+happened on 2026-09-11, an hour before dinner.
+
+### 1. Three lines in `.env`
+
+```
+KONA_SECURE_COOKIES=false
+KONA_TRUSTED_PROXY_HEADER=
+KONA_KEEP_AWAKE=true
+```
+
+**The first one is not optional.** Tailscale serves plain
+`http://100.x.y.z:8000`, and a browser will not send a Secure cookie over
+http. Leave it `true` and the symptom is a correct passcode bouncing straight
+back to the login screen, with nothing in the log and nothing on screen to
+tell you why.
+
+The second goes blank because there is no Cloudflare in front of you any
+more. The third keeps the PC awake while you are out; without it the machine
+sleeps and there is nothing to watch.
+
+### 2. Restart `kona serve`
+
+Settings are read **once, at startup**. Editing `.env` under a running server
+changes nothing, and the failure is invisible -- it behaves exactly like the
+old settings because it *is* the old settings. Ctrl+C and start it again.
+
+### 3. Find the address, once
+
+```powershell
+tailscale ip -4
+```
+
+A `100.x.y.z` address. Unlike the quick tunnel's random hostname, this one is
+stable -- write it down and it keeps working.
+
+### 4. On the phone
+
+Install Tailscale, sign in to the **same account**, and make sure the VPN
+toggle is on. Then turn Wi-Fi **off** and open:
+
+```
+http://100.x.y.z:8000
+```
+
+Wi-Fi off is the point. On Wi-Fi you are testing your LAN, not the tunnel.
+
+### 5. If the page never loads
+
+Windows Firewall, almost always: it treats the Tailscale interface as its own
+network, so allowing the app on your LAN does not cover it. **PowerShell as
+Administrator:**
+
+```powershell
+New-NetFirewallRule -DisplayName "kona-tracker 8000" -Direction Inbound -LocalPort 8000 -Protocol TCP -Action Allow
+```
+
+### 6. Switching back to Cloudflare
+
+**Set `KONA_SECURE_COOKIES=true` again before you use a tunnel**, and restart.
+Forget, and the session cookie travels a public HTTPS URL without the Secure
+flag -- the one setting here whose wrong value is a security problem rather
+than an inconvenience.
 
 ---
 
@@ -343,6 +416,24 @@ the file open; that is printed, not fatal.
   step 2.
 - **Works on Wi-Fi, not on cellular.** You tested the LAN address, not the
   tunnel. Turn Wi-Fi off on the phone and use the `https://` URL.
+- **The right passcode bounces back to the login screen, no error anywhere.**
+  `KONA_SECURE_COOKIES=true` while you are on an http address -- the LAN or
+  Tailscale. The browser silently refuses to send a Secure cookie over http,
+  so the session never takes. Set it false, restart, and see "Tailscale, for
+  yourself" above.
+- **`cloudflared` times out: `Post "https://api.trycloudflare.com/tunnel":
+  context deadline exceeded`.** Hit on 2026-09-11 after the same machine had
+  run a tunnel successfully a few hours earlier. What was established: DNS
+  resolved (A and AAAA), and `curl` reached the host over **both** IPv4 and
+  IPv6, returning 405 each time -- so the network path was fine and
+  `cloudflared` alone was hanging. An IPv6 theory was tested and disproved.
+  A downgrade from 2026.9.0 to 2026.8.3 was attempted and **failed with MSI
+  exit 1603**, so the binary never changed: the version-regression theory is
+  **untested, not disproven**, though a community report against 2026.9.0
+  exists. Rate limiting on a busy IP is the other candidate; the cheap way to
+  split them is to retry from a phone hotspot, which changes the public IP and
+  nothing else. **No cause was ever established.** The evening was rescued by
+  switching to Tailscale, not by fixing this.
 - **It works on cellular but eats data.** Expected, not a fault. See
   `docs/scaling-limits.md` §1; `KONA_CAMERA_WIDTH`/`HEIGHT` in `.env` are
   the levers that exist without a code change.
