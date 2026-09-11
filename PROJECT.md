@@ -10,10 +10,11 @@ kit: 3e06b156508b881bef26345c0bb7a63c90db4824 · stamped by dos new
 
 ## Status (2026-09-11, chapter 2)
 
-**`main` is current.** Everything built through 2026-09-11 is merged: the
-overnight UI pass, the Fi data brief, and the camera rewrite from MJPEG to
-snapshot polling. Branch from `main`; Chris merges. One branch is
-deliberately unmerged, `chatgpt/ui-pass` (PR #7), which is a visiting
+**Start from `main`.** It is no longer stale: chapter 2's work lands there by
+PR rather than accumulating on a long-lived branch. Branch from `main`, open
+a PR, Chris merges. The overnight UI pass is in; the Fi data brief and the
+camera rewrite from MJPEG to snapshot polling are PRs #9 and #8. One branch
+stays deliberately unmerged -- `chatgpt/ui-pass` (PR #7), a visiting
 assistant's work in flight.
 
 `docs/production-punchlist.md` is the queue and carries the reasoning behind

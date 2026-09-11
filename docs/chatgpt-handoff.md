@@ -19,11 +19,13 @@ design session.
 
 ## Where the code is
 
-**`main`**, as of 2026-09-11. It is current: everything built through that
-day is merged, CI green on ubuntu and windows, 274 tests. Branch from `main`
-and open a PR; Chris merges. (Earlier versions of this file pointed at
+**`main`**, as of 2026-09-11. Branch from it and open a PR; Chris merges.
+CI green on ubuntu and windows. Two PRs are open and expected to land the
+same day this was written -- #8 (the camera rewrite) and #9 (the Fi data
+brief) -- so if `main` lacks `docs/scaling-limits.md`, check whether they
+have merged yet. (Earlier versions of this file pointed at
 `claude/elegant-sagan-tit1xp` and said `main` was stale. That is no longer
-true.)
+the shape of the project.)
 
 ## The five rules that matter most here
 
