@@ -173,6 +173,7 @@ full day on Kona's collar, midnight to midnight, and her first full night is sti
 {% endif %}
 {% if map_points %}
 <script type="application/json" id="map-points">{{ map_points|tojson }}</script>
+{% if map_tiles %}<script type="application/json" id="map-config">{{ map_tiles|tojson }}</script>{% endif %}
 {% endif %}
 </div>
 <script src="/static/leaflet/leaflet.js" defer></script>

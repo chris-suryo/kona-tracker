@@ -18,9 +18,32 @@
     var latlngs = points.map(function (p) { return [p.lat, p.lon]; });
     var map = L.map(el, { zoomControl: false, scrollWheelZoom: false });
     activeMap = map;
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    // Tile settings come from a second JSON data block, for the same reason
+    // the points do: the CSP is script-src 'self', so nothing may be inlined
+    // as code. It also keeps the Stadia key out of this file and out of git.
+    var cfg = { url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', maxZoom: 19, dark: false,
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' };
+    var cfgBlock = document.getElementById('map-config');
+    if (cfgBlock) {
+      try {
+        var parsed = JSON.parse(cfgBlock.textContent);
+        if (parsed && parsed.url) { cfg = parsed; }
+      } catch (e) { /* keep the OSM default rather than render nothing */ }
+    }
+    // Alidade Smooth Dark is already dark; the CSS filter that fakes a dark
+    // basemap must not also run, or it darkens twice.
+    el.classList.toggle('tiles-dark', !!cfg.dark);
+    // Deliberately no per-layer `referrerPolicy`. An element-level policy
+    // overrides the page's `Referrer-Policy: no-referrer`, so setting one
+    // would send this deployment's hostname -- including a Cloudflare tunnel
+    // URL -- to the tile host, on the default OSM path as well as Stadia.
+    // It would buy something only under domain-based tile auth, and this
+    // integration authenticates with ?api_key= instead. If a stable hostname
+    // ever makes domain auth possible, add it back and fix the comment above
+    // SECURITY_HEADERS in app.py at the same time.
+    L.tileLayer(cfg.url, {
+      maxZoom: cfg.maxZoom || 19,
+      attribution: cfg.attribution
     }).addTo(map);
     if (latlngs.length > 1) {
       L.polyline(latlngs, { color: '#5F8A48', weight: 5, opacity: .9 }).addTo(map);

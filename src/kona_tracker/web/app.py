@@ -32,6 +32,7 @@ from kona_tracker.web.views import (
     activity_context,
     activity_json,
     camera_health,
+    map_tile_config,
     preview_activity_context,
 )
 
@@ -50,12 +51,16 @@ PUBLIC_PATHS = {"/login", "/healthz"}
 #: concedes nothing `data:` did not already. `img-src` names OpenStreetMap's
 #: tile host, a decision already recorded in docs/handoff.md;
 #: `Referrer-Policy: no-referrer` means it learns a tile area and nothing
-#: else. No HSTS: the LAN address is plain http on purpose.
+#: else. `tiles.stadiamaps.com` is the same bargain for the optional Alidade
+#: Smooth Dark basemap, off unless `KONA_MAP_TILES=stadia`; naming both hosts
+#: costs nothing while only one can be configured at a time.
+#: No HSTS: the LAN address is plain http on purpose.
 SECURITY_HEADERS = {
     "Content-Security-Policy": (
         "default-src 'self'; script-src 'self'; "
         "style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; "
-        "img-src 'self' data: blob: https://tile.openstreetmap.org; connect-src 'self'; "
+        "img-src 'self' data: blob: https://tile.openstreetmap.org "
+        "https://tiles.stadiamaps.com; connect-src 'self'; "
         "frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; "
         "manifest-src 'self'"
     ),
@@ -197,6 +202,9 @@ def create_app(
         Lockout(settings.lockout_attempts, settings.lockout_seconds),
     )
     control = control if control is not None else default_control(settings)
+    # Built once: it never changes at runtime and it is the only place the
+    # Stadia key is written into a URL.
+    tile_config = map_tile_config(settings.map_tiles, settings.stadia_api_key)
     capabilities = control.capabilities
     hub = CameraHub(
         source_factory or default_source_factory(settings, control),
@@ -337,6 +345,7 @@ def create_app(
             if preview
             else activity_context(snapshot, configured=fi is not None)
         )
+        context["map_tiles"] = tile_config
         return templates.TemplateResponse(request, "activity.html", context)
 
     @app.get("/settings", response_class=HTMLResponse)
