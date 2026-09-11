@@ -375,21 +375,77 @@ def test_the_map_keeps_its_own_touch_action_from_leaflet():
     assert "touch-action: none" in block.split("}")[0]
 
 
-def test_keep_awake_is_opt_in_and_never_pretends_it_worked(tmp_path, capsys):
+def test_the_windows_hold_asks_for_the_system_but_never_the_display(monkeypatch):
+    """Exercises the Windows path from any platform, which is the point.
+
+    Before this, the success path ran only on the Windows CI leg, so a wrong
+    assumption about it survived a green local run. Here the call is faked,
+    so the flags are pinned everywhere. The display flag is the one that
+    matters for the electricity argument: a dark monitor is most of an idle
+    desktop's draw, and the whole reason to hold sleep off is that nobody is
+    sitting at the PC.
+    """
+    import ctypes
+
+    from kona_tracker.web import awake
+
+    calls = []
+
+    class FakeKernel:
+        def SetThreadExecutionState(self, flags):
+            calls.append(flags)
+            return 1  # the previous state; anything non-zero means it took
+
+    monkeypatch.setattr(awake.sys, "platform", "win32")
+    monkeypatch.setattr(
+        ctypes, "windll", type("W", (), {"kernel32": FakeKernel()})(), raising=False
+    )
+
+    assert awake.keep_awake() is True
+    assert calls == [awake.ES_CONTINUOUS | awake.ES_SYSTEM_REQUIRED]
+    assert not calls[0] & 0x00000002, "ES_DISPLAY_REQUIRED: the screen may still sleep"
+
+    assert awake.allow_sleep() is True
+    assert calls[1] == awake.ES_CONTINUOUS, "releasing is the bare continuous flag"
+
+    # Windows refusing the request reads as a refusal, not a success.
+    class Refuses:
+        def SetThreadExecutionState(self, flags):
+            return 0
+
+    monkeypatch.setattr(ctypes, "windll", type("W", (), {"kernel32": Refuses()})(), raising=False)
+    assert awake.keep_awake() is False
+
+
+def test_keep_awake_is_opt_in_and_never_pretends_it_worked(capsys):
     """A keep-awake that silently failed is worse than none: it promises the
-    page will be reachable while nobody is at the PC, and then is not. This
-    sandbox is not Windows, so the refusal path is the one under test."""
+    page will be reachable while nobody is at the PC, and then is not.
+
+    The expected answer depends on the platform, so the test asks the
+    platform rather than assuming one. The first version of this asserted
+    False outright and passed happily in a Linux sandbox, because there the
+    assumption and the truth coincide; the Windows CI leg is the only place
+    the success path runs at all, and it failed the moment it did. Encoding
+    "this machine is not Windows" as if it were a fact about the code is the
+    same mistake as a mock that answers every query.
+    """
+    import sys
+
     from kona_tracker.web.awake import allow_sleep, keep_awake
 
-    assert keep_awake() is False, "not Windows: say so rather than pretending"
-    assert allow_sleep() is False
+    on_windows = sys.platform == "win32"
+
+    assert keep_awake() is on_windows, "Windows can hold sleep off; nothing else can"
+    assert allow_sleep() is on_windows
+    if on_windows:
+        allow_sleep()  # never leave a CI runner holding the hold
 
     settings = Settings(passcode="4242", secret="s", camera_source="fake")
     assert settings.keep_awake is False, "off unless asked"
     app = create_app(settings, source_factory=lambda: FakeSource(fps=100))
     with TestClient(app) as c:
         assert c.get("/healthz").status_code == 200
-        assert app.state.keeping_awake is False
+        assert app.state.keeping_awake is False, "never held unless asked for"
     app.state.hub.stop()
     assert "KONA_KEEP_AWAKE" not in capsys.readouterr().err
 
@@ -399,10 +455,16 @@ def test_keep_awake_is_opt_in_and_never_pretends_it_worked(tmp_path, capsys):
     )
     with TestClient(app) as c:
         assert c.get("/healthz").status_code == 200
-        assert app.state.keeping_awake is False, "asked for, not granted, off Windows"
+        assert app.state.keeping_awake is on_windows
     app.state.hub.stop()
+
     warning = capsys.readouterr().err
-    assert "KONA_KEEP_AWAKE is set" in warning and "may sleep" in warning
+    if on_windows:
+        assert warning == "" or "KONA_KEEP_AWAKE is set" not in warning, "it worked; stay quiet"
+    else:
+        # The whole point of the warning: never let a refused hold pass for a
+        # working one, or you walk away believing the page will be reachable.
+        assert "KONA_KEEP_AWAKE is set" in warning and "may sleep" in warning
 
 
 def test_leaflet_is_vendored_and_is_the_exact_release_the_page_used_to_pin():

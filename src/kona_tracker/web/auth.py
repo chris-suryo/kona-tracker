@@ -22,7 +22,7 @@ import hmac
 import ipaddress
 import threading
 import time
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 
 from itsdangerous import BadSignature, SignatureExpired, TimestampSigner
 
@@ -72,9 +72,14 @@ class Lockout:
     grow this dict without bound.
     """
 
-    def __init__(self, attempts: int, seconds: int):
+    def __init__(self, attempts: int, seconds: int, clock: Callable[[], float] = time.monotonic):
         self._attempts = attempts
         self._seconds = seconds
+        # Injectable for the same reason FiService takes one: a test that
+        # sleeps to cross a window is at the mercy of the platform's clock
+        # granularity, and Windows' is coarse enough to make a sub-100ms
+        # window flap. CI caught exactly that.
+        self._clock = clock
         self._fails: dict[str, list[float]] = {}
         self._lock = threading.Lock()
 
@@ -82,7 +87,7 @@ class Lockout:
         return [t for t in self._fails.get(key, ()) if now - t < self._seconds]
 
     def blocked(self, key: str) -> bool:
-        now = time.monotonic()
+        now = self._clock()
         with self._lock:
             recent = self._recent(key, now)
             if recent:
@@ -92,7 +97,7 @@ class Lockout:
             return len(recent) >= self._attempts
 
     def fail(self, key: str) -> None:
-        now = time.monotonic()
+        now = self._clock()
         with self._lock:
             # Sweep everyone whose window has closed, then record this one.
             for other in [

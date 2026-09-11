@@ -48,17 +48,26 @@ def test_a_trusted_header_is_used_only_when_it_carries_an_address():
 
 
 def test_lockout_forgets_clean_and_expired_keys():
-    """With per-visitor keys open to the internet, memory must stay bounded."""
-    lock = Lockout(attempts=2, seconds=0.05)
+    """With per-visitor keys open to the internet, memory must stay bounded.
+
+    Driven by an injected clock rather than `time.sleep`. The sleeping
+    version passed on Linux and flapped on the Windows CI leg, because
+    `time.monotonic()` there advances in roughly 16ms steps and a 50ms
+    window is only three of them. A test whose result depends on the
+    platform's timer resolution is not testing the code.
+    """
+    now = [1000.0]
+    lock = Lockout(attempts=2, seconds=30, clock=lambda: now[0])
+
     assert lock.blocked("a") is False
     assert lock.tracked() == 0, "asking must not create an entry"
+
     lock.fail("a")
     lock.fail("a")
     assert lock.blocked("a") is True and lock.tracked() == 1
-    import time
 
-    time.sleep(0.06)
-    lock.fail("b")  # a later failure elsewhere sweeps the expired key
+    now[0] += 31  # a's window has closed
+    lock.fail("b")  # a failure elsewhere sweeps it on the way past
     assert lock.tracked() == 1 and lock.blocked("a") is False
     lock.clear("b")
     assert lock.tracked() == 0
