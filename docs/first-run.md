@@ -230,6 +230,11 @@ uv run kona serve
 
 ## If something goes wrong
 
+- **Video is choppy.** Measured on the USB webcam at index 0: at the
+  default 1280x720 the
+  app got 3.7 fps and ~88 KB per frame. Dropping to `KONA_CAMERA_WIDTH=640`
+  and `KONA_CAMERA_HEIGHT=480` in `.env` trades detail for a much smoother
+  picture, which is usually the better deal for watching a dog move around.
 - `uv: command not found` → reopen the terminal after installing.
 - **Windows: `uv run pytest` gives errors like `PermissionError: [WinError 5]
   Access is denied: ...\AppData\Local\Temp\pytest-of-<you>`.** Hit on the
@@ -253,6 +258,16 @@ uv run kona serve
   of its own and never a folder you keep things in.
 - `KONA_PASSCODE is not set` → step 2 was skipped, or `.env` is in the wrong
   folder (it belongs next to `pyproject.toml`).
+- **Camera worked yesterday, black today.** Hit on 2026-09-10/11. Run
+  `uv run kona camera-doctor` (server stopped, nothing else using the
+  camera). It tries every index against every backend and prints raw pixel
+  statistics; the **sd** column is the one that decides. All-zero pixels with
+  `sd 0.00` mean a closed shutter, a blocked lens, or a **wedged USB device**
+  -- a webcam that another program grabbed and did not release cleanly can
+  keep opening while delivering nothing. **Unplugging it and plugging it back
+  in cleared it.** No code can fix that from inside; a replug is the fix.
+  A genuinely dark room looks different: low mean but `sd` well above zero,
+  because a real sensor always has read noise.
 - **Camera tab says NO SIGNAL / OFFLINE, but `uv run kona cameras` found it.**
   Something else has the webcam open. A USB camera can be held by one program
   at a time, and `kona cameras` only checks that the device *opens*, not that

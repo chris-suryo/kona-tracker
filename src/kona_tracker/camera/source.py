@@ -81,14 +81,18 @@ def _classify(stats: FrameStats) -> tuple[str, str]:
     if stats.maximum == 0:
         return (
             "all-zero",
-            "every pixel is exactly 0: shutter closed, or the driver is handing "
-            "back an empty buffer. Not a dark room -- a dark room has noise.",
+            "every pixel is exactly 0: shutter closed, a blocked lens, or the "
+            "driver handing back an empty buffer. Not a dark room -- a dark "
+            "room has sensor noise. If nothing is covering it, unplug the "
+            "camera and plug it back in: a USB webcam can wedge after another "
+            "program holds it, and only a replug clears it.",
         )
     if stats.stddev < 1.0:
         return (
             "flat",
             "almost no pixel-to-pixel variation. Lens blocked, or the sensor is "
-            "returning a constant. Check for a cover or a finger over the lens.",
+            "returning a constant. Check for a cover, then unplug and replug "
+            "the camera.",
         )
     if stats.mean < 8.0:
         return (

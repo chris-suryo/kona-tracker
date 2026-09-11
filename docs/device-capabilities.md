@@ -16,15 +16,28 @@ level; [pyatv](https://pyatv.dev/) for Apple TV.
 
 ## 1. Camera models
 
-The camera connected today is a **Logitech C230 HD USB webcam** at index 0.
-Windows and OpenCV both open it, but it currently returns an effectively
-all-black image at both 640×480 and 1280×720, even after an exposure test.
-That points to the lens cover/orientation, an unlit room, or the hardware —
-not the web layout. The app detects repeated black frames and shows CHECK
-CAMERA instead of calling transport-only activity LIVE. Once the device
-returns a visible frame, it supplies live video and still JPEGs. It has no
-motors or presets, so the UI intentionally shows capture/share and no
-directional controls.
+The camera connected today is a **Logitech USB webcam** at index 0.
+**Working, verified 2026-09-11**: `kona camera-doctor` read mean 86.96,
+max 255, sd 58.54 through the DirectShow backend, and `kona camera-test`
+then captured 10 frames at 1280×720 (~3.7 fps, ~88 KB per frame).
+
+An earlier note here said this camera "returns an effectively all-black
+image ... that points to the lens cover, an unlit room, or the hardware."
+That was written from one failed run and it was wrong. The cause was a
+**wedged USB device**: it opened fine and delivered nothing. Unplugging it
+and plugging it back in fixed it, with no code change. Treat black frames
+as a replug first, a hardware verdict last. `docs/first-run.md` carries the
+diagnosis steps.
+
+(The exact model string above is unconfirmed — it was recorded as a
+"C230 HD" by an earlier session and never checked against the device. It
+does not drive any behaviour: capabilities come from
+`KONA_CAMERA_MODEL`, and any value that is not in `BY_MODEL` -- including
+no value at all -- falls back to the video-only `USB` set.)
+
+The app detects repeated black frames and shows CHECK CAMERA instead of
+calling transport-only activity LIVE. It has no motors or presets, so the UI
+intentionally shows capture/share and no directional controls.
 
 Abilities are **data**, not assumptions in a template. `KONA_CAMERA_MODEL`
 picks the set; `src/kona_tracker/camera/capabilities.py` holds it. A model
