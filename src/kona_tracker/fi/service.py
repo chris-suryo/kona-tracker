@@ -42,6 +42,11 @@ from kona_tracker.fi.queries import (
 )
 
 DEFAULT_REFRESH_SECONDS = 300.0
+#: How often a *person* may make us ask Fi again (pull-to-refresh, coming back
+#: to the app). Well under the background TTL, well above a thumb twitch: Fi's
+#: API is private and undocumented, and a request loop against it is the one
+#: thing a refresh gesture must never become.
+PULL_REFRESH_FLOOR_SECONDS = 30.0
 
 
 @dataclass(frozen=True)
@@ -306,17 +311,22 @@ class FiService:
                 )
             self._refreshing = False
 
-    def _stale(self) -> bool:
+    def _since_attempt(self) -> float:
         if self._attempted_at is None:
-            return True
-        return (self._clock() - self._attempted_at).total_seconds() >= self._ttl
+            return float("inf")
+        return (self._clock() - self._attempted_at).total_seconds()
 
-    def snapshot(self) -> FiSnapshot:
+    def snapshot(self, force: bool = False) -> FiSnapshot:
         """The best answer available now.
 
         The first call blocks on Fi because there is nothing else to return.
         Every later call returns immediately and, if the cache has aged out,
         kicks off a refresh that some later request will benefit from.
+
+        `force` is a person asking (pull-to-refresh): refresh *now*, on this
+        request, so the page they get back is current -- unless the last
+        attempt was under `PULL_REFRESH_FLOOR_SECONDS` ago, in which case the
+        cache is the answer and its "Updated" time says so honestly.
         """
         with self._lock:
             cached = self._snapshot
@@ -328,9 +338,15 @@ class FiService:
                 return self._snapshot  # type: ignore[return-value]
 
         with self._lock:
-            due = self._stale() and not self._refreshing
+            since = self._since_attempt()
+            wanted = since >= self._ttl or (force and since >= PULL_REFRESH_FLOOR_SECONDS)
+            due = wanted and not self._refreshing
             if due:
                 self._refreshing = True
+        if due and force:
+            self._refresh()
+            with self._lock:
+                return self._snapshot  # type: ignore[return-value]
         if due:
             threading.Thread(target=self._refresh, name="fi-refresh", daemon=True).start()
         return cached

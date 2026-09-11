@@ -13,6 +13,10 @@
 {% endif %}
 {% endblock %}
 {% block body %}
+{# Everything inside #activity-body is what a pull-to-refresh swaps in from
+   a fresh render of this same template: one rendering path, no second copy
+   of the numbers or the wording in JavaScript. #}
+<div id="activity-body">
 {% if preview %}
 <aside class="preview-banner" aria-label="Sample data preview">
   <div><strong>Sample preview</strong><span>This is not Kona's live collar data.</span></div>
@@ -128,7 +132,7 @@
   {% endif %}
 </section>
 
-<div class="freshness">
+<div class="freshness" data-as-of="{{ as_of or '' }}">
   {% if as_of and stale %}<span class="status-dot warn-dot"></span>Last successful update {{ as_of }}
   {% elif as_of %}<span class="status-dot live"></span>Updated {{ as_of }}
   {% elif not configured %}<span class="status-dot"></span>Waiting for setup
@@ -156,6 +160,7 @@ midnight to midnight. Naps count from midnight today.</p>
 {% if map_points %}
 <script type="application/json" id="map-points">{{ map_points|tojson }}</script>
 {% endif %}
+</div>
 <script src="/static/leaflet/leaflet.js" defer></script>
 <script src="/static/map.js" defer></script>
 {% endblock %}

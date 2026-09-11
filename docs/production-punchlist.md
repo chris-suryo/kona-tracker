@@ -119,7 +119,15 @@ explicit "we do not know" panel rather than a blank box -- the same
 discipline as the camera's NO SIGNAL. Never render a stale position styled
 like a live one.
 
-## B. Turn off pinch-to-zoom
+## B. Turn off pinch-to-zoom — **DONE 2026-09-11, the narrow version**
+
+> Built: `touch-action: manipulation` on every tappable control (tabs,
+> avatar, shutter, pills, settings link, login button, sign-out), so a tap
+> never double-tap-zooms. Pinch itself is untouched, and the map keeps its
+> own pinch. **Chris:** if the complaint is genuinely page-wide pinch, say
+> so -- that is a WCAG 1.4.4 trade only you can make, and note that iOS
+> ignores `user-scalable=no` anyway, so it would need a JS gesture block.
+
 
 **Chris:** "I want to turn off the pinch-to-zoom."
 
@@ -157,7 +165,19 @@ inside `#kona-map`.
 
 ---
 
-## C. Pull-to-refresh
+## C. Pull-to-refresh — **DONE 2026-09-11**
+
+> Built in `static/app.js`: pull past 60 px at the top of the Activity page
+> (map drags excluded), or come back to the app, and it fetches
+> `/activity?fresh=1` -- which makes `FiService` ask Fi *on that request*,
+> floored at 30 s so a thumb cannot become a request loop -- and swaps the
+> rendered `#activity-body` in. One template renders both the page and the
+> refresh, so there is no second copy of the numbers or the stale wording.
+> No `location.reload()`. On failure the numbers stay with their time and
+> the note says the refresh, not Fi, did not answer. `overscroll-behavior-y:
+> contain` stops Safari's own pull-to-reload doubling up; that line is the
+> one thing here that wants a real iPhone to confirm.
+
 
 **Chris:** "I want to be able to scroll to pull down to refresh."
 

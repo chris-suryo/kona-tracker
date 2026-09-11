@@ -20,8 +20,9 @@
   <script src="/static/app.js" defer></script>
   {% block head %}{% endblock %}
 </head>
-<body>
-  <main class="page {% block pageclass %}{% endblock %}">
+<body class="{% block pageclass %}{% endblock %}">
+  <div id="pull" class="pull" hidden aria-live="polite"><span>Pull to refresh</span></div>
+  <main class="page {{ self.pageclass() }}">
   {% if tab %}
   <header class="hdr">
     <a class="avatar" href="/settings" aria-label="Open Kona's profile and settings">K<img src="/avatar.jpg" alt="" data-optional></a>

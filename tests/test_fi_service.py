@@ -856,3 +856,40 @@ def test_resting_position_wins_over_a_carried_forward_walk():
     ctx = activity_context(snap, configured=True)
     assert ctx["map_kind"] == "rest" and len(ctx["map_points"]) == 1
     assert ctx["map_points"][0]["lat"] == 30.2675
+
+
+# --------------------------------------------------------------------------
+# a person asking for fresh numbers
+# --------------------------------------------------------------------------
+
+
+def test_a_forced_refresh_asks_fi_now_but_never_faster_than_the_floor():
+    """Pull-to-refresh must mean something -- the plain `snapshot()` only
+    starts a background refresh past the 300 s TTL, so a pull would redraw
+    the same numbers. Forced, it asks Fi on this request. Floored, because a
+    thumb must never become a request loop against a private API."""
+    from kona_tracker.fi.service import PULL_REFRESH_FLOOR_SECONDS
+
+    logins = {"n": 0}
+    clock = {"now": NOW}
+
+    def counting(request):
+        if request.url.path == "/auth/login":
+            logins["n"] += 1
+        return fake_fi_handler(request)
+
+    svc = service(counting, clock=lambda: clock["now"])
+    first = svc.snapshot()
+    assert logins["n"] == 1
+    assert svc.snapshot(force=True) is first and logins["n"] == 1, "under the floor: the cache"
+    clock["now"] = NOW + timedelta(seconds=PULL_REFRESH_FLOOR_SECONDS)
+    second = svc.snapshot(force=True)
+    assert logins["n"] == 2 and second.fetched_at == clock["now"], "on this request, not later"
+    assert svc.snapshot(force=True) is second and logins["n"] == 2
+
+
+def test_the_fresh_page_is_the_same_template_with_the_swap_hooks():
+    with web_client(service()) as c:
+        page = c.get("/activity?fresh=1").text
+    assert 'id="activity-body"' in page and 'class="freshness" data-as-of="' in page
+    assert 'class="activity-page"' in page.split("<main")[0], "body carries the page class"

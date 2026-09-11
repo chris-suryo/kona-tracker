@@ -246,8 +246,10 @@ def create_app(
         )
 
     @app.get("/activity", response_class=HTMLResponse)
-    def activity(request: Request, preview: bool = False):
-        snapshot = fi.snapshot() if fi and not preview else None
+    def activity(request: Request, preview: bool = False, fresh: bool = False):
+        # `fresh` is the pull-to-refresh gesture: ask Fi on this request,
+        # within the floor FiService enforces, so the swap-in is current.
+        snapshot = fi.snapshot(force=fresh) if fi and not preview else None
         context = (
             preview_activity_context()
             if preview

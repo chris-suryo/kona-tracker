@@ -302,6 +302,28 @@ def test_motion_is_opt_in_and_respects_the_accessibility_setting():
     reduce = css[css.index("@media (prefers-reduced-motion: reduce)") :]
     assert "@view-transition { navigation: none; }" in reduce
     assert ".dial .val, .stat { animation: none; }" in reduce
+    assert ".pull, .pull span, .pull.busy span { transition: none; animation: none; }" in reduce
+
+
+def test_taps_do_not_zoom_but_pinch_and_the_map_are_left_alone():
+    """Chris asked to "turn off pinch-to-zoom". `user-scalable=no` is refused:
+    iOS has ignored it since iOS 10 and it fails WCAG 1.4.4. What actually
+    jars is double-tap zoom on a control, and `touch-action: manipulation`
+    on the controls is the fix. Nothing may reach the map, where pinch is
+    how you zoom it."""
+    from kona_tracker.web.app import HERE
+
+    css = (HERE / "static" / "app.css").read_text(encoding="utf-8")
+    assert (
+        ".seg a, .avatar, .shutter, .pill, .settings-link, .login button, .logout "
+        "{ touch-action: manipulation; }"
+    ) in css
+    assert "touch-action: none" in css.split(".nub {")[1].split("}")[0], "press-and-hold"
+    for line in css.splitlines():
+        if "touch-action" in line:
+            assert "kona-map" not in line and "leaflet" not in line and ".map" not in line
+    base = (HERE / "templates" / "base.html").read_text(encoding="utf-8")
+    assert "user-scalable" not in base and "maximum-scale" not in base
 
 
 def test_leaflet_is_vendored_and_is_the_exact_release_the_page_used_to_pin():

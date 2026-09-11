@@ -37,6 +37,26 @@ body { min-height: 100dvh; display: flex; flex-direction: column; -webkit-font-s
           background: var(--t1); color: var(--t5); display: grid; place-items: center;
           font-weight: 700; font-size: 18px; position: relative; text-decoration: none; }
 .avatar img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+/* Tappable controls: no double-tap zoom on a button, which is the jarring
+   part of "pinch-to-zoom" on a phone. Pinch itself stays -- it is how
+   someone with poor eyesight reads this page -- and nothing here reaches
+   inside the map, where pinch is how you zoom it. .nub keeps `none`
+   because press-and-hold must not scroll. */
+.seg a, .avatar, .shutter, .pill, .settings-link, .login button, .logout { touch-action: manipulation; }
+
+/* Pull to refresh (app.js). The body, not main, owns the viewport scroll,
+   so `overscroll-behavior` goes there: it keeps Safari's own
+   pull-to-reload from firing on top of ours in the browser tab. */
+body.activity-page { overscroll-behavior-y: contain; }
+.pull { position: fixed; top: 0; left: 0; right: 0; z-index: 5; display: flex; justify-content: center;
+        padding-top: max(10px, env(safe-area-inset-top)); pointer-events: none;
+        transform: translateY(-48px); transition: transform .15s ease-out; }
+.pull[hidden] { display: none; }
+.pull span { font-size: 12px; font-weight: 600; color: var(--ink2); background: var(--bg2);
+             border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; }
+.pull.ready span { color: var(--on); background: var(--t4); border-color: transparent; }
+.pull.busy span { animation: pulse 1.2s ease-in-out infinite; }
+
 .seg { display: flex; padding: 3px; border-radius: 999px; background: var(--bg2); }
 .seg a { padding: 8px 18px; border-radius: 999px; font-size: 13px; font-weight: 600; color: var(--ink2); text-decoration: none; }
 .seg a.on { background: var(--ink); color: var(--bg); font-weight: 700; }
@@ -247,4 +267,6 @@ body { min-height: 100dvh; display: flex; flex-direction: column; -webkit-font-s
   .dial .val, .stat { animation: none; }
   .dot.on { animation: none; opacity: 1; }
   .nub, .shutter { transition: none; }
+  /* `.pull.busy span` outranks `.pull span`, so it is named here too. */
+  .pull, .pull span, .pull.busy span { transition: none; animation: none; }
 }
