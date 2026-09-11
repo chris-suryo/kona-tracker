@@ -8,13 +8,18 @@ once the hardware exists.
 kit: 3e06b156508b881bef26345c0bb7a63c90db4824 · stamped by dos new
 ---
 
-## Status (2026-09-10, chapter 2)
+## Status (2026-09-11, chapter 2)
 
-**`main` is stale.** The current work is on `claude/elegant-sagan-tit1xp`,
-fifteen commits ahead, CI green on ubuntu and windows, 220 tests. Work from
-that branch; Chris merges. `docs/production-punchlist.md` is the queue and
-carries the reasoning behind every item; `docs/chatgpt-handoff.md` is the
-brief for a visiting assistant.
+**Start from `main`.** It is no longer stale: chapter 2's work lands there by
+PR rather than accumulating on a long-lived branch. Branch from `main`, open
+a PR, Chris merges. The overnight UI pass is in; the Fi data brief and the
+camera rewrite from MJPEG to snapshot polling are PRs #9 and #8. One branch
+stays deliberately unmerged -- `chatgpt/ui-pass` (PR #7), a visiting
+assistant's work in flight.
+
+`docs/production-punchlist.md` is the queue and carries the reasoning behind
+every item; `docs/scaling-limits.md` is the standing list of ceilings;
+`docs/chatgpt-handoff.md` is the brief for a visiting assistant.
 
 - **Slice 1:** `kona probe` dumps every Fi API field, redacted. Still
   unverified against the real API. `docs/slice-1-probe-plan.md`.
@@ -59,24 +64,25 @@ brief for a visiting assistant.
 **next:**
 
 *The live thread, 2026-09-11: the camera on the phone.*
-Read `docs/camera-black-screen-handoff.md`; it carries the diagnosis, the
-plan and what is already ruled out. Short version: the slow-reveal bug is
-fixed and merged, and a second bug remains. Abandoned MJPEG streams pile up
-on the server (one per tab switch, never closed), saturate the small thread
-pool the stream waits use, and the phone then gets no video from a server
-that is reporting `live`. Restarting `kona serve` clears it every time,
-which is what proves it is ours and not Safari's. Chrome on the phone is a
-real workaround until it is fixed.
+Read `docs/camera-black-screen-handoff.md`; it is the whole record. Short
+version: two bugs. The slow reveal is fixed and merged. The second, the
+one that made the phone hang on "Connecting…" after a tab switch, was
+abandoned MJPEG streams piling up on the server until the small pool the
+stream waits use was full; restarting `kona serve` cleared it every time,
+which is what proved it was ours and not Safari's. **The fix is built on
+`claude/camera-snapshot-polling` and has not been run on a phone.** The
+Camera tab now polls `/snapshot.jpg` one frame at a time instead of
+holding a stream, so nothing outlives a request and nothing can pile up;
+the MJPEG path that remains is fenced and capped; `/status.json` reports
+`streams` and `viewers`. Chrome on the phone is the workaround until Chris
+has verified it.
 
-0. **Measure the frame-rate ceiling.** `camera-test` gets 4 fps at 1280x720,
-   which is low enough to suspect OpenCV is pulling uncompressed YUYV and
-   saturating USB 2.0. Run the 640x480 comparison in the handoff doc. If fps
-   jumps, asking the camera for MJPG buys more frames at full resolution,
-   and that is worth having before any transport decision.
-1. **Then the camera plan**, approved parts first: adaptive snapshot polling
-   instead of a held stream, a bounded pool for stream waits, viewers
-   reported in `/status.json`. Needs a local session with a real browser and
-   a phone; a cloud session cannot verify any of it.
+0. **Verify on the iPhone**, both the Safari home-screen app and Chrome.
+   The eight-step acceptance list is at the end of the handoff doc. Nothing
+   in the sandbox can stand in for this; every camera fix before it passed
+   in desktop Chrome and left the phone black.
+1. **Then merge**, delete the branch, and after a week of it holding,
+   delete the MJPEG endpoint and the containment that only exists for it.
 
 *Needs Chris, and blocks the Fi half:*
 2. **Probe round 5.** `uv run kona probe --out probe-out\round5`, then read
@@ -213,5 +219,10 @@ ipconfig                        # IPv4 of the PC; iPhone opens http://<that-ip>:
   camera's local API using the same credentials as the video. Recent
   firmware needs **Third-Party Compatibility** enabled in the Tapo app or
   nothing connects.
+- **Bandwidth is the camera's real ceiling, and Chris watches on cellular.**
+  One viewer at 1280x720 is ~85 KB/frame at 4 fps -- ~340 KB/s, ~1.2 GB an
+  hour. JPEG quality is hard-coded at 80 with no env var; width, height and
+  fps are configurable. `docs/scaling-limits.md` is the standing list of
+  ceilings and what a product version would have to change.
 - Scope line: camera control belongs in this app; Apple TV and general home
   automation belong in Home Assistant on the same Pi. See the doc for why.

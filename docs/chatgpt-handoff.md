@@ -19,9 +19,13 @@ design session.
 
 ## Where the code is
 
-Branch **`claude/elegant-sagan-tit1xp`**, thirteen commits ahead of `main`,
-CI green on ubuntu and windows, 219 tests. `main` is stale; work from the
-branch. Chris merges.
+**`main`**, as of 2026-09-11. Branch from it and open a PR; Chris merges.
+CI green on ubuntu and windows. Two PRs are open and expected to land the
+same day this was written -- #8 (the camera rewrite) and #9 (the Fi data
+brief) -- so if `main` lacks `docs/scaling-limits.md`, check whether they
+have merged yet. (Earlier versions of this file pointed at
+`claude/elegant-sagan-tit1xp` and said `main` was stale. That is no longer
+the shape of the project.)
 
 ## The five rules that matter most here
 
@@ -55,6 +59,9 @@ has a test pinning it.
   re-download it.
 - **The reduced-motion block must stay last in `app.css`.** A test slices the
   file from that media query to the end.
+- **`img-src` in the CSP must keep `blob:`.** The Camera tab fetches each
+  frame and hands the `<img>` an object URL. Remove `blob:` and the picture
+  becomes a silent black rectangle with no error anywhere. A test pins it.
 - **Fi's API is undocumented and unversioned.** `fi/parse.py` holds the only
   parsers, shared by the probe and the page. Never add a field to a GraphQL
   document on a guess: a rejected field fails the *whole* document, which is
@@ -98,7 +105,11 @@ outbound heartbeat so a dead PC still raises an alarm.
   iOS half needs the JavaScript, not the meta tag.
 - Do not hard-code `secure=True` on the session cookie: it breaks LAN login
   silently.
-- Do not use `location.reload()` to refresh: it tears down the MJPEG stream.
+- Do not use `location.reload()` to refresh: pull-to-refresh repaints in
+  place so the picture never blinks. The Camera tab no longer holds an MJPEG
+  stream at all -- it fetches one frame at a time from `/snapshot.jpg?after=`
+  and hands the `<img>` an object URL. `docs/camera-black-screen-handoff.md`
+  is why, and `docs/scaling-limits.md` is what it costs.
 - Do not trust a forwarded-IP header from a non-loopback peer.
 - A mock that answers any query tests the parser, not the query.
 
@@ -110,8 +121,8 @@ outbound heartbeat so a dead PC still raises an alarm.
 > dog Kona's Fi collar data and a live camera from my house. Python, FastAPI,
 > Jinja templates, plain CSS, no build step, no JS framework.
 >
-> The code is on GitHub at chris-suryo/kona-tracker, branch
-> `claude/elegant-sagan-tit1xp`. Read `docs/chatgpt-handoff.md` first, then
+> The code is on GitHub at chris-suryo/kona-tracker, branch `main`.
+> Read `docs/chatgpt-handoff.md` first, then
 > `docs/handoff.md` and `CLAUDE.md`. The handoff doc lists constraints that
 > will silently break things if you miss them, especially: the page sends a
 > Content-Security-Policy so there can be no inline `<script>` and no `onclick`
