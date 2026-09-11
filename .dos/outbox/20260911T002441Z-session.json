@@ -1,0 +1,62 @@
+{
+  "goal": "Resolve the black camera, write the remote-access plan, and turn Chris's phone feedback plus a security pass into a handoff for a Fable session.",
+  "completed": [
+    "Committed and pushed the camera doc corrections left uncommitted at the start (173 tests, lint clean).",
+    "Wrote docs/remote-access.md: Cloudflare Tunnel over port-forwarding and Tailscale, structured on the trust ladder (Part 1 quick tunnel proves it manually, Part 3 automation last).",
+    "Archived docs/probe-fixes-handoff.md to docs/archive/2026-09-09-... with a superseded header; docs/handoff.md now names itself as current.",
+    "Rewrote next-session.md item 2 from 'diagnose black frames' to the resolution, keeping the one part still genuinely open.",
+    "Diagnosed the missing map in the code rather than guessing: it is not the CDN.",
+    "Wrote docs/production-punchlist.md covering Chris's three phone requests, the map diagnosis, a security pass, and what the project still lacks."
+  ],
+  "discovered": [
+    "The camera was never broken: a wedged USB device that opened cleanly and returned nothing. Unplug/replug fixed it. camera-doctor read mean 86.96 / max 255 / sd 58.54; camera-test then got 10 frames at 1280x720.",
+    "The map does not render because there is nothing to draw, not because unpkg failed. parse.py:265 fills status.positions ONLY from 'ongoingActivity { ... on OngoingWalk { positions } }' -- Fi returns position points only during a walk. A resting dog gives an empty list, and activity.html gates the container, stylesheet and script on '{% if map_points %}', so no map element renders at all.",
+    "SECURITY: app.py:170 keys the login lockout on request.client.host. Behind a Cloudflare tunnel that is 127.0.0.1 for every visitor, so all of the internet shares one bucket -- any stranger can lock out the household with five wrong guesses, and the per-attacker rate limit is gone entirely.",
+    "The session cookie sets httponly and samesite but not secure. Cannot be hard-coded True: that breaks LAN access over http:// because the browser silently stops sending the cookie and login never takes.",
+    "No security headers anywhere in app.py -- no CSP, X-Frame-Options, or Referrer-Policy.",
+    "views.py uses .astimezone(), which means the SERVER's timezone. Correct today, wrong the moment Chris is on the road -- which is the entire point of remote access.",
+    "queries.py:134-136 lists lastLocation and currentLocation as speculative, never confirmed. If lastLocation exists it is a much better answer for 'always show the map' than a static home pin."
+  ],
+  "decisions": [
+    "Cloudflare Tunnel is the remote-access route: nothing inbound is opened, and a viewer needs no account (rules out port forwarding and Tailscale respectively).",
+    "The Secure-cookie fix needs a settings key, not a hard-coded True, so LAN access survives. Written up rather than done, because it needs tests for both states.",
+    "user-scalable=no is refused for pinch-to-zoom: iOS has ignored it since iOS 10 and it is a WCAG 1.4.4 failure. touch-action: manipulation on controls is the real fix.",
+    "A permanent map must never imply a live fix it does not have: walking = real track, not walking = home pin labelled as such, neither = say so like the camera says NO SIGNAL.",
+    "Pull-to-refresh should repaint from /activity.json, not location.reload(), so the MJPEG stream is not torn down."
+  ],
+  "lessons": [
+    "A camera that opens and returns all-zero pixels is more likely a wedged USB device than hardware. The sd column separates them: 0.00 is wedged or blocked, a dark room has low mean but sd well above zero because a real sensor has read noise.",
+    "Check the repo before hedging. I marked the camera model 'unconfirmed' one commit after docs/next-session.md already recorded Chris confirming a C270 -- the evidence was one file away.",
+    "Diagnose in the code before repeating a standing assumption. Everyone including me assumed the missing map was the unpkg CDN; reading views.py and parse.py showed the template never renders a map element at all when map_points is empty.",
+    "Rate limits keyed on request.client.host silently become global buckets behind any reverse proxy or tunnel. Trust a forwarded-IP header only when explicitly configured -- an unconditionally trusted X-Forwarded-For is worse than none.",
+    "A security pass that lists only problems is dishonest about the code; recording what held up (constant-time compare, default-deny middleware, the avatar proxy's SVG exclusion) is part of the finding."
+  ],
+  "files_changed": [
+    "docs/remote-access.md",
+    "docs/production-punchlist.md",
+    "docs/device-capabilities.md",
+    "docs/first-run.md",
+    "docs/handoff.md",
+    "docs/next-session.md",
+    "docs/archive/2026-09-09-probe-fixes-handoff.md",
+    "src/kona_tracker/camera/source.py"
+  ],
+  "open_questions": [
+    "Does /activity.json show empty positions AND null home_position? That confirms the map diagnosis and decides whether tier 2 is even buildable today.",
+    "Does Fi have a lastLocation or currentLocation field? Probe round 4 answers it, and it should run before the always-on map is designed.",
+    "Is Chris's pinch-to-zoom complaint actually accidental double-tap zoom? The fix differs completely, and the broad version costs accessibility.",
+    "Does frame_is_unusable (mean <= 0.25) trip in a genuinely dark room at night? Never tested -- every run so far was in a lit room."
+  ],
+  "intent": "Chris got the app running on his phone, then had to head out. He asked for the session wrapped and a handoff he can send to a Fable session to make the phone-UX changes while he is away. Stopped at documentation rather than starting the code so the next session owns a clean, verified queue.",
+  "next_task": "Fix the lockout key (app.py:170) so a tunnel visitor is not 127.0.0.1 -- opt-in KONA_TRUSTED_PROXY_HEADER, never a default-trusted X-Forwarded-For -- before the URL is handed to anyone.",
+  "blockers": "None blocking the code. Two things need Chris at his PC: deleting the three merged branches (this sandbox gets HTTP 403 on ref deletes), and reading /activity.json on his phone to confirm the map diagnosis. Nothing in docs/remote-access.md has ever been run.",
+  "resume_minutes": 10,
+  "dont_retry": [
+    "Do not blame the 1280x720 resolution request for black camera frames -- that was my hypothesis and camera-test disproved it by succeeding at exactly that size.",
+    "Do not assume the missing map is the unpkg CDN. That failure is real but produces a blank coloured box; an absent map element is the empty-map_points path instead.",
+    "Do not add user-scalable=no to the viewport meta. iOS ignores it and it breaks accessibility.",
+    "Do not hard-code secure=True on the session cookie -- it breaks LAN access and the login fails silently with no error.",
+    "Do not try to delete remote branches from this sandbox; the git proxy returns HTTP 403 on ref deletes."
+  ],
+  "session_id": "session_01NMZqcnk7yb11RWeh9hJvRa"
+}
