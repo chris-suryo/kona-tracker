@@ -78,3 +78,28 @@ def test_fi_data_start_is_an_iso_date(tmp_path, monkeypatch):
     monkeypatch.setenv("KONA_FI_DATA_START", "09/10/2026")
     with pytest.raises(SettingsError, match="YYYY-MM-DD"):
         load_settings(tmp_path / "none.env")
+
+
+def test_tunnel_settings_are_off_by_default_and_parsed_strictly(tmp_path, monkeypatch, capsys):
+    for k in ("KONA_TRUSTED_PROXY_HEADER", "KONA_SECURE_COOKIES"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("KONA_PASSCODE", "123456")
+    monkeypatch.setenv("KONA_SECRET", "s")
+    s = load_settings(tmp_path / "none.env", fake_camera=True)
+    assert s.trusted_proxy_header == "" and s.secure_cookies is False
+
+    monkeypatch.setenv("KONA_TRUSTED_PROXY_HEADER", "CF-Connecting-IP")
+    s = load_settings(tmp_path / "none.env", fake_camera=True)
+    assert s.trusted_proxy_header == "CF-Connecting-IP"
+    # A tunnel is HTTPS; say so when the cookie is still allowed over http.
+    assert "KONA_SECURE_COOKIES" in capsys.readouterr().err
+
+    monkeypatch.setenv("KONA_SECURE_COOKIES", "true")
+    s = load_settings(tmp_path / "none.env", fake_camera=True)
+    assert s.secure_cookies is True
+    assert "KONA_SECURE_COOKIES" not in capsys.readouterr().err
+
+    # A typo in a security switch must not silently mean "off".
+    monkeypatch.setenv("KONA_SECURE_COOKIES", "yes please")
+    with pytest.raises(SettingsError, match="KONA_SECURE_COOKIES"):
+        load_settings(tmp_path / "none.env", fake_camera=True)

@@ -20,7 +20,7 @@ from kona_tracker.camera.control import CameraControl, ControlUnsupported, FakeC
 from kona_tracker.camera.hub import BOUNDARY, CameraHub
 from kona_tracker.camera.source import FakeSource, FrameSource, OpenCVSource, RtspSource
 from kona_tracker.fi.service import FiService
-from kona_tracker.web.auth import COOKIE_NAME, Lockout, PasscodeAuth
+from kona_tracker.web.auth import COOKIE_NAME, Lockout, PasscodeAuth, client_key
 from kona_tracker.web.settings import Settings
 from kona_tracker.web.views import activity_context, activity_json, preview_activity_context
 
@@ -167,7 +167,11 @@ def create_app(
 
     @app.post("/login", response_class=HTMLResponse)
     def login(request: Request, passcode: str = Form("")):
-        key = request.client.host if request.client else "?"
+        key = client_key(
+            request.headers,
+            request.client.host if request.client else "?",
+            settings.trusted_proxy_header,
+        )
         if auth.lockout.blocked(key):
             return templates.TemplateResponse(
                 request,
@@ -188,13 +192,17 @@ def create_app(
             max_age=settings.cookie_max_age,
             httponly=True,
             samesite="lax",
+            secure=settings.secure_cookies,
         )
         return resp
 
     @app.post("/logout")
     def logout():
         resp = RedirectResponse("/login", status_code=303)
-        resp.delete_cookie(COOKIE_NAME)
+        # Same attributes as when it was set, or the browser keeps the old one.
+        resp.delete_cookie(
+            COOKIE_NAME, httponly=True, samesite="lax", secure=settings.secure_cookies
+        )
         return resp
 
     @app.get("/")

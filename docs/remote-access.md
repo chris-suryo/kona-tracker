@@ -31,19 +31,29 @@ gate is what protects it, which is why Part 2 exists and is not optional.
 
 ---
 
-## Part 0 — the gap to close first
+## Part 0 — two settings the tunnel needs (built 2026-09-11)
 
-**The session cookie is not marked `Secure`.** In
-`src/kona_tracker/web/app.py` the login handler sets `httponly=True` and
-`samesite="lax"` but no `secure=True`. Behind a Cloudflare tunnel the public
-side is always HTTPS so in practice it is not exposed, but the same cookie is
-also issued over plain HTTP on your LAN, and "in practice" is not a security
-argument. It is a one-line change plus a test, and it should be made before
-the URL goes to anyone.
+Both live in `.env`, both are **off by default**, and both are wrong to turn
+on for a plain LAN. Turn them on together when the app gets its HTTPS URL.
 
-Deliberately not fixed in the same pass that wrote this doc: it is a code
-change with a test, not a doc edit. It is the first item in
-`docs/next-session.md`.
+**`KONA_TRUSTED_PROXY_HEADER=CF-Connecting-IP`.** `cloudflared` connects to
+the app over localhost, so without this every visitor on earth arrives as
+`127.0.0.1` and shares one login lockout: five wrong guesses from a stranger
+would lock you and your sister out too. With it, the lockout counts per
+visitor address, read from the header Cloudflare sets. It is deliberately
+not `X-Forwarded-For`: anyone can send that header and pick their own
+bucket. `kona serve` also tells uvicorn *not* to honour forwarded headers on
+its own, so this setting is the only path.
+
+**`KONA_SECURE_COOKIES=true`.** Marks the session cookie `Secure` so it only
+travels over HTTPS. Do not set this while you still open
+`http://192.168.x.x:8000` on the LAN -- the browser silently refuses to send
+a Secure cookie over http and the login just never takes. The app warns on
+startup if the proxy header is set and this is not.
+
+Nothing here has been run against a real tunnel yet; the tests cover both
+states of each setting, not Cloudflare's behaviour. Part 1 is where that
+gets proven.
 
 ---
 

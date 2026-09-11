@@ -183,7 +183,15 @@ Read against the threat model that matters now: **a public URL, handed to a
 sister, pointing at a live camera inside a house.** On a LAN most of this is
 academic. Behind a tunnel it is not.
 
-### D1. The lockout collapses behind the tunnel — **fix before going public**
+### D1. The lockout collapses behind the tunnel — **DONE 2026-09-11**
+
+> Built: `KONA_TRUSTED_PROXY_HEADER` (unset by default), `client_key()` in
+> `web/auth.py`, `Lockout` no longer grows with strangers, and `kona serve`
+> passes `proxy_headers=False` to uvicorn -- whose *default* silently
+> rewrites the client address from `X-Forwarded-For` for any 127.0.0.1 peer,
+> which is the unconditional trust this item rules out. Tests cover both
+> states. What remains is Chris's: set it behind the real tunnel.
+
 
 `app.py:170`:
 
@@ -208,7 +216,12 @@ default, read only when set, falling back to `request.client.host`.
 
 This is the single most important item in this file.
 
-### D2. Session cookie is not `Secure`
+### D2. Session cookie is not `Secure` — **DONE 2026-09-11**
+
+> Built: `KONA_SECURE_COOKIES` (off by default; a typo is a startup error,
+> not a silent off), set and cleared with matching attributes, and a startup
+> warning when the proxy header is on but this is not. Tests for both states.
+
 
 Already written up in `remote-access.md` Part 0 and `next-session.md` §2b.
 Needs a settings key rather than a hard-coded `True`, because

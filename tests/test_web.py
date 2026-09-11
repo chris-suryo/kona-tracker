@@ -73,6 +73,72 @@ def test_lockout_after_repeated_failures(client):
     assert login(client, "4242").status_code == 429  # even the right code waits
 
 
+def _app(**kw):
+    settings = Settings(passcode="4242", secret="s", lockout_attempts=2, lockout_seconds=60, **kw)
+    return create_app(settings, source_factory=lambda: FakeSource(fps=100))
+
+
+def test_a_forwarded_header_is_ignored_unless_it_is_trusted():
+    """Unset by default: a stranger cannot pick their own bucket by sending
+    CF-Connecting-IP, and everyone behind one peer address shares one --
+    which is the LAN behaviour, and the reason the setting exists."""
+    app = _app()
+    with TestClient(app) as c:
+        for ip in ("203.0.113.1", "203.0.113.2"):
+            r = c.post(
+                "/login",
+                data={"passcode": "0000"},
+                headers={"CF-Connecting-IP": ip},
+                follow_redirects=False,
+            )
+            assert r.status_code == 401
+        r = c.post("/login", data={"passcode": "4242"}, follow_redirects=False)
+        assert r.status_code == 429, "two failures under two forged addresses still add up"
+    app.state.hub.stop()
+
+
+def test_a_trusted_proxy_header_gives_each_visitor_their_own_lockout():
+    """Behind cloudflared every peer is 127.0.0.1. With the header trusted,
+    a stranger locking themselves out does not lock out the household."""
+    app = _app(trusted_proxy_header="CF-Connecting-IP")
+    with TestClient(app) as c:
+        stranger = {"CF-Connecting-IP": "203.0.113.1"}
+        sister = {"CF-Connecting-IP": "198.51.100.7"}
+        for _ in range(2):
+            assert c.post("/login", data={"passcode": "0000"}, headers=stranger).status_code == 401
+        assert c.post("/login", data={"passcode": "4242"}, headers=stranger).status_code == 429
+        r = c.post("/login", data={"passcode": "4242"}, headers=sister, follow_redirects=False)
+        assert r.status_code == 303, "a different visitor is a different bucket"
+        # No header at all (a LAN visitor bypassing the tunnel) falls back to
+        # the peer address, and that bucket is untouched by the stranger.
+        r = c.post("/login", data={"passcode": "4242"}, follow_redirects=False)
+        assert r.status_code == 303
+    app.state.hub.stop()
+
+
+def test_session_cookie_is_secure_only_when_asked():
+    """`secure=True` would break http://192.168.x.x on the LAN -- the browser
+    silently stops sending the cookie -- so it is a setting, off by default,
+    and the logout must clear the cookie with the same attributes."""
+    app = _app()
+    with TestClient(app) as c:
+        r = login(c)
+        assert "secure" not in r.headers["set-cookie"].lower()
+        r = c.post("/logout", follow_redirects=False)
+        assert "secure" not in r.headers["set-cookie"].lower()
+    app.state.hub.stop()
+
+    app = _app(secure_cookies=True)
+    with TestClient(app, base_url="https://testserver") as c:
+        r = login(c)
+        cookie = r.headers["set-cookie"].lower()
+        assert "secure" in cookie and "httponly" in cookie and "samesite=lax" in cookie
+        assert c.get("/camera").status_code == 200
+        r = c.post("/logout", follow_redirects=False)
+        assert "secure" in r.headers["set-cookie"].lower()
+    app.state.hub.stop()
+
+
 def test_forged_cookie_is_rejected(client):
     client.cookies.set(COOKIE_NAME, "ok.forged.signature")
     assert client.get("/camera", follow_redirects=False).status_code == 303

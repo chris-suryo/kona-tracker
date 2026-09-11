@@ -39,6 +39,13 @@ class Settings:
     cookie_max_age: int = 30 * 24 * 3600
     lockout_attempts: int = 5
     lockout_seconds: int = 30
+    # Both off by default: correct on a LAN, and each one is wrong to guess.
+    # A trusted header that nobody vouches for lets a visitor choose their
+    # own lockout bucket; a Secure cookie over plain http:// is never sent
+    # back, so the login silently never takes. `docs/remote-access.md` says
+    # when to turn them on.
+    trusted_proxy_header: str = ""  # e.g. CF-Connecting-IP behind cloudflared
+    secure_cookies: bool = False
     # Same two keys the probe already uses, so `.env` stays one file with one
     # Fi login in it rather than two that can drift apart.
     fi_email: str = ""
@@ -76,6 +83,20 @@ class Settings:
 
 class SettingsError(ValueError):
     pass
+
+
+def parse_bool(value: str, key: str) -> bool:
+    """`1/true/yes/on` and `0/false/no/off`, case-insensitive; blank is False.
+
+    Anything else is refused by name rather than read as False: a typo in a
+    security switch must not silently leave it off.
+    """
+    text = value.strip().lower()
+    if text in ("", "0", "false", "no", "off"):
+        return False
+    if text in ("1", "true", "yes", "on"):
+        return True
+    raise SettingsError(f"{key} must be true or false, not {value!r}")
 
 
 def load_settings(env_file: Path | None = Path(".env"), fake_camera: bool = False) -> Settings:
@@ -122,6 +143,18 @@ def load_settings(env_file: Path | None = Path(".env"), fake_camera: bool = Fals
         # shape a credential redactor can get wrong; refuse early.
         raise SettingsError("KONA_RTSP_URL must start with a scheme, e.g. rtsp://<ip>:554/stream1")
 
+    trusted_proxy_header = get("KONA_TRUSTED_PROXY_HEADER").strip()
+    secure_cookies = parse_bool(get("KONA_SECURE_COOKIES"), "KONA_SECURE_COOKIES")
+    if trusted_proxy_header and not secure_cookies:
+        # A proxy header only makes sense behind a tunnel, and a tunnel is
+        # HTTPS; a session cookie that can also travel over plain http is
+        # the one gap left. Warn, never block: the LAN address still works.
+        print(
+            "KONA_TRUSTED_PROXY_HEADER is set but KONA_SECURE_COOKIES is not. Behind a tunnel "
+            "set KONA_SECURE_COOKIES=true so the session cookie only travels over HTTPS.",
+            file=sys.stderr,
+        )
+
     data_start_raw = get("KONA_FI_DATA_START").strip()
     try:
         data_start = date.fromisoformat(data_start_raw) if data_start_raw else None
@@ -147,4 +180,6 @@ def load_settings(env_file: Path | None = Path(".env"), fake_camera: bool = Fals
         fi_password=get("FI_PASSWORD"),
         fi_refresh_seconds=float(get("KONA_FI_REFRESH_SECONDS", "300")),
         fi_data_start=data_start,
+        trusted_proxy_header=trusted_proxy_header,
+        secure_cookies=secure_cookies,
     )
