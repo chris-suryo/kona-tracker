@@ -17,6 +17,15 @@
   <div class="settings-row"><span>Connection</span><strong>{% if on_base is sameas true %}On charger{% elif on_base is sameas false and signal %}Cellular {{ signal }}%{% elif configured %}Unknown{% else %}Not connected{% endif %}</strong></div>
 </section>
 
+<section class="settings-group" aria-labelledby="camera-settings-title">
+  <h2 id="camera-settings-title">Camera</h2>
+  <div class="settings-row"><span>Source</span><strong>{{ camera_label }}</strong></div>
+  <div class="settings-row"><span>State</span><strong>{% if camera.live %}<span class="status-dot live"></span> {% endif %}{{ camera.state }}</strong></div>
+  {% if camera.last_frame %}<div class="settings-row"><span>Last frame</span><strong>{{ camera.last_frame }}</strong></div>{% endif %}
+  {% if camera.problem %}<div class="settings-row"><span>Last problem</span><strong class="warn">{{ camera.problem }}</strong></div>{% endif %}
+  {% if camera.reconnects %}<div class="settings-row"><span>Reconnects</span><strong>{{ camera.reconnects }}</strong></div>{% endif %}
+</section>
+
 <section class="settings-group" aria-labelledby="display-settings-title">
   <h2 id="display-settings-title">Dashboard</h2>
   <a class="settings-link" href="/activity?preview=1">

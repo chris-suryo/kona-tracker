@@ -322,3 +322,40 @@ def activity_json(snapshot: FiSnapshot | None, configured: bool) -> dict[str, An
         "problem": snapshot.problem if snapshot else None,
         "stale": bool(snapshot and snapshot.stale),
     }
+
+
+#: `CameraHub.status()` in words a phone can act on. The error kinds are the
+#: hub's own; the sentences are `camera-doctor`'s verdicts, so the settings
+#: page says from the road what the doctor would say at the machine.
+_CAMERA_STATES = {
+    "live": "Delivering frames",
+    "stale": "Frames have stopped",
+    "connecting": "Opening the camera",
+    "disconnected": "Not connected",
+    "idle": "Released (nobody is watching)",
+}
+_CAMERA_PROBLEMS = {
+    "black_frame": (
+        "Image fully dark. Lens cover, or a wedged USB device: "
+        "unplug the camera and plug it back in."
+    ),
+    "open": "Could not open the camera. Another program may be holding it.",
+    "hung": "The camera stopped answering and was reopened.",
+    "read": "Reading frames failed.",
+    "empty_frames": "The camera opened but delivered no frames: unplug it and plug it back in.",
+}
+
+
+def camera_health(status: dict[str, Any]) -> dict[str, Any]:
+    """Rows for the settings page. Nothing here is invented: an unknown
+    state or error kind is shown as the raw word, never dressed up."""
+    state = status.get("state")
+    kind = status.get("last_error_kind")
+    age = status.get("last_frame_age")
+    return {
+        "state": _CAMERA_STATES.get(state, str(state)),
+        "live": state == "live",
+        "last_frame": None if age is None else f"{age:.0f} s ago",
+        "problem": _CAMERA_PROBLEMS.get(kind, kind) if kind else None,
+        "reconnects": status.get("reconnects") or 0,
+    }

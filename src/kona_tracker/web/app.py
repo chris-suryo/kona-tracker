@@ -25,7 +25,12 @@ from kona_tracker.fi.service import FiService
 from kona_tracker.web.auth import COOKIE_NAME, Lockout, PasscodeAuth, client_key
 from kona_tracker.web.logs import attach_file_logging, detach_file_logging
 from kona_tracker.web.settings import Settings
-from kona_tracker.web.views import activity_context, activity_json, preview_activity_context
+from kona_tracker.web.views import (
+    activity_context,
+    activity_json,
+    camera_health,
+    preview_activity_context,
+)
 
 HERE = Path(__file__).parent
 PUBLIC_PATHS = {"/login", "/healthz"}
@@ -287,6 +292,10 @@ def create_app(
         snapshot = fi.snapshot() if fi else None
         context = activity_context(snapshot, configured=fi is not None)
         context["tab"] = "settings"
+        # The same statistics camera-doctor reads, so a wedged USB device
+        # can be diagnosed from a phone instead of at the machine.
+        context["camera"] = camera_health(hub.status())
+        context["camera_label"] = settings.camera_label()
         return templates.TemplateResponse(request, "settings.html", context)
 
     @app.get("/avatar.jpg")

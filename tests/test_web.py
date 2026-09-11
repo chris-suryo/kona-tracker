@@ -429,3 +429,28 @@ def test_log_dir_writes_a_file_that_outlives_the_console(tmp_path):
     # Detached on shutdown: nothing more lands, and the file is closed.
     logging.getLogger("kona_tracker.camera").warning("after shutdown")
     assert "after shutdown" not in (log_dir / "kona.log").read_text(encoding="utf-8")
+
+
+def test_settings_page_reports_camera_health_from_the_road(client):
+    """camera-doctor must be run at the machine, which is where Chris is not
+    when he needs it. The settings page reads the same hub statistics."""
+    login(client)
+    client.get("/snapshot.jpg")  # wakes the camera
+    page = client.get("/settings").text
+    assert 'id="camera-settings-title"' in page and "usb index 0" in page
+    assert "Delivering frames" in page or "Opening the camera" in page
+
+
+def test_camera_health_words_are_the_doctors_verdicts():
+    from kona_tracker.web.views import camera_health
+
+    wedged = camera_health(
+        {"state": "disconnected", "last_error_kind": "black_frame", "reconnects": 3}
+    )
+    assert wedged["state"] == "Not connected" and wedged["live"] is False
+    assert "unplug" in wedged["problem"] and wedged["reconnects"] == 3
+    live = camera_health({"state": "live", "last_frame_age": 0.4, "last_error_kind": None})
+    assert live["live"] and live["last_frame"] == "0 s ago" and live["problem"] is None
+    # Unknown words are shown raw, never dressed up as something known.
+    odd = camera_health({"state": "weird", "last_error_kind": "newkind"})
+    assert odd["state"] == "weird" and odd["problem"] == "newkind"
