@@ -381,8 +381,39 @@ The Camera tab sits on "Connecting…" forever. At that moment:
 
 `naturalWidth: 0` is the browser saying it has never decoded a frame. So the
 picture is not hidden by CSS or withheld by the reveal logic. **There is no
-image.** The conclusion is that iOS Safari does not render
-`multipart/x-mixed-replace` in an `<img>`, which Chrome and Firefox do.
+image.**
+
+### Corrected the same day: it is intermittent, not absent
+
+The first conclusion written here was that iOS Safari cannot render
+`multipart/x-mixed-replace` at all. **That is wrong.** Chris reopened Safari
+later and the picture came through. His summary: Safari works sometimes and
+sometimes hangs on "Connecting…" forever, Chrome on the phone is steadier
+but also not perfect.
+
+Intermittent is a different and more useful fact than broken. It means the
+format is supported and something about *holding one connection open for
+minutes on a phone* is fragile. Candidates, none yet tested:
+
+- **Connection exhaustion.** An MJPEG stream occupies one connection for as
+  long as it lives, and browsers cap concurrent connections per host at
+  around six. Every `reload()` in `camera.js` points the `<img>` at a fresh
+  `/stream.mjpg?t=…`. If Safari does not promptly tear down the previous
+  one, each tab switch, sleep or wake leaks a held connection until nothing
+  new can start. This fits the symptom exactly, including that once stuck it
+  stays stuck until the page is reloaded.
+- **Backgrounding.** iOS suspends and resumes tabs aggressively; a stream
+  resumed from suspension may never recover.
+- **Network transitions.** Wi-Fi roaming or a radio sleep drops a held
+  connection silently, which a short request would simply retry.
+
+**The check that separates the first from the rest:** when the phone is
+stuck, open the Network tab in Web Inspector and count pending
+`stream.mjpg` entries. Several stacked up means connection exhaustion.
+
+Whatever the precise cause, the structural point holds and is what the fix
+rests on: a connection held open for minutes is fragile on a phone, and
+short polled requests are not.
 
 This matters more than it sounds. Every camera fix before this was verified
 in desktop Chrome, a different engine, which is why several rounds of

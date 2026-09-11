@@ -43,11 +43,23 @@ shows the live picture.
 `/stream.mjpg` request stays open forever without completing.
 
 `naturalWidth: 0` means no frame has ever decoded. The picture is not hidden
-and it is not late. There is none. The working theory is that iOS Safari
-does not render `multipart/x-mixed-replace` in an `<img>`.
+and it is not late. There is none.
 
-Full evidence table and the two things that do not fit yet are in
-`docs/device-capabilities.md` §2c. Read that before acting.
+**But it is intermittent, not absent.** The first theory written here was
+that Safari cannot render `multipart/x-mixed-replace` at all; Chris then
+reopened Safari and the picture came through. His words: Safari works
+sometimes and sometimes hangs on Connecting forever; Chrome on the phone is
+steadier but still not perfect.
+
+So the format is supported and the fragility is in **holding one connection
+open for minutes on a phone**. The leading candidate is connection
+exhaustion: a stream occupies one of roughly six per-host connections for
+its whole life, and every `reload()` starts a fresh one, so a tab switch or
+a sleep that does not tear down the old stream leaks a slot until nothing
+can start. Once stuck it stays stuck, which matches the symptom.
+
+Full evidence table, the alternatives, and the one check that separates them
+are in `docs/device-capabilities.md` §2c. Read that before acting.
 
 ## What has been ruled out, with evidence
 
@@ -95,10 +107,18 @@ Two sub-decisions go with it, both Chris's:
 2. What frame rate? Two per second is plenty for a sleeping dog and keeps
    the load trivial.
 
-**Before any of this is built**, run the two console checks in
-`device-capabilities.md` §2c. They confirm a single JPEG actually renders on
-that phone. The entire proposal rests on it, and the one observation we have
-of `/snapshot.jpg` on the phone is not encouraging.
+**The intermittency strengthens this rather than weakening it.** If Safari
+could never show the picture, polling would be a workaround for one
+browser's gap. Because it shows the picture and then loses it, the problem
+is the held connection itself, and every candidate cause — exhausted
+connection slots, backgrounding, a Wi-Fi roam — is something a short
+request retries automatically and a long-lived stream cannot.
+
+**Before any of this is built**, confirm a single JPEG renders on that
+phone, using the console checks in `device-capabilities.md` §2c. The whole
+proposal rests on it. The one direct observation of `/snapshot.jpg` there
+was an empty download, most likely an artifact of typing the URL rather
+than a real failure, but it has not been confirmed either way.
 
 ## Lessons this thread has already paid for
 
