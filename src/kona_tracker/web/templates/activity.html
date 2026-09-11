@@ -60,7 +60,7 @@
 
 
 <section class="rest-grid {{ 'dimmed' if stale else '' }}" aria-label="Rest">
-{% if preview %}<a class="rest-open" href="/preview/rest" aria-label="Open sample rest detail"><span aria-hidden="true">View rest ›</span></a>{% endif %}
+{% if preview %}<a class="rest-open" href="/preview/rest" aria-label="Open sample rest detail"><span aria-hidden="true">View rest ›</span></a>{% elif configured %}<a class="rest-open" href="/rest" aria-label="Open daily rest history"><span aria-hidden="true">View rest ›</span></a>{% endif %}
   <div class="metric">
     <span class="eyebrow">Naps today</span>
     {% if nap_parts %}

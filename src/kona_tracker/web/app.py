@@ -35,6 +35,7 @@ from kona_tracker.web.views import (
     camera_health,
     map_tile_config,
     preview_activity_context,
+    rest_history_context,
 )
 
 HERE = Path(__file__).parent
@@ -352,6 +353,19 @@ def create_app(
         )
         context["map_tiles"] = tile_config
         return templates.TemplateResponse(request, "activity.html", context)
+
+    @app.get("/rest", response_class=HTMLResponse)
+    def rest_history(request: Request, selected: int | None = Query(default=None, ge=0, le=60)):
+        """Kona's real daily rest, one bar per day the collar has existed.
+
+        Days, not hours: Fi reports a daily total of sleep and of naps and
+        nothing finer, so that is what this draws. The sample page at
+        /preview/rest keeps its hourly and interval sketches; this page has
+        neither, on purpose.
+        """
+        snapshot = fi.snapshot() if fi else None
+        context = rest_history_context(snapshot, configured=fi is not None, selected=selected)
+        return templates.TemplateResponse(request, "rest_history.html", context)
 
     @app.get("/preview/{metric}", response_class=HTMLResponse)
     def preview_history(

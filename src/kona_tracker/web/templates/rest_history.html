@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Kona · Rest{% endblock %}
+{% block pageclass %}history-page{% endblock %}
+{% block body %}
+{% from "_duration.html" import minutes %}
+<nav class="subnav" aria-label="Back"><a class="back" href="/activity">{% include "_chevron.svg" %}<span>Activity</span></a></nav>
+<header class="history-heading"><h1>Rest</h1></header>
+
+{% if not configured %}
+<section class="history-total" aria-label="Not configured">
+  <span class="eyebrow">From her collar</span>
+  <p>Fi is not configured. Set <code>FI_EMAIL</code> and <code>FI_PASSWORD</code> in <code>.env</code> and restart.</p>
+</section>
+{% elif not has_days %}
+<section class="history-total" aria-label="No history yet">
+  <span class="eyebrow">From her collar</span>
+  <p>{% if problem %}{{ problem }}{% else %}Fi has not returned any daily rest windows yet.{% endif %}</p>
+</section>
+{% else %}
+<div class="date-switch">
+  <span aria-hidden="true"></span>
+  <strong>{{ range_label }}</strong>
+  <span aria-hidden="true"></span>
+</div>
+<section class="history-total {{ 'dimmed' if stale else '' }}" aria-label="Average daily rest">
+  <span class="eyebrow">Average daily rest</span>
+  <strong class="d">{% if average is not none %}{{ minutes(average) }}{% else %}&ndash;{% endif %}</strong>
+  <p>Across {{ complete_days }} complete day{{ '' if complete_days == 1 else 's' }} of {{ total_days }} · today and the collar's first day are excluded{% if stale %} · last good reading{% elif fetched_label %} · checked Fi {{ fetched_label }}{% endif %}</p>
+  <div class="rest-key">
+    <span><i class="sleep-key"></i>Avg sleep <strong>{% if average_sleep is not none %}{{ minutes(average_sleep) }}{% else %}&ndash;{% endif %}</strong></span>
+    <span><i class="nap-key"></i>Avg naps <strong>{% if average_nap is not none %}{{ minutes(average_nap) }}{% else %}&ndash;{% endif %}</strong></span>
+  </div>
+</section>
+<section class="history-chart" aria-labelledby="chart-title">
+  <div class="chart-heading"><h2 id="chart-title">Rest by day</h2><span>{{ '{:,}'.format(maximum) }} min</span></div>
+  <svg class="bar-chart rest" viewBox="0 0 340 178" role="group" aria-label="Daily rest chart. Select a day for its reading.">
+    <path class="chart-rule" d="M0 12H340 M0 87H340 M0 162H340"/>
+    {% for bucket in buckets %}
+    <a href="{{ bucket.href }}" aria-label="{{ bucket.label }}: {{ 'no reading' if bucket.value is none else (bucket.value|string) ~ ' minutes' }}{% if bucket.in_progress %}, still in progress{% elif bucket.partial_first_day %}, collar set up this day{% endif %}"{% if selected == loop.index0 %} aria-current="true"{% endif %}>
+      <rect class="bar-hit" x="{{ bucket.x }}" y="10" width="{{ bucket.width + 3 }}" height="158"/>
+      {% if bucket.value is none %}<path class="missing-bar" d="M{{ bucket.x }} 162h{{ bucket.width }}"/>
+      {% elif bucket.value == 0 %}<circle class="zero-bar" cx="{{ bucket.x + bucket.width / 2 }}" cy="162" r="2"/>
+      {% else %}<rect class="sleep-bar{% if bucket.partial %} partial-bar{% endif %}" x="{{ bucket.x }}" y="{{ 162 - bucket.sleep_height }}" width="{{ bucket.width }}" height="{{ bucket.sleep_height }}" rx="2"/><rect class="nap-bar{% if bucket.partial %} partial-bar{% endif %}" x="{{ bucket.x }}" y="{{ 162 - bucket.height }}" width="{{ bucket.width }}" height="{{ bucket.nap_height }}" rx="2"/>{% endif %}
+    </a>{% endfor %}
+  </svg>
+  <div class="chart-axis">{% for b in buckets %}<span>{{ b.short }}</span>{% endfor %}</div>
+  <p class="chart-selection" aria-live="polite">{% if chosen %}<strong>{{ chosen.label }}</strong> · {% if chosen.value is none %}No reading{% else %}{{ minutes(chosen.value) }} of rest{% if chosen.sleep is not none or chosen.nap is not none %} · sleep {{ minutes(chosen.sleep or 0) }}, naps {{ minutes(chosen.nap or 0) }}{% endif %}{% endif %}{% if chosen.in_progress %} · still in progress{% elif chosen.partial_first_day %} · collar set up this day, so part of it was not measured{% endif %}{% else %}Tap a day to see its reading. Fi reports daily totals, not hours.{% endif %}</p>
+  <details class="history-readings"><summary>View readings</summary>
+    <p class="chart-footnote">These are the values plotted above, as Fi reported them. Dots mean zero; dashed marks mean no reading. Days marked incomplete are not averaged.</p>
+    <table><thead><tr><th>Day</th><th>Sleep</th><th>Naps</th><th>Rest</th></tr></thead><tbody>
+    {% for b in buckets %}<tr><th>{{ b.label }}</th><td>{% if b.sleep is none %}&ndash;{% else %}{{ minutes(b.sleep) }}{% endif %}</td><td>{% if b.nap is none %}&ndash;{% else %}{{ minutes(b.nap) }}{% endif %}</td><td>{% if b.value is none %}No reading{% else %}{{ minutes(b.value) }}{% endif %}{% if b.in_progress %} · in progress{% elif b.partial_first_day %} · incomplete, collar set up{% endif %}</td></tr>{% endfor %}
+    </tbody></table>
+  </details>
+</section>
+{% endif %}
+{% endblock %}
