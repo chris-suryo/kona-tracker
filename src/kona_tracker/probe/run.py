@@ -29,6 +29,13 @@ from kona_tracker.fi.queries import REST_PERIODS
 from kona_tracker.probe.redact import redact
 from kona_tracker.probe.scan import SchemaScan, scan_schema
 
+#: How many rest windows to ask for in the history probe. Two is what the
+#: page uses (today in progress, plus last night). Fourteen is enough to show
+#: whether the feed pages back at all and how far, without asking for so much
+#: that a slow response looks like a failure. Nobody has ever asked Fi for
+#: more than two, so this number is the whole experiment.
+HISTORY_LIMIT = 14
+
 
 @dataclass
 class ProbeReport:
@@ -128,6 +135,7 @@ def run_probe(client: FiClient, out_dir: Path) -> ProbeReport:
         slug = _safe_name(pet["name"])
         for label, q in (
             ("rest", queries.pet_rest(pet["id"])),
+            ("rest-history", queries.pet_rest(pet["id"], limit=HISTORY_LIMIT)),
             ("activity", queries.pet_activity(pet["id"])),
         ):
             data = _try(report, f"{label}:{slug}", lambda q=q: client.graphql(q))
@@ -207,6 +215,7 @@ def _metric_lines(label: str, data: dict, pet: str) -> list[str]:
     these responses through exactly one implementation.
     """
     result = []
+    tag = f"{pet} [history]" if label == "rest-history" else pet
     if label == "activity":
         for period in ("dailyStat", "weeklyStat"):
             stats = activity_from(data, period)
@@ -216,15 +225,26 @@ def _metric_lines(label: str, data: dict, pet: str) -> list[str]:
                 f"totalDistance={_number(stats.distance)} (raw API units)."
             )
     else:
-        found = False
+        found = 0
         for period, _enum in REST_PERIODS:
             for window in rest_from(data, period):
-                found = True
+                found += 1
                 span = f"{_date(window.start)} to {_date(window.end)}"
                 for kind, amount in ((SLEEP, window.sleep), (NAP, window.nap)):
-                    result.append(f"{pet} {period} {span}: {kind} duration={_reading(amount)}.")
+                    result.append(f"{tag} {period} {span}: {kind} duration={_reading(amount)}.")
         if not found:
-            result.append(f"{pet}: rest summaries unavailable or empty; no sleep value confirmed.")
+            result.append(f"{tag}: rest summaries unavailable or empty; no sleep value confirmed.")
+        elif label == "rest-history":
+            # The number is the answer. `restSummaryFeed` is an accepted
+            # production query, so if asking for HISTORY_LIMIT windows returns
+            # more than the two the page uses, daily history needs no new
+            # document at all -- only a different argument.
+            result.append(
+                f"{tag}: asked restSummaryFeed for limit={HISTORY_LIMIT} across "
+                f"{len(REST_PERIODS)} periods and got {found} windows back. "
+                "Compare against the non-history probe above: more windows means "
+                "daily rest history is reachable with the query we already send."
+            )
     return result
 
 
