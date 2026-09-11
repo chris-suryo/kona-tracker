@@ -16,6 +16,10 @@ level; [pyatv](https://pyatv.dev/) for Apple TV.
 
 ## 1. Camera models
 
+> What a camera *can* do is here. What the app's delivery of it **cannot** do
+> — bandwidth per viewer, the concurrent-viewer ceiling, the unexplained
+> 4 fps — is in `docs/scaling-limits.md`.
+
 The camera connected today is a **Logitech C270 USB webcam** at index 0.
 **Working, verified 2026-09-11**: `kona camera-doctor` read mean 86.96,
 max 255, sd 58.54 through the DirectShow backend, and `kona camera-test`
@@ -327,6 +331,141 @@ not to the page:
 
 The probe fetches these; the next `summary.md` says which are real. Until
 then they stay out of the UI.
+
+### Stated by Fi's own assistant, 2026-09-11 -- claims, not measurements
+
+Chris asked the "Kona's health" chat inside the Fi app what the numbers
+mean. That assistant is trained on Fi's help content, so it knows the
+product where the probe knows the schema, which is a genuinely
+complementary source. It is also a language model: **every line below is a
+hypothesis to verify, not a fact to ship.** One of them already contradicts
+something we measured.
+
+**Corroborated, and now safe to say plainly in the UI.**
+
+- *"Fi's daily totals reset at midnight in your dog's local time zone, so
+  the day rolls over based on where Kona is, not a fixed global time."*
+  This is what we inferred and built to; it also vindicates rendering times
+  in Fi's `timezone` on `Pet` rather than the server's clock.
+- *"Fi usually recognizes a walk within the first few minutes of consistent
+  outdoor movement... A walk ends when the collar detects a pause or stop,
+  typically after a few minutes."* Matches the 2-3 minute lag measured on
+  the 2026-09-10 walk.
+- *"Overnight rest is classified as sleep, typically the longest continuous
+  period during usual nighttime hours. Shorter or fragmented rest periods
+  during the day are counted as naps."* Matches the SLEEP/NAP split.
+
+**Resolves a mystery this file recorded as open: distance.**
+
+> *"Fi counts distance based on GPS tracking during outdoor movement, not
+> just step count from the collar's accelerometer. So if Kona took 3,383
+> steps mostly indoors or while the collar wasn't connected to GPS, the
+> distance recorded can still show zero."*
+
+That is the explanation for the day with 3,383 steps and zero distance, and
+it means the figure was never wrong. Distance is **outdoor GPS distance**,
+steps are accelerometer. It has been kept out of the UI pending an
+explanation; that block is now lifted, provided it is labelled as outdoor
+or walk distance and a zero is never presented as "she did not move".
+
+**Supports the resting position we have asked for but not yet measured.**
+
+> *"Kona's collar updates location when it connects via Bluetooth or Wi-Fi,
+> typically syncing every few minutes while at home. The app shows her most
+> recent location based on those updates, but it's not a continuous live
+> feed like during walks."*
+
+If the app shows a resting location, the API almost certainly carries one,
+which is what `pet_whereabouts` asks for. It also explains why `device`
+exposes `nextLocationUpdateExpectedBy`: at rest the position is a periodic
+check-in, and that field says when the next one is due. Still unmeasured
+until the probe runs, but the prior just got considerably stronger.
+
+**New, and it changes UI copy: the step goal moves.**
+
+> *"Kona's daily step goal starts based on her breed, age, and weight...
+> Over time, Fi adjusts that goal dynamically based on her recent activity
+> patterns... it's not fixed; it evolves with her fitness and routine."*
+
+So "of 9,000" is a moving target. A goal that changes between days is Fi
+working as designed, not our bug, and the page should not imply it is fixed.
+
+**Contradicts a measurement, and the measurement wins.**
+
+> *"The data itself is a summary of your dog's movement patterns, including
+> steps taken, distance traveled, active minutes, and detected behaviors
+> like barking or scratching."*
+
+Probe rounds 1 and 2 asked for exactly these and Fi's own server rejected
+them: `behaviorSummary`, `behaviorFeed`, `currentBehaviorSummary`,
+`interruptions`, `calories` and `activeMinutes` all came back as unknown
+fields **with no "did you mean" suggestion**, which this project treats as
+evidence of absence. A validation error from the production API outranks a
+support assistant describing a product line.
+
+Three possibilities, and they are worth one targeted probe rather than a
+shrug: the assistant is blending in a competitor's feature list; the data
+exists but hangs off a type we have never queried; or it is simply wrong.
+Until one of those is settled, **nothing about barking, scratching or
+active minutes goes near the UI.**
+
+**A lead worth its own probe: the Safe Zone.**
+
+> *"The 'left the safe zone' alert triggers when your dog's Fi collar moves
+> outside the boundaries of the Safe Zone you set in the app."*
+
+We already parse the escape flag from `mode`, so the alert is real. But
+`safeZones` and `geofences` were both confirmed absent on `Pet`. The likely
+reconciliation: a Safe Zone is a **`Place` with a radius**. pytryfi's
+`PlaceDetails` fragment selects `id name address position radius`, and our
+round-3 probe confirmed `places { id name position }` is accepted. So
+`places { __typename id name radius position { latitude longitude } }` is
+the query that would prove it, and if the radius is real the map could draw
+the safe zone as a circle instead of only reporting the breach after it
+happens. Queued for the next probe round.
+
+**Settled: there is no official way in, and there never was.**
+
+> *"Fi doesn't offer a public API, developer program, or webhooks for
+> accessing your dog's data."*
+
+This project has carried that as an assumption since the first slice. It is
+now Fi's own answer, which changes nothing about the approach and a lot
+about how confident we can be in it: the private GraphQL API is the only
+path, `kona probe` stays permanent because drift is guaranteed and
+unannounced, and no amount of waiting will produce a supported alternative.
+A data export was deflected to Fi's Customer Experience team rather than
+refused, so that is a real avenue and worth an email, but it is an account
+matter and not something the assistant can action.
+
+**The notification list is a feature spec we can already satisfy.**
+
+Asked what alerts Fi can send, it named: leaving or entering a Safe Zone,
+meeting or missing the daily step goal, collar low battery or
+disconnection, and walk reminders or milestones.
+
+Every one of those is computable from data this app **already fetches**.
+The escape flag covers the Safe Zone crossing, `steps` against `stepGoal`
+covers the goal, `batteryPercent` and the connection state cover the
+collar, and `ongoingActivity` covers walks. So the alerting Fi does is not
+something we need API access to receive; it is something we could derive
+from the snapshot we already hold, and the outbound heartbeat shows the
+shape such a thing would take. Worth remembering that the list also tells
+us what Fi's own product team decided is worth interrupting someone for,
+which is a reasonable prior for what belongs on the page.
+
+Note the phrase *"activity, behavior, and health info"* appears here too.
+That is the second unprompted mention of behaviour data, against a
+measured absence. It raises the value of the targeted probe, and lowers
+nothing: the field names are still rejected by the server.
+
+**How the assistant behaves, which shapes how to ask it.**
+
+A question phrased as a fault gets deflected rather than answered: asking
+why the battery estimate swings between days and hours returned only a
+pointer to Fi's Customer Experience team. Questions phrased as "how does X
+work" get substantive answers. Worth knowing before spending another
+evening on it.
 
 ## 2b. Zoom is off on purpose
 
