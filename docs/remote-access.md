@@ -289,11 +289,37 @@ after a few idle seconds) -- that is normal; `disconnected` with a
 signature and means a replug. `fi` is `stale` when Fi has stopped
 answering; `fi_age_s` says how old the numbers on the page are.
 
-Point any free uptime pinger (UptimeRobot, Better Stack, healthchecks.io)
-at `https://<your-tunnel>/healthz` every five minutes, alerting on
-anything but HTTP 200. That catches the process dying, the PC sleeping and
-the tunnel dropping in one go. It does not catch a black camera; for that,
-`/settings` now shows the camera's state and last problem from any phone.
+There are two shapes of this, and today only one of them can work.
+
+**A push, which works right now.** Set `KONA_HEARTBEAT_URL` to a ping URL
+from healthchecks.io's free tier. The app pings it every five minutes, and
+the service emails you when the pings *stop*. That is the only way to hear
+about the failures that silence the machine itself: sleep, crash, power cut,
+a dropped connection. Nothing running on the PC can report those, because
+the PC is what died.
+
+It works today because it needs no inbound reachability and no fixed
+address, so the quick tunnel's URL changing on every restart does not
+matter. Set it up in about two minutes:
+
+1. Make a free healthchecks.io account and add a check named `kona`.
+2. Set its period to 5 minutes and its grace to 5 minutes.
+3. Copy the ping URL into `.env` as `KONA_HEARTBEAT_URL=`.
+4. Restart `kona serve`. The first ping goes out immediately, so the check
+   should turn green while you are still looking at it. If it does not,
+   the reason is in the log, not on the page.
+
+The ping body carries the same summary `/healthz` serves, so the check's
+event log shows what the app was doing each time. A wedged camera does
+**not** fail the heartbeat, on purpose: that alarm already exists on
+`/settings`, and folding it in here would turn one clear alarm into a flappy
+one you end up muting.
+
+**A poll, once there is a domain.** Point UptimeRobot or Better Stack at
+`https://kona.yourdomain.com/healthz`, alerting on anything but HTTP 200.
+This adds what the push cannot see: whether your sister can actually reach
+the app from outside. Worth having in addition, not instead. It is pointless
+before a named tunnel, since there is no stable URL to give it.
 
 Set `KONA_LOG_DIR=C:\Users\harim\kona-tracker\logs` in `.env` so the
 access log and every camera or Fi failure land in a rotating `kona.log`

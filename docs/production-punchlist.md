@@ -321,10 +321,12 @@ dishonest about the code:
 
 My own read, ordered by what would actually bite first.
 
-1. **DONE 2026-09-11 (the app half):** `/healthz` reports camera state,
-   last camera error kind, Fi freshness and reading age -- nothing else, and
-   without touching Fi, since it is public. `docs/remote-access.md` 3d says
-   where to point a free pinger. *Original:* Nothing watches the watcher. If `kona serve` dies at 2am, the page is
+1. **DONE 2026-09-11:** `/healthz` reports camera state, last camera error
+   kind, Fi freshness and reading age, and `KONA_HEARTBEAT_URL` pushes that
+   same summary to a dead-man's-switch service every five minutes, so the
+   alarm survives the machine it is reporting on. A poll against the tunnel
+   is the complement, and waits for a domain. `docs/remote-access.md` 3d.
+   *Original:* Nothing watches the watcher. If `kona serve` dies at 2am, the page is
    simply unreachable and no one is told. `/healthz` exists and nothing
    polls it. The cheapest honest fix is an external uptime ping against the
    tunnel URL; a Windows service restart policy is the fuller one.

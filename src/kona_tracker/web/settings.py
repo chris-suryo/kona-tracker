@@ -56,6 +56,10 @@ class Settings:
     #: power plan for good. Off by default: when this machine sleeps is the
     #: owner's business, not a side effect of starting a web server.
     keep_awake: bool = False
+    #: Dead-man's-switch ping URL. Treated as a secret: whoever holds it can
+    #: forge this app's heartbeat and silence the alarm.
+    heartbeat_url: str = ""
+    heartbeat_seconds: float = 300.0
     # Same two keys the probe already uses, so `.env` stays one file with one
     # Fi login in it rather than two that can drift apart.
     fi_email: str = ""
@@ -87,7 +91,8 @@ class Settings:
         return (
             f"Settings(camera={self.camera_label()!r}, passcode='***', secret='***', "
             f"rtsp_user={self.rtsp_user!r}, rtsp_password='***', "
-            f"fi_email={'set' if self.fi_email else 'unset'}, fi_password='***')"
+            f"fi_email={'set' if self.fi_email else 'unset'}, fi_password='***', "
+            f"heartbeat={'set' if self.heartbeat_url else 'unset'})"
         )
 
 
@@ -200,4 +205,6 @@ def load_settings(env_file: Path | None = Path(".env"), fake_camera: bool = Fals
         secure_cookies=secure_cookies,
         log_dir=get("KONA_LOG_DIR").strip(),
         keep_awake=keep_awake,
+        heartbeat_url=get("KONA_HEARTBEAT_URL").strip(),
+        heartbeat_seconds=float(get("KONA_HEARTBEAT_SECONDS", "300")),
     )

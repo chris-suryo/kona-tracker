@@ -25,6 +25,7 @@ from kona_tracker.camera.source import FakeSource, FrameSource, OpenCVSource, Rt
 from kona_tracker.fi.service import FiService
 from kona_tracker.web.auth import COOKIE_NAME, Lockout, PasscodeAuth, client_key
 from kona_tracker.web.awake import allow_sleep, keep_awake
+from kona_tracker.web.heartbeat import Heartbeat
 from kona_tracker.web.logs import attach_file_logging, detach_file_logging
 from kona_tracker.web.settings import Settings
 from kona_tracker.web.views import (
@@ -146,6 +147,18 @@ def create_app(
         # the point: stopping the app gives the machine its power plan back.
         holding = keep_awake() if settings.keep_awake else False
         app.state.keeping_awake = holding
+        beat = (
+            Heartbeat(
+                settings.heartbeat_url,
+                lambda: app.state.health_summary(),
+                settings.heartbeat_seconds,
+            )
+            if settings.heartbeat_url
+            else None
+        )
+        app.state.heartbeat = beat
+        if beat is not None:
+            beat.start()
         if settings.keep_awake and not holding:
             # Never let a failed hold pass for a working one: the whole reason
             # to ask is so the page is reachable while nobody is at the PC.
@@ -159,6 +172,8 @@ def create_app(
             yield
         finally:
             hub.stop()  # release the webcam on shutdown
+            if beat is not None:
+                beat.stop()
             if holding:
                 allow_sleep()
             if log_handler is not None:
@@ -215,12 +230,12 @@ def create_app(
             response.headers.setdefault(name, value)
         return response
 
-    @app.get("/healthz")
-    def healthz() -> dict[str, Any]:
-        """Public, for an outside pinger: is the process up, is the camera
-        delivering, how old is the Fi reading. Deliberately nothing else --
-        no error text (it can carry a redacted camera host), no coordinates,
-        and no Fi round trip, so a stranger cannot make us talk to Fi."""
+    def health_summary() -> dict[str, Any]:
+        """Is the process up, is the camera delivering, how old is the Fi
+        reading. Deliberately nothing else -- no error text (it can carry a
+        redacted camera host), no coordinates, and no Fi round trip, so a
+        stranger cannot make us talk to Fi. Shared by the public /healthz and
+        the outbound heartbeat so the two can never disagree."""
         camera = hub.status()
         snapshot = fi.peek() if fi else None
         age = (datetime.now(UTC) - snapshot.fetched_at).total_seconds() if snapshot else None
@@ -235,6 +250,12 @@ def create_app(
             else "ok",
             "fi_age_s": None if age is None else round(age),
         }
+
+    app.state.health_summary = health_summary
+
+    @app.get("/healthz")
+    def healthz() -> dict[str, Any]:
+        return health_summary()
 
     @app.get("/login", response_class=HTMLResponse)
     def login_page(request: Request):
