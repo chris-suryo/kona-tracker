@@ -29,6 +29,12 @@ it should not. Three ways across that line:
 Cloudflare Tunnel wins because your sister just gets a link. The passcode
 gate is what protects it, which is why Part 2 exists and is not optional.
 
+**What it costs in data.** The tunnel carries the video, so watching over
+cellular spends cellular data: roughly 340 KB/s, about 1.2 GB an hour, per
+viewer at the default 1280x720. Nobody has measured it on a real carrier
+connection yet. `docs/scaling-limits.md` §1 has the numbers and the two
+knobs that exist today.
+
 ---
 
 ## Part 0 — two settings the tunnel needs (built 2026-09-11)
@@ -337,6 +343,9 @@ the file open; that is printed, not fatal.
   step 2.
 - **Works on Wi-Fi, not on cellular.** You tested the LAN address, not the
   tunnel. Turn Wi-Fi off on the phone and use the `https://` URL.
+- **It works on cellular but eats data.** Expected, not a fault. See
+  `docs/scaling-limits.md` §1; `KONA_CAMERA_WIDTH`/`HEIGHT` in `.env` are
+  the levers that exist without a code change.
 - **Camera black after a reboot.** Two candidates and they need separating:
   the wedged-USB problem (`docs/first-run.md`, "worked yesterday, black
   today" — replug fixes it) or the log-on-session problem in 3c. Run

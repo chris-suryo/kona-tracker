@@ -194,5 +194,10 @@ ipconfig                        # IPv4 of the PC; iPhone opens http://<that-ip>:
   camera's local API using the same credentials as the video. Recent
   firmware needs **Third-Party Compatibility** enabled in the Tapo app or
   nothing connects.
+- **Bandwidth is the camera's real ceiling, and Chris watches on cellular.**
+  One viewer at 1280x720 is ~85 KB/frame at 4 fps -- ~340 KB/s, ~1.2 GB an
+  hour. JPEG quality is hard-coded at 80 with no env var; width, height and
+  fps are configurable. `docs/scaling-limits.md` is the standing list of
+  ceilings and what a product version would have to change.
 - Scope line: camera control belongs in this app; Apple TV and general home
   automation belong in Home Assistant on the same Pi. See the doc for why.

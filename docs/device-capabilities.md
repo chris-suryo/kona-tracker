@@ -16,6 +16,10 @@ level; [pyatv](https://pyatv.dev/) for Apple TV.
 
 ## 1. Camera models
 
+> What a camera *can* do is here. What the app's delivery of it **cannot** do
+> — bandwidth per viewer, the concurrent-viewer ceiling, the unexplained
+> 4 fps — is in `docs/scaling-limits.md`.
+
 The camera connected today is a **Logitech C270 USB webcam** at index 0.
 **Working, verified 2026-09-11**: `kona camera-doctor` read mean 86.96,
 max 255, sd 58.54 through the DirectShow backend, and `kona camera-test`
