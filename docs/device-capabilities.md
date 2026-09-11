@@ -415,6 +415,13 @@ Whatever the precise cause, the structural point holds and is what the fix
 rests on: a connection held open for minutes is fragile on a phone, and
 short polled requests are not.
 
+**Resolved the same evening, pending the phone.** The cause was the
+server, not Safari: abandoned streams saturated the pool their waits ran
+on, and a server restart cured it every time. The Camera tab now polls
+`/snapshot.jpg` one frame at a time and holds no stream. The build,
+the Chromium verification and the iPhone acceptance list are in
+`docs/camera-black-screen-handoff.md`.
+
 This matters more than it sounds. Every camera fix before this was verified
 in desktop Chrome, a different engine, which is why several rounds of
 "verified" work left the phone black. **The Camera tab has, as far as we can

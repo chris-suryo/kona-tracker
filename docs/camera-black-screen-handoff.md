@@ -103,7 +103,81 @@ cross-document view transitions (`@view-transition { navigation: auto; }`)
 hold the outgoing document during the animation. Both delay teardown, and
 both are absent on desktop Chrome.
 
-## The plan, awaiting approval
+## Bug 2, fixed: built and verified in Chromium, not yet on the phone
+
+Branch `claude/camera-snapshot-polling`, four commits, on top of `main`.
+**Nothing here has run on an iPhone.** The acceptance list at the end of
+this section is Chris's, and until it passes the honest status is "built".
+
+**What changed.** The Camera tab no longer points an `<img>` at
+`/stream.mjpg`. `camera.js` fetches `/snapshot.jpg?after=<seq>` one
+request at a time; the server holds each request until a frame newer than
+`seq` exists (at most `KONA_STALE_SECONDS`), so it is one request per
+frame and self-pacing, and nothing outlives a request. Each response
+carries `X-Kona-State`, `X-Kona-Seq`, `X-Kona-Error` and
+`X-Kona-Frame-Age`, so the page reads the truth about a frame from the
+same response as its pixels and no longer polls `/status.json` at all. A
+frame is assigned to the `<img>` as an object URL only when the server
+called it live; the placeholder is never shown as a picture. The CSP
+`img-src` gains `blob:` for that, and `docs/chatgpt-handoff.md` now lists
+it among the constraints that fail silently.
+
+The MJPEG endpoint stays for curl and a desktop but is fenced: its waits
+run on a hub-owned pool of `MAX_STREAMS` threads instead of asyncio's
+shared default executor, a fifth concurrent stream gets a 503 naming
+`/snapshot.jpg`, and `/status.json` reports `streams` and `viewers`.
+
+**Three things a review caught before they shipped**, each with a test
+that fails without it:
+
+- Seq restarts at 0 with the process. A phone open across a `kona serve`
+  restart would send `after=4000`, wait the whole timeout, and receive a
+  placeholder labelled live, forever. `after_seq` is clamped to the current
+  seq. Verified in Chromium: server killed under the page, OFFLINE, server
+  back, LIVE again 821 ms later with no reload.
+- The passcode gate answers a bodyless 401 for `/snapshot`, never a
+  redirect, so cookie expiry needed its own branch to reach the login page
+  rather than OFFLINE forever.
+- Object URLs are revoked when the next frame is assigned, never on the
+  `load` event, because a frame replaced before it decodes never fires
+  `load` and a load-keyed revoke leaks on a phone left running overnight.
+
+**Verified in the sandbox**, real Chromium at phone width against
+`kona serve --fake-camera` (screenshots `camera-polling-*.png`):
+
+| check | result |
+|---|---|
+| picture appears, badge LIVE, `<img>` src is `blob:` | yes |
+| 3 s of polling | 45 requests, `after=` 0,1,2,3… consecutive, 1 in flight, 0 slow, 0 failed |
+| server killed under the page | OFFLINE within a second |
+| server restarted | LIVE 821 ms later, no reload |
+| page hidden / shown | PAUSED / LIVE |
+| CSP violations in the console | 0 |
+
+`uv run pytest -q` 274 passed. `node --test tests/browser_runtime.test.cjs`
+13 passed (CI does not run it). Ruff clean.
+
+**Coupling to know about:** the client's abort deadline is 10 s and must
+exceed `KONA_STALE_SECONDS` (default 3). Setting that to 10 or more would
+make every poll on a quiet camera look like a failure. Documented in the
+`camera.js` header rather than made a setting nobody has changed.
+
+### Acceptance on the iPhone, Safari home-screen app AND Chrome
+
+Server on the PC, watcher optional. "Fixed" means all eight without
+touching the server.
+
+1. Cold open: picture within about 2 s, "Connecting…" during the wait.
+2. Camera → Activity → Camera, five times. Picture every time.
+3. Lock the phone 30 s, unlock. Picture returns.
+4. Force-close the app, reopen. Picture returns.
+5. Restart `kona serve` with the page open. Picture returns by itself.
+6. Ten-minute soak. Still live; `/status.json` shows `streams: 0` and
+   `viewers` bouncing 0/1; nothing pending in Web Inspector.
+7. Phone and a desktop browser at once. Both live; `opens` unchanged.
+8. Tunnel on cellular, Wi-Fi off. Picture, lower rate, never stuck.
+
+## The plan, as built
 
 Three parts, in order of what actually gets a reliable picture on the phone.
 
@@ -133,22 +207,13 @@ previous picture decodes — and, eventually, one path rather than two for a
 two-person household. The frame-rate section below removes the objection
 that polling loses smoothness: this camera delivers 4 fps either way.
 
-### Where it was stopped, 2026-09-11
+### Where it stood before the build, 2026-09-11 afternoon
 
-Nothing above is built. The state Chris is leaving it in, deliberately:
-
-- **The app works on the phone in Chrome.** That is a real workaround, not a
-  compromise, and it is what to use meanwhile.
-- **Safari hangs after a tab switch**, recovers on a wait, a server restart,
-  or a detour through another browser.
-- **The home-screen icon is stuck with Safari.** iOS only lets Safari
-  install a web app to the home screen, so the workaround and the
-  home-screen shortcut are mutually exclusive until this is fixed. Worth
-  knowing before wondering why the icon still misbehaves.
-
-This is an honest stopping point, not a finished one. The app is usable
-every day via Chrome; the fix is specified and waiting for a session with a
-browser and a phone.
+Kept as the record of the decision. At this point nothing was built and
+Chris chose to stop: the app worked on the phone in Chrome, Safari hung
+after a tab switch, and the home-screen icon was stuck with Safari because
+iOS lets no other engine install one. The build above followed the same
+evening, after the plan was reviewed and approved.
 
 ## The frame rate ceiling: measured, and left alone
 
