@@ -171,20 +171,53 @@ cloudflared tunnel run kona
 whether `cloudflared service install` picks up a per-user config from
 `%USERPROFILE%\.cloudflared\` or wants it elsewhere. Check the banner output.
 
-### 3b. Keep the PC awake
+### 3b. Keep the PC awake, without paying for it around the clock
 
-**PowerShell as Administrator:**
+The old advice here was `powercfg /change standby-timeout-ac 0`: never
+sleep, ever. That works and it is the wrong tool. It is a setting you forget
+you made, and an idle desktop left awake all year is real money.
+
+Rough figures. Rates and machines vary, so treat these as the shape of the
+problem rather than your bill; measure with a plug meter if you want the
+real number. Assumes electricity at 17 cents per kWh and the screen asleep.
+
+| Host, awake all year | Watts, idle | Per year | Per month |
+|---|---|---|---|
+| Desktop PC | 70 | 613 kWh, about $104 | about $8.70 |
+| Laptop, lid closed | 20 | 175 kWh, about $30 | about $2.50 |
+| Raspberry Pi 5 with the webcam | 5 | 44 kWh, about $7 | under $1 |
+
+So the Pi is not just tidier, it is roughly a tenth the running cost of the
+desktop. That is the argument for moving once it is unboxed.
+
+**Until then, do not switch sleep off.** Set `KONA_KEEP_AWAKE=true` in
+`.env` instead. The app then asks Windows to hold off sleep *while it is
+running*, and releases the hold the moment it stops, so:
+
+- Sleep stays enabled in your power plan. Nothing is permanently changed.
+- The machine is only awake for the hours you are actually serving Kona.
+  Stop the app when you are home and the PC sleeps like it always did.
+- The **screen still sleeps**, which is most of the idle draw. The app never
+  asks for the display.
+- If the request is refused, or you are not on Windows, `kona serve` says so
+  on startup rather than leaving you believing the page will be reachable.
+
+The one thing to still set by hand is the lid, if this ends up on a laptop,
+because closing it sleeps the machine whatever a running program asks for:
 
 ```powershell
-powercfg /change standby-timeout-ac 0     # never sleep on mains power
-powercfg /change hibernate-timeout-ac 0   # never hibernate
-powercfg /change monitor-timeout-ac 10    # screen off after 10 min is fine
+# PowerShell as Administrator. 0 = do nothing when the lid closes, on mains.
+powercfg /setacvalueindex SCHEME_CURRENT SUB_BUTTONS LIDACTION 0
+powercfg /setactive SCHEME_CURRENT
 ```
 
-The screen turning off is harmless. Sleep is not: a sleeping PC drops the
-tunnel and the camera. Verify with `powercfg /query` rather than trusting
-that the setting took — Windows power plans have a habit of being overridden
-by the active plan.
+Verify with `powercfg /query` rather than trusting that it took: Windows
+power plans have a habit of being overridden by the active plan.
+
+**Unverified:** none of this has been run on Chris's PC. The keep-awake code
+path is Windows-only and the sandbox that wrote it is Linux, so the tests
+cover the refusal path, not the success path. First person to run it owns
+making this true.
 
 ### 3c. Start the app on boot
 
@@ -192,7 +225,7 @@ by the active plan.
 
 The obvious approach — a Scheduled Task running as `SYSTEM` at startup — is
 likely to break the camera. Windows gates camera access behind per-user
-privacy settings (the same Settings ▸ Camera switch that already stole the
+privacy settings (the same Settings > Camera switch that already stole the
 webcam from us once), and a service-account session is not a desktop
 session. A task that runs, reports success, and serves a dead camera tab is
 the worst possible outcome.
@@ -205,17 +238,41 @@ user, and run the task **at log on as that user**, not at startup as SYSTEM.
 $action  = New-ScheduledTaskAction -Execute "$env:USERPROFILE\.local\bin\uv.exe" `
            -Argument "run kona serve" -WorkingDirectory "C:\Users\harim\kona-tracker"
 $trigger = New-ScheduledTaskTrigger -AtLogOn
-Register-ScheduledTask -TaskName "kona-tracker" -Action $action -Trigger $trigger
+$settings = New-ScheduledTaskSettingsSet `
+           -ExecutionTimeLimit ([TimeSpan]::Zero) `
+           -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) `
+           -MultipleInstances IgnoreNew `
+           -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
+           -StartWhenAvailable
+Register-ScheduledTask -TaskName "kona-tracker" -Action $action -Trigger $trigger `
+           -Settings $settings
 ```
 
+Three of those settings are not decoration, and leaving any of them out
+produces a task that looks fine and is not:
+
+1. **`-ExecutionTimeLimit ([TimeSpan]::Zero)`.** Scheduled tasks default to
+   being killed after three days. Without this the app dies every 72 hours
+   and you would be hunting a phantom.
+2. **`-RestartCount` / `-RestartInterval`.** Otherwise a crash is permanent
+   until the next log-on. Three restarts a minute apart is a speed bump, not
+   a supervisor; 3d is what tells you it ran out of retries.
+3. **`-AllowStartIfOnBatteries -DontStopIfGoingOnBatteries`.** On a laptop,
+   the default is to refuse to start and to stop when unplugged.
+
 Then **reboot and check the camera tab from your phone**, not just that the
-process is running. Confirming the task started is not confirming the camera
+task started. Confirming the task started is not confirming the camera
 works. If the tab shows CHECK CAMERA after a reboot but works when you run
 `uv run kona serve` by hand, the log-on-session theory is wrong and it needs
 rethinking — say so rather than papering over it.
 
 `cloudflared` gets the same treatment, or `cloudflared service install` if
 the service account turns out to be fine for it (it has no camera to lose).
+
+**Unverified:** every command in this section. The settings names come from
+`New-ScheduledTaskSettingsSet`'s documented parameters, not from a run on a
+real machine. If PowerShell rejects `-RestartCount`, drop that pair and rely
+on 3d to tell you when it is down.
 
 ### 3d. Something has to watch it (built 2026-09-11, not yet pointed at a tunnel)
 

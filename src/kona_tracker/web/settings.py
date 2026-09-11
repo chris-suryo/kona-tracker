@@ -52,6 +52,10 @@ class Settings:
     secure_cookies: bool = False
     #: Directory for a rotating `kona.log`; blank = console only.
     log_dir: str = ""
+    #: Hold off Windows sleep while serving, instead of disabling sleep in the
+    #: power plan for good. Off by default: when this machine sleeps is the
+    #: owner's business, not a side effect of starting a web server.
+    keep_awake: bool = False
     # Same two keys the probe already uses, so `.env` stays one file with one
     # Fi login in it rather than two that can drift apart.
     fi_email: str = ""
@@ -155,6 +159,7 @@ def load_settings(env_file: Path | None = Path(".env"), fake_camera: bool = Fals
     )
     trusted_proxy_ips = tuple(ip for ip in trusted_proxy_ips if ip) or ("127.0.0.1", "::1")
     secure_cookies = parse_bool(get("KONA_SECURE_COOKIES"), "KONA_SECURE_COOKIES")
+    keep_awake = parse_bool(get("KONA_KEEP_AWAKE"), "KONA_KEEP_AWAKE")
     if trusted_proxy_header and not secure_cookies:
         # A proxy header only makes sense behind a tunnel, and a tunnel is
         # HTTPS; a session cookie that can also travel over plain http is
@@ -194,4 +199,5 @@ def load_settings(env_file: Path | None = Path(".env"), fake_camera: bool = Fals
         trusted_proxy_ips=trusted_proxy_ips,
         secure_cookies=secure_cookies,
         log_dir=get("KONA_LOG_DIR").strip(),
+        keep_awake=keep_awake,
     )

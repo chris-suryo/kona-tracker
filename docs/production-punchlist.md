@@ -119,14 +119,14 @@ explicit "we do not know" panel rather than a blank box -- the same
 discipline as the camera's NO SIGNAL. Never render a stale position styled
 like a live one.
 
-## B. Turn off pinch-to-zoom — **DONE 2026-09-11, the narrow version**
+## B. Turn off pinch-to-zoom — **DONE 2026-09-11, page-wide, as asked**
 
-> Built: `touch-action: manipulation` on every tappable control (tabs,
-> avatar, shutter, pills, settings link, login button, sign-out), so a tap
-> never double-tap-zooms. Pinch itself is untouched, and the map keeps its
-> own pinch. **Chris:** if the complaint is genuinely page-wide pinch, say
-> so -- that is a WCAG 1.4.4 trade only you can make, and note that iOS
-> ignores `user-scalable=no` anyway, so it would need a JS gesture block.
+> First built narrow: `touch-action: manipulation` on every tappable
+> control, so a tap never double-tap-zooms. Chris then confirmed he meant
+> zoom gone everywhere, after being told it is a WCAG 1.4.4 trade, so the
+> viewport meta and a gesture blocker in `app.js` now stop page zoom on
+> Android and iOS both. The map keeps its pinch. The decision, its cost and
+> the two-edit revert are recorded in `docs/device-capabilities.md` §2b.
 
 
 **Chris:** "I want to turn off the pinch-to-zoom."

@@ -329,14 +329,29 @@ def test_motion_is_opt_in_and_respects_the_accessibility_setting():
     assert ".pull, .pull span, .pull.busy span { transition: none; animation: none; }" in reduce
 
 
-def test_taps_do_not_zoom_but_pinch_and_the_map_are_left_alone():
-    """Chris asked to "turn off pinch-to-zoom". `user-scalable=no` is refused:
-    iOS has ignored it since iOS 10 and it fails WCAG 1.4.4. What actually
-    jars is double-tap zoom on a control, and `touch-action: manipulation`
-    on the controls is the fix. Nothing may reach the map, where pinch is
-    how you zoom it."""
+def test_zoom_is_off_page_wide_but_the_map_still_pinches():
+    """Chris asked for zoom off everywhere and reaffirmed it after being told
+    the cost: this is a WCAG 1.4.4 failure, made deliberately, on his own
+    two-reader app. Pinned here so it can never look like an accident.
+
+    It takes both halves. Chrome and Android honour the viewport meta; iOS
+    Safari has ignored `user-scalable` since iOS 10 and needs `gesture*` and
+    multi-touch `touchmove` cancelled instead. The map is exempt in both,
+    because Leaflet does its own pinch and that must keep working."""
     from kona_tracker.web.app import HERE
 
+    base = (HERE / "templates" / "base.html").read_text(encoding="utf-8")
+    assert "user-scalable=no" in base and "maximum-scale=1" in base
+
+    js = (HERE / "static" / "app.js").read_text(encoding="utf-8")
+    for event in ("gesturestart", "gesturechange", "gestureend"):
+        assert event in js, event
+    assert "e.touches.length > 1" in js, "a two-finger drag is not a gesture event"
+    assert js.count("{ passive: false }") >= 2, "preventDefault needs a non-passive listener"
+    assert js.count("overTheMap(e.target)") == 2, "both paths must exempt the map"
+    assert "WCAG 1.4.4" in js, "the trade stays written down where it is made"
+
+    # Double-tap zoom on a control was the other half of the complaint.
     css = (HERE / "static" / "app.css").read_text(encoding="utf-8")
     assert (
         ".seg a, .avatar, .shutter, .pill, .settings-link, .login button, .logout "
@@ -346,8 +361,48 @@ def test_taps_do_not_zoom_but_pinch_and_the_map_are_left_alone():
     for line in css.splitlines():
         if "touch-action" in line:
             assert "kona-map" not in line and "leaflet" not in line and ".map" not in line
-    base = (HERE / "templates" / "base.html").read_text(encoding="utf-8")
-    assert "user-scalable" not in base and "maximum-scale" not in base
+
+
+def test_the_map_keeps_its_own_touch_action_from_leaflet():
+    """The exemption above is only real if Leaflet still claims the gesture."""
+    from kona_tracker.web.app import HERE
+
+    leaflet = (HERE / "static" / "leaflet" / "leaflet.css").read_text(encoding="utf-8")
+    # Leaflet stamps these classes on the container when it is handling touch,
+    # and takes `touch-action: none` so the browser hands it every gesture.
+    # That is what makes pinching the map move the map, not the page.
+    block = leaflet.split(".leaflet-container.leaflet-touch-drag.leaflet-touch-zoom {")[1]
+    assert "touch-action: none" in block.split("}")[0]
+
+
+def test_keep_awake_is_opt_in_and_never_pretends_it_worked(tmp_path, capsys):
+    """A keep-awake that silently failed is worse than none: it promises the
+    page will be reachable while nobody is at the PC, and then is not. This
+    sandbox is not Windows, so the refusal path is the one under test."""
+    from kona_tracker.web.awake import allow_sleep, keep_awake
+
+    assert keep_awake() is False, "not Windows: say so rather than pretending"
+    assert allow_sleep() is False
+
+    settings = Settings(passcode="4242", secret="s", camera_source="fake")
+    assert settings.keep_awake is False, "off unless asked"
+    app = create_app(settings, source_factory=lambda: FakeSource(fps=100))
+    with TestClient(app) as c:
+        assert c.get("/healthz").status_code == 200
+        assert app.state.keeping_awake is False
+    app.state.hub.stop()
+    assert "KONA_KEEP_AWAKE" not in capsys.readouterr().err
+
+    app = create_app(
+        Settings(passcode="4242", secret="s", camera_source="fake", keep_awake=True),
+        source_factory=lambda: FakeSource(fps=100),
+    )
+    with TestClient(app) as c:
+        assert c.get("/healthz").status_code == 200
+        assert app.state.keeping_awake is False, "asked for, not granted, off Windows"
+    app.state.hub.stop()
+    warning = capsys.readouterr().err
+    assert "KONA_KEEP_AWAKE is set" in warning and "may sleep" in warning
 
 
 def test_leaflet_is_vendored_and_is_the_exact_release_the_page_used_to_pin():

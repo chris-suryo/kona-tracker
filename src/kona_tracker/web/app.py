@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
@@ -23,6 +24,7 @@ from kona_tracker.camera.hub import BOUNDARY, CameraHub
 from kona_tracker.camera.source import FakeSource, FrameSource, OpenCVSource, RtspSource
 from kona_tracker.fi.service import FiService
 from kona_tracker.web.auth import COOKIE_NAME, Lockout, PasscodeAuth, client_key
+from kona_tracker.web.awake import allow_sleep, keep_awake
 from kona_tracker.web.logs import attach_file_logging, detach_file_logging
 from kona_tracker.web.settings import Settings
 from kona_tracker.web.views import (
@@ -140,10 +142,25 @@ def create_app(
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         log_handler = attach_file_logging(Path(settings.log_dir)) if settings.log_dir else None
+        # The hold belongs to this thread and dies with the process, which is
+        # the point: stopping the app gives the machine its power plan back.
+        holding = keep_awake() if settings.keep_awake else False
+        app.state.keeping_awake = holding
+        if settings.keep_awake and not holding:
+            # Never let a failed hold pass for a working one: the whole reason
+            # to ask is so the page is reachable while nobody is at the PC.
+            print(
+                "KONA_KEEP_AWAKE is set but this machine would not hold sleep off "
+                "(not Windows, or the request was refused). The app will still serve, "
+                "but the PC may sleep and take the camera and tunnel with it.",
+                file=sys.stderr,
+            )
         try:
             yield
         finally:
             hub.stop()  # release the webcam on shutdown
+            if holding:
+                allow_sleep()
             if log_handler is not None:
                 detach_file_logging(log_handler)
 

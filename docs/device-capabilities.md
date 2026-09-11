@@ -328,6 +328,39 @@ not to the page:
 The probe fetches these; the next `summary.md` says which are real. Until
 then they stay out of the UI.
 
+## 2b. Zoom is off on purpose
+
+Chris asked for zoom gone page-wide, was told what it costs, and said it
+again: *"On an actual app, you don't do that."* So this is a decision, not
+an oversight, and it is written here so nobody quietly "fixes" it later.
+
+**What it costs.** This is a WCAG 1.4.4 failure. Anyone who enlarges text to
+read a screen cannot do it here. The app has two readers and its owner chose
+that trade for his own app; it is not a pattern to carry to anything with a
+wider audience.
+
+**What it takes, because one half is not enough.** Chrome and Android honour
+`maximum-scale=1, user-scalable=no` in the viewport meta. iOS Safari has
+ignored `user-scalable` since iOS 10, so `app.js` also cancels Safari's own
+`gesturestart` / `gesturechange` / `gestureend`, and cancels any `touchmove`
+carrying more than one finger, since a two-finger drag is not a gesture
+event. Both listeners must be non-passive or `preventDefault` does nothing.
+
+**The map is exempt, deliberately.** Leaflet takes `touch-action: none` on
+`.leaflet-container.leaflet-touch-drag.leaflet-touch-zoom` and does its own
+pinch, so pinching the map moves the map. `app.js` skips anything inside
+`.leaflet-container`; without that exemption the map would freeze at one
+zoom level and the location tab would be much less useful.
+
+**Verified in Chromium with iPhone emulation, 2026-09-11:** a synthetic
+two-finger `touchmove` and a `gesturestart` are both cancelled over the page
+and both left alone over the map, and the one-finger pull-to-refresh still
+fires. Tests pin all of it.
+
+**To undo it**, should Chris ever change his mind: drop `maximum-scale=1,
+user-scalable=no` from `base.html` and delete the last block of `app.js`.
+Two edits, nothing else depends on it.
+
 ## 3. Apple TV and general home automation
 
 **Technically possible.** pyatv is mature, covers power, remote navigation,

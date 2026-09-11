@@ -119,3 +119,15 @@ def test_log_dir_is_optional(tmp_path, monkeypatch):
     assert load_settings(tmp_path / "none.env", fake_camera=True).log_dir == ""
     monkeypatch.setenv("KONA_LOG_DIR", str(tmp_path / "logs"))
     assert load_settings(tmp_path / "none.env", fake_camera=True).log_dir == str(tmp_path / "logs")
+
+
+def test_keep_awake_is_off_unless_asked(tmp_path, monkeypatch):
+    monkeypatch.delenv("KONA_KEEP_AWAKE", raising=False)
+    monkeypatch.setenv("KONA_PASSCODE", "123456")
+    monkeypatch.setenv("KONA_SECRET", "s")
+    assert load_settings(tmp_path / "none.env", fake_camera=True).keep_awake is False
+    monkeypatch.setenv("KONA_KEEP_AWAKE", "true")
+    assert load_settings(tmp_path / "none.env", fake_camera=True).keep_awake is True
+    monkeypatch.setenv("KONA_KEEP_AWAKE", "sometimes")
+    with pytest.raises(SettingsError, match="KONA_KEEP_AWAKE"):
+        load_settings(tmp_path / "none.env", fake_camera=True)

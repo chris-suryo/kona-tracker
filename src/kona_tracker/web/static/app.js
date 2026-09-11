@@ -124,3 +124,35 @@
   });
   window.KonaRefresh = refresh;
 })();
+
+// Page zoom off, everywhere except the map.
+//
+// Chris asked for this directly and reaffirmed it after being told the cost:
+// it is a WCAG 1.4.4 failure, and anyone who needs to enlarge text to read
+// this page loses that. It is his app and his two readers. Recorded as a
+// decision in docs/device-capabilities.md, with the one-line revert, because
+// a deliberate accessibility trade must never look like an oversight.
+//
+// The viewport meta in base.html covers Chrome and Android. iOS Safari has
+// ignored user-scalable since iOS 10 and needs these instead: `gesture*` are
+// Safari's own pinch events, and a two-finger drag arrives as a touchmove
+// that no meta tag stops. Both listeners must be non-passive to be able to
+// preventDefault at all.
+//
+// The map is the exception and stays pinchable: Leaflet claims `touch-action`
+// on .leaflet-container and does its own zooming, so pinching the map moves
+// the map instead of the page. Excluding it here is what keeps that working.
+(function () {
+  function overTheMap(target) {
+    return !!(target && target.closest && target.closest('.leaflet-container'));
+  }
+  ['gesturestart', 'gesturechange', 'gestureend'].forEach(function (name) {
+    document.addEventListener(name, function (e) {
+      if (!overTheMap(e.target)) { e.preventDefault(); }
+    }, { passive: false });
+  });
+  document.addEventListener('touchmove', function (e) {
+    // One finger is a scroll, or the pull-to-refresh above. Two is a pinch.
+    if (e.touches.length > 1 && !overTheMap(e.target)) { e.preventDefault(); }
+  }, { passive: false });
+})();
