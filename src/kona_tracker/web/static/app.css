@@ -126,6 +126,10 @@ body.activity-page { overscroll-behavior-y: contain; }
 .goal-ring circle { fill: none; stroke-width: 18; }
 .goal-ring .track { stroke: var(--t1); }
 .goal-ring .value { stroke: var(--t5); stroke-linecap: round; animation: goal-fill 1s cubic-bezier(.22,1,.36,1); }
+/* Past the goal: a second lap over the first, in the next ramp step so the
+   surplus reads as a different green rather than a ring that stopped at
+   "done". It starts sweeping when the first lap has finished. */
+.goal-ring .over { stroke: var(--t3); animation-delay: .9s; animation-fill-mode: both; }
 .goal-ring strong { font-size: 19px; letter-spacing: -.04em; font-variant-numeric: tabular-nums; }
 @keyframes goal-fill { from { stroke-dashoffset: 100; } }
 
@@ -139,6 +143,7 @@ body.activity-page { overscroll-behavior-y: contain; }
 .week-row { display: flex; justify-content: space-between; align-items: end; padding: 20px 0; border-bottom: 1px solid var(--line); color: var(--ink2); font-size: 12px; }
 .week-row > span:first-child { display: flex; flex-direction: column; gap: 8px; }
 .week-row strong { color: var(--ink); font-size: 30px; }
+.week-row strong.phrase { font-size: 17px; letter-spacing: -.02em; }
 .freshness { padding-top: 16px; }
 .dimmed { opacity: .55; }
 .note { font-size: 13px; color: var(--ink2); line-height: 1.45; margin-top: 18px; }

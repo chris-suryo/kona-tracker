@@ -13,7 +13,14 @@ from datetime import UTC, date, datetime, timedelta, tzinfo
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from kona_tracker.fi.parse import ActivityStats, CollarStatus, LocationPoint, PetProfile, RestWindow
+from kona_tracker.fi.parse import (
+    ActivityStats,
+    CollarStatus,
+    LocationPoint,
+    PetProfile,
+    RestWindow,
+    hours_from_duration,
+)
 from kona_tracker.fi.service import FiSnapshot
 
 # The dial's visible track is a 270 degree arc; 603 is its length in user
@@ -62,8 +69,58 @@ def _clock(moment: datetime, zone: tzinfo | None) -> datetime:
     return moment.astimezone(zone) if zone else moment.astimezone()
 
 
-def _hours(value: float | None) -> str | None:
-    return f"{value:.1f}".rstrip("0").rstrip(".") if value is not None else None
+def duration_parts(seconds: int | float | None) -> list[tuple[str, str]] | None:
+    """`30600` -> `[("8", "h"), ("30", "m")]`; `1290` -> `[("22", "m")]`.
+
+    Pairs rather than a string so the template keeps its display-numeral
+    look: a big tabular figure with a small unit beside it. Zero is a real
+    reading (`[("0", "m")]`, "no naps yet"), and only a figure that seconds
+    cannot explain comes back as None, the same plausibility rule the hours
+    used to go through, so a unit change still shows as raw rather than as
+    a confident wrong number.
+    """
+    if seconds is None:
+        return None
+    if seconds != 0 and hours_from_duration(seconds) is None:
+        return None
+    minutes = int(round(float(seconds) / 60.0))
+    hours, minutes = divmod(minutes, 60)
+    parts: list[tuple[str, str]] = []
+    if hours:
+        parts.append((str(hours), "h"))
+    if minutes or not hours:
+        parts.append((str(minutes), "m"))
+    return parts
+
+
+def step_ring(steps: int | float | None, goal: int | float | None) -> dict[str, Any]:
+    """The goal ring's three numbers, none of them capped at "exactly done".
+
+    `percent` is the true figure for the label; `arc` is the first lap,
+    which stops at 100; `overflow` is the surplus drawn as a second lap on
+    top of the first, also capped at 100. A day at 150% shows a full ring
+    with half of a brighter one over it. A third lap would only paint over
+    the second and say nothing new, hence the second cap. No goal, or no
+    steps, is an empty ring rather than a division by zero in the template.
+    """
+    if not steps or not goal or goal <= 0:
+        return {"percent": 0, "arc": 0.0, "overflow": 0.0}
+    percent = float(steps) / float(goal) * 100.0
+    return {
+        "percent": int(round(percent)),
+        "arc": round(min(percent, 100.0), 1),
+        "overflow": round(min(max(percent - 100.0, 0.0), 100.0), 1),
+    }
+
+
+def _since(moment: datetime | None, now: datetime | None, zone: tzinfo | None) -> str | None:
+    """`10:42`, or `9 Sep 22:10` once it is no longer today. Kona's clock."""
+    if moment is None or now is None:
+        return None
+    local = _clock(moment, zone)
+    if local.date() == now.date():
+        return local.strftime("%H:%M")
+    return f"{_day(local)} {local:%H:%M}"
 
 
 def _count(value: int | float | None) -> str | None:
@@ -160,6 +217,9 @@ def activity_context(snapshot: FiSnapshot | None, configured: bool) -> dict[str,
         "on_base": status.on_base if status else None,
         "signal": _count(status.signal_percent) if status else None,
         "activity": status.activity if status else None,
+        # When the current rest or walk began, so "Resting" can say for how
+        # long. Fi already sends it; the page used to throw it away.
+        "activity_since": (_since(status.activity_since, fetched_local, zone) if status else None),
         "escaped": status.escaped if status else None,
         "lost": status.lost if status else None,
         # Metres, walk-only, verified 2026-09-10: a 285.8 m OngoingWalk
@@ -191,12 +251,22 @@ def activity_context(snapshot: FiSnapshot | None, configured: bool) -> dict[str,
             else None
         ),
         "historical_totals_hidden": bool(snapshot and snapshot.historical_totals_hidden),
+        # The day the weekly total stops being able to include the previous
+        # collar: `data_start` plus the seven days FiService withholds. A date
+        # to act on, rather than a sentence about our own data hygiene.
+        "week_available_label": (
+            _day(snapshot.data_start + timedelta(days=7))
+            if snapshot and snapshot.data_start and snapshot.historical_totals_hidden
+            else None
+        ),
         "tab": "activity",
         "configured": configured,
         "has_data": bool(snapshot and snapshot.has_data),
         "pet_name": (snapshot.pet_name if snapshot else "") or "Kona",
-        "sleep_hours": _hours(sleep_hours),
-        "nap_hours": _hours(snapshot.nap_hours if snapshot else None),
+        # `8h 30m` as (figure, unit) pairs. None when there is nothing to say
+        # or the figure is not credible as seconds; `sleep_raw` covers that.
+        "sleep_parts": duration_parts(window.sleep if window else None),
+        "nap_parts": duration_parts(today.nap if today else None),
         # The collar was paired today: there is a day in progress but no
         # completed night yet. Say so, rather than "no data".
         "night_pending": window is None and today is not None,
@@ -216,6 +286,9 @@ def activity_context(snapshot: FiSnapshot | None, configured: bool) -> dict[str,
         # Distance is deliberately not here: it came back 0 for a day with
         # 3,383 steps, so until it is understood it lives in the JSON only.
         "week_steps": _count(week.steps if week else None),
+        "ring": step_ring(
+            activity.steps if activity else None, activity.step_goal if activity else None
+        ),
         "dial_offset": dial_offset(sleep_hours),
         "dial_scale": f"{DIAL_SCALE_HOURS:.0f}",
         # Only stamped when there is something for it to date. "As of 18:48"
@@ -256,6 +329,7 @@ def preview_activity_context() -> dict[str, Any]:
             on_base=False,
             signal_percent=78,
             activity="walk",
+            activity_since=now - timedelta(minutes=14),
             walk_distance=420,
             area_name="Sample walk",
             positions=(

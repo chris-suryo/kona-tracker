@@ -129,8 +129,8 @@ def test_a_collar_paired_today_has_no_night_yet():
     last, today = split_windows(windows[:1], NOW)  # drop yesterday
     assert last is None and today is not None
     ctx = activity_context(FiSnapshot(fetched_at=NOW, today=today, activity=None), configured=True)
-    assert ctx["night_pending"] and ctx["sleep_hours"] is None
-    assert ctx["nap_hours"] == "0.4"
+    assert ctx["night_pending"] and ctx["sleep_parts"] is None
+    assert ctx["nap_parts"] == [("22", "m")], "1290 s is 22 minutes, not 0.4 of something"
 
 
 def test_split_windows_handles_naive_and_missing_timestamps():
@@ -333,14 +333,15 @@ def test_context_shows_raw_seconds_when_the_unit_is_not_credible():
         activity=snap.activity,
     )
     ctx = activity_context(broken, configured=True)
-    assert ctx["sleep_hours"] is None
+    assert ctx["sleep_parts"] is None
     assert ctx["sleep_raw"] == 30600 * 60 and ctx["unit_suspect"]
     assert ctx["dial_offset"] == TRACK  # nothing drawn we cannot justify
 
 
 def test_context_of_nothing_at_all_is_all_dashes():
     ctx = activity_context(None, configured=False)
-    assert ctx["sleep_hours"] is None and ctx["steps"] is None and ctx["as_of"] is None
+    assert ctx["sleep_parts"] is None and ctx["steps"] is None and ctx["as_of"] is None
+    assert ctx["ring"] == {"percent": 0, "arc": 0.0, "overflow": 0.0}
     assert ctx["has_data"] is False and ctx["dial_offset"] == TRACK
 
 
@@ -360,8 +361,9 @@ def web_client(fi_service=None, **kw) -> TestClient:
 def test_activity_page_renders_real_numbers():
     with web_client(service()) as c:
         body = c.get("/activity").text
-        assert "8.5" in body and "4,210" in body and "9,000" in body
-        assert "0.4" in body and "so far today" in body  # today's naps, not last night's
+        assert "8<small>h</small>30<small>m</small>" in body and "4,210" in body
+        assert "9,000" in body
+        assert "22<small>m</small>" in body and "so far today" in body  # today's naps
         assert "31,000" in body and "This week" in body  # replaced the distance tile
         assert "raw units" not in body
         assert PASSWORD not in body and EMAIL not in body
@@ -649,7 +651,8 @@ def test_preview_is_obviously_sample_data_and_never_changes_live_json():
         preview = c.get("/activity?preview=1").text
         live = c.get("/activity.json").json()
     assert "Sample preview" in preview and "not Kona's live collar data" in preview
-    assert "18,240" in preview and "8.2" in preview and 'id="kona-map"' in preview
+    assert "18,240" in preview and "8<small>h</small>12<small>m</small>" in preview
+    assert 'id="kona-map"' in preview
     assert live["steps"] == 4210, "preview mode must not enter Fi's cache or API"
 
 
