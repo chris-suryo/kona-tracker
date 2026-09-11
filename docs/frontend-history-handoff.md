@@ -135,6 +135,13 @@ charts and approved removing them from the overview.
 
 ## Approved simplification (current design)
 
+UI sign-off: Chris approved this overall direction. Final navigation labels
+are "View activity" beneath the steps goal and "View rest" beneath the
+rest summaries; the entire metric sections remain tappable in sample mode.
+Keep this layout stable during data integration. Seven-day sample views
+already exist; connecting real history is the next phase, not more homepage
+charts. No additional design questions remain for this session.
+
 Latest approved adjustment supersedes the ordering in the paragraph below:
 Steps first, naps/sleep second, Location third, then freshness. Restored a
 larger steps number/ring and more section spacing. Removed the separate

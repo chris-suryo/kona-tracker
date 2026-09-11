@@ -410,6 +410,10 @@ body.activity-page { overscroll-behavior-y: contain; }
 .activity-page .rest-grid { padding-top: 28px; padding-bottom: 28px; }
 .location-card .connection { padding-bottom: 12px; }
 .rest-grid:focus-within { outline: 2px solid var(--t4); outline-offset: 4px; }
+.activity-page .steps-hero { padding-bottom: 58px; }
+.activity-page .rest-grid { padding-bottom: 54px; }
+.activity-page .metric-open, .rest-open { align-items: flex-end; justify-content: flex-start;
+  padding-bottom: 20px; color: var(--t4); font-size: 12px; font-weight: 600; }
 
 @media (prefers-reduced-motion: reduce) {
   @view-transition { navigation: none; }

@@ -45,7 +45,7 @@
     <span class="eyebrow">Steps today</span>
     <span class="d hero-number {{ '' if steps else 'empty' }}">{{ steps or '&ndash;'|safe }}</span>
     <span class="hero-note">{% if step_goal %}of {{ step_goal }}{% else %}No goal available{% endif %}</span>
-    {% if preview %}<a class="metric-open" href="/preview/steps" aria-label="Open sample steps detail"><span aria-hidden="true">›</span></a>{% endif %}
+    {% if preview %}<a class="metric-open" href="/preview/steps" aria-label="Open sample steps detail"><span aria-hidden="true">View activity ›</span></a>{% endif %}
   </div>
   <div class="goal-ring" aria-label="{{ ring.percent }} percent of today's step goal">
     <svg viewBox="0 0 120 120" aria-hidden="true">
@@ -60,7 +60,7 @@
 
 
 <section class="rest-grid {{ 'dimmed' if stale else '' }}" aria-label="Rest">
-{% if preview %}<a class="rest-open" href="/preview/rest" aria-label="Open sample rest detail"><span aria-hidden="true">›</span></a>{% endif %}
+{% if preview %}<a class="rest-open" href="/preview/rest" aria-label="Open sample rest detail"><span aria-hidden="true">View rest ›</span></a>{% endif %}
   <div class="metric">
     <span class="eyebrow">Naps today</span>
     {% if nap_parts %}
