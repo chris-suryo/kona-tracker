@@ -331,12 +331,19 @@ My own read, ordered by what would actually bite first.
    access lines. *Original:* No logs worth reading after the fact. When Chris says "it was broken
    this morning", there is currently no way to find out what happened.
    Uvicorn's access log goes to a console window that closes.
-3. **The camera is one USB webcam in one room.** Already known, but worth
+3. **DONE 2026-09-11 (the remote-health half):** `/settings` now shows the
+   camera source, state, last frame age, reconnects and the last problem in
+   `camera-doctor`'s own words, from the same hub statistics. *Original:* The camera is one USB webcam in one room. Already known, but worth
    stating: the wedged-USB failure recurs, and nothing detects it remotely —
    `camera-doctor` must be run at the machine, which is exactly where Chris
    is not when he needs it. A "camera health" line on the settings page,
    reading the same statistics, would close that.
-4. **`frame_is_unusable` has never been tested in a dark room.** Threshold
+4. **CHANGED 2026-09-11, still owed the night test:** `frame_is_unusable`
+   now uses the noise rule `_classify` documents -- all-zero or flat (sd
+   below 1.0) is unusable; dark-but-noisy is a real, dark picture. The
+   wedged signature (mean 0.00 / sd 0.00) is measured; the dark room is
+   not, and one lights-off evening is still the verification. *Original:*
+   `frame_is_unusable` has never been tested in a dark room. Threshold
    `mean <= 0.25`. Every run so far was in a lit room. "CHECK CAMERA" when
    the truth is "the light is off at night" is precisely the confident-wrong
    output this project refuses — and night is when a sleeping dog is most

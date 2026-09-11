@@ -37,7 +37,10 @@ capabilities come from `KONA_CAMERA_MODEL`, and any value not in
 `USB` set.)
 
 The app detects repeated black frames and shows CHECK CAMERA instead of
-calling transport-only activity LIVE. It has no motors or presets, so the UI
+calling transport-only activity LIVE. Since 2026-09-11 "black" means all
+zero or flat (no sensor noise), so a genuinely dark room -- low mean, noise
+present -- is shown as the dark picture it is, not as a broken camera. The
+dark-room half of that rule is documented, not yet measured. It has no motors or presets, so the UI
 intentionally shows capture/share and no directional controls.
 
 Abilities are **data**, not assumptions in a template. `KONA_CAMERA_MODEL`

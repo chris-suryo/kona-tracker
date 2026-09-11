@@ -300,12 +300,24 @@ def test_the_fake_source_without_a_control_is_unchanged():
     assert frame_number(plain) == 1
 
 
-def test_nearly_black_pixels_are_not_a_usable_webcam_picture():
+def test_noise_not_brightness_separates_a_dead_camera_from_a_dark_room():
+    """A wedged USB device (measured: mean 0.00, sd 0.00) and a closed
+    shutter hand back identical pixels. A real sensor in a dark room has
+    read noise. "CHECK CAMERA" when the truth is "the light is off" is the
+    confident-wrong output this project refuses, and night is when a
+    sleeping dog is most worth looking at. The dark-room frame here is
+    synthetic; the real one is still owed a lights-off evening."""
     np = pytest.importorskip("numpy")
     from kona_tracker.camera.source import frame_is_unusable
 
     black = np.zeros((480, 640, 3), dtype=np.uint8)
-    black[0, 0, 0] = 240  # a hot pixel does not make the room visible
-    visible = np.full((480, 640, 3), 2, dtype=np.uint8)
+    assert frame_is_unusable(black), "all zero: wedged or covered"
+    black[0, 0, 0] = 240  # one hot pixel is not a picture either
     assert frame_is_unusable(black)
-    assert not frame_is_unusable(visible)
+    flat = np.full((480, 640, 3), 2, dtype=np.uint8)
+    assert frame_is_unusable(flat), "no sensor has zero noise"
+    rng = np.random.default_rng(1)
+    dark_room = rng.integers(0, 6, size=(480, 640, 3), dtype=np.uint8)  # mean ~2.5, sd ~1.7
+    assert not frame_is_unusable(dark_room), "dark but noisy is a real, dark picture"
+    lit = np.full((480, 640, 3), 90, dtype=np.uint8)
+    assert not frame_is_unusable(lit), "plainly lit frames skip the noise check"
