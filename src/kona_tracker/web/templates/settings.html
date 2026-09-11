@@ -2,10 +2,15 @@
 {% block title %}Kona · profile{% endblock %}
 {% block pageclass %}settings-page{% endblock %}
 {% block body %}
+{# No tab bar here: this page is reached from the avatar and is not a third
+   tab, so the toggle would show nothing selected. One way back, at the top,
+   where a thumb expects it. #}
+<nav class="subnav" aria-label="Back">
+  <a class="back" href="/activity">{% include "_chevron.svg" %}<span>Activity</span></a>
+</nav>
 <section class="profile-hero">
   <div class="profile-photo">K<img src="/avatar.jpg" alt="Kona" data-optional></div>
   <div>
-    <span class="eyebrow">Profile</span>
     <h1>{{ pet_name }}</h1>
     <p>{% if breed %}{{ breed }}{% endif %}{% if breed and age %}<span aria-hidden="true"> · </span>{% endif %}{% if age %}{{ age }}{% endif %}</p>
   </div>
@@ -19,7 +24,7 @@
 
 <section class="settings-group" aria-labelledby="camera-settings-title">
   <h2 id="camera-settings-title">Camera</h2>
-  <div class="settings-row"><span>Source</span><strong>{{ camera_label }}</strong></div>
+  <div class="settings-row"><span>Source</span><strong>{{ camera_description }}</strong></div>
   <div class="settings-row camera-status"><span>Status</span><strong>{% if camera.live %}<i class="status-dot" aria-hidden="true"></i>{% endif %}{{ camera.state }}</strong></div>
   {% if camera.last_frame %}<div class="settings-row"><span>Last frame</span><strong>{{ camera.last_frame }}</strong></div>{% endif %}
   {% if camera.problem %}<div class="settings-row camera-problem"><span>Last problem</span><p>{{ camera.problem }}</p></div>{% endif %}
@@ -30,12 +35,11 @@
   <h2 id="display-settings-title">Dashboard</h2>
   <a class="settings-link" href="/activity?preview=1">
     <span><strong>Preview a complete week</strong><small>Clearly labelled sample data; live data stays untouched.</small></span>
-    <span aria-hidden="true">›</span>
+    <span class="go" aria-hidden="true">{% include "_chevron.svg" %}</span>
   </a>
 </section>
 
 <div class="settings-actions">
-  <a class="pill" href="/activity">Back to Activity</a>
   <form method="post" action="/logout"><button class="logout" type="submit">Sign out on this phone</button></form>
 </div>
 {% endblock %}

@@ -2,7 +2,7 @@ from datetime import date
 
 import pytest
 
-from kona_tracker.web.settings import SettingsError, load_settings
+from kona_tracker.web.settings import Settings, SettingsError, load_settings
 
 
 def test_missing_passcode_is_a_clear_error(tmp_path, monkeypatch):
@@ -131,3 +131,24 @@ def test_keep_awake_is_off_unless_asked(tmp_path, monkeypatch):
     monkeypatch.setenv("KONA_KEEP_AWAKE", "sometimes")
     with pytest.raises(SettingsError, match="KONA_KEEP_AWAKE"):
         load_settings(tmp_path / "none.env", fake_camera=True)
+
+
+def test_the_profile_page_describes_the_camera_in_plain_words():
+    """ "usb index 0" is for the console. A phone gets a sentence, and the
+    RTSP sentence names the host and nothing that could hold a password."""
+    usb = Settings(passcode="p", secret="s")
+    assert usb.camera_label() == "usb index 0", "the console wording is unchanged"
+    assert usb.camera_description() == "Webcam on this computer"
+    second = Settings(passcode="p", secret="s", camera_index=1)
+    assert second.camera_description() == "Webcam on this computer, camera 1"
+    rtsp = Settings(
+        passcode="p",
+        secret="s",
+        camera_source="rtsp",
+        rtsp_url="rtsp://192.168.1.40:554/stream1",
+        rtsp_user="kona",
+        rtsp_password="hunter2",
+    )
+    assert rtsp.camera_description() == "Network camera at 192.168.1.40"
+    fake = Settings(passcode="p", secret="s", camera_source="fake")
+    assert fake.camera_description() == "Test pattern, no camera"

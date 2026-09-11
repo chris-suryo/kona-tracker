@@ -9,6 +9,7 @@ import sys
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from kona_tracker.camera.capabilities import Capabilities, for_model
 from kona_tracker.camera.redact import has_scheme, redact_url, split_credentials
@@ -86,6 +87,22 @@ class Settings:
         if self.camera_source == "rtsp":
             return f"rtsp {redact_url(self.rtsp_url)}"
         return f"usb index {self.camera_index}"
+
+    def camera_description(self) -> str:
+        """The camera in the owner's words, for the profile page.
+
+        `camera_label()` is developer language ("usb index 0") and belongs
+        in logs and the console. A phone screen gets a sentence. The RTSP
+        host is the only detail worth showing and never carries credentials:
+        `hostname` excludes userinfo, and the URL is stored bare anyway.
+        """
+        if self.camera_source == "fake":
+            return "Test pattern, no camera"
+        if self.camera_source == "rtsp":
+            host = urlsplit(self.rtsp_url).hostname
+            return f"Network camera at {host}" if host else "Network camera"
+        suffix = f", camera {self.camera_index}" if self.camera_index else ""
+        return f"Webcam on this computer{suffix}"
 
     def __repr__(self) -> str:  # never print secrets, even by accident
         return (

@@ -578,8 +578,25 @@ def test_settings_page_reports_camera_health_from_the_road(client):
     login(client)
     client.get("/snapshot.jpg")  # wakes the camera
     page = client.get("/settings").text
-    assert 'id="camera-settings-title"' in page and "usb index 0" in page
+    assert 'id="camera-settings-title"' in page and "Webcam on this computer" in page
     assert "Delivering frames" in page or "Opening the camera" in page
+
+
+def test_the_profile_page_is_a_destination_not_a_broken_tab(client):
+    """From Chris's screenshot, 2026-09-11: two avatars on one screen, a
+    "Profile" eyebrow over a huge "Kona", "Back to Activity" right under an
+    Activity tab, a tab bar with nothing selected, and "usb index 0". The
+    page is reached from the avatar and left by its own back link, so it
+    carries no header to duplicate and no tab to leave unselected."""
+    login(client)
+    page = client.get("/settings").text
+    assert 'class="hdr"' not in page and 'class="seg"' not in page
+    assert page.count('src="/avatar.jpg"') == 1
+    assert ">Profile<" not in page and "Back to Activity" not in page
+    assert 'class="back" href="/activity"' in page
+    assert "usb index" not in page and "\u203a" not in page
+    # The tabs are still the tabs everywhere else.
+    assert 'class="seg"' in client.get("/activity").text
 
 
 def test_camera_health_words_are_the_doctors_verdicts():

@@ -336,11 +336,15 @@ def create_app(
     def profile_settings(request: Request):
         snapshot = fi.snapshot() if fi else None
         context = activity_context(snapshot, configured=fi is not None)
-        context["tab"] = "settings"
+        # Not a tab. With `tab` set the header drew the Activity/Camera
+        # toggle with neither selected, which read as broken, plus a second
+        # avatar over the hero's. This page is reached from the avatar and
+        # left by its own back link, so it carries no header at all.
+        context["tab"] = None
         # The same statistics camera-doctor reads, so a wedged USB device
         # can be diagnosed from a phone instead of at the machine.
         context["camera"] = camera_health(hub.status())
-        context["camera_label"] = settings.camera_label()
+        context["camera_description"] = settings.camera_description()
         return templates.TemplateResponse(request, "settings.html", context)
 
     @app.get("/avatar.jpg")
