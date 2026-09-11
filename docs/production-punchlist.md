@@ -377,3 +377,42 @@ My own read, ordered by what would actually bite first.
    300s. If Fi is down or the password is wrong, it re-asks every five
    minutes forever. Not urgent; worth a bounded backoff before this runs
    unattended for weeks.
+8. **Two cameras in one app: Kona's, and the robot's.** Bookmarked
+   2026-09-11 at Chris's request -- wanted, not scheduled, and deliberately
+   not started.
+
+   **The idea.** A toggle in the Camera tab between the fixed camera
+   watching Kona and the camera on the TurboPi robot car. Two views, one
+   app, one login.
+
+   **Why it is less work than it sounds.** The app already treats the camera
+   source as swappable: `KONA_CAMERA_SOURCE` selects usb / rtsp / fake
+   through one interface (`web/app.py`'s `default_source_factory`,
+   `web/settings.py`). The RTSP path built for the eventual Tapo is the same
+   shape a networked robot camera needs, so the abstraction that matters
+   already exists and is already tested.
+
+   **Why it is still real work.** Today it is *one* source, one `CameraHub`,
+   one set of endpoints. A switcher needs a second hub instance, a second
+   settings namespace, either new endpoints or a source parameter on the
+   existing ones, and UI to drive it. Plan-first, per `CLAUDE.md`. Not a
+   tweak.
+
+   **The "offline" state is the common case, and that suits this app.** The
+   robot is battery-powered and only sometimes on the network, so a "robot
+   camera" tab will be dark more often than not. That is fine here: the app
+   already renders honest absence -- NO SIGNAL, CHECK CAMERA, a dash rather
+   than a guess -- instead of holding a stale frame. Nothing new is needed to
+   make "the robot is off" readable.
+
+   **Unverified, and it gates the whole item:** whether TurboPi exposes its
+   camera as a stream another host can read at all, or whether the camera is
+   held open by Hiwonder's own control software. One reader per camera device
+   is the running theme of this entire project -- it is why `kona camera-test`
+   must not run while `kona serve` does, and it cost most of two days. Nobody
+   has powered the robot on yet. Answer this before designing anything.
+
+   **Sequencing.** Do not touch this app until TurboPi drives and streams on
+   its own terms, using whatever Hiwonder ships. Manual, then proven, then
+   automated -- the trust ladder in `CLAUDE.md`. Building the integration
+   before the robot works would mean debugging two unknowns at once.
