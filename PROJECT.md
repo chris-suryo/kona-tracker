@@ -76,14 +76,19 @@ every item; `docs/scaling-limits.md` is the standing list of ceilings;
 
 *When Chris is back -- bookmarked 2026-09-11 evening, not yet run:*
 
-Four PRs are open and none is merged. Merge in this order, then pull.
+Six PRs are open and none is merged. Merge in this order, then pull.
 
 1. **#14** -- ChatGPT's UI pass reconciled onto current main. **Replaces #7**,
    which GitHub reports as unmergeable (`dirty`); close #7 without merging.
 2. **#13** -- daily rest history in the data layer (`rest_days` on the
-   snapshot). No UI yet.
-3. **#12** -- the Tailscale path and the Secure-cookie trap, in docs.
-4. Whatever this housekeeping PR is numbered -- this README and this note.
+   snapshot).
+3. **#17** -- the real `/rest` page drawn from that data, and "View rest"
+   pointing at it. Stacked on #14 and #13; it shrinks to two commits once
+   they land. Screenshots in `docs/screenshots/2026-09-11/rest-real-*.png`.
+4. **#12** -- the Tailscale path and the Secure-cookie trap, in docs.
+5. **#15** -- the README, this note, and the session artifact.
+6. **#16** -- probe round 7 (`stepFeed`/`restFeed` with a period,
+   `overnightRestSummary` with a date, `heatmap` with a range).
 
 Then, in PowerShell in the kona-tracker folder:
 
@@ -95,15 +100,20 @@ uv run kona serve
 ```
 
 Check `http://localhost:8000`: Activity should be the new Steps-first layout,
-the map still dark Stadia tiles, the camera still live. **The "View
-activity" / "View rest" links will not work yet** -- they still sit behind
-`{% if preview %}` and point at the sample routes; wiring real detail pages
-to #13's data is the next backend piece.
+the map still dark Stadia tiles, the camera still live, and **"View rest"
+should open a real page** -- one bar per day since the collar came online,
+averages over complete days only. **"View activity" still has no real
+destination**: there is no verified step history until round 7 answers.
 
-Also waiting on you: `probe-out\round7` once the round-7 probe lands
-(`stepFeed`/`restFeed` with a period, `overnightRestSummary` with a date,
-`heatmap` with a range), and the cellular data delta against the 37.7 GB
-baseline.
+Then run round 7 and paste `probe-out\round7\summary.md` back:
+
+```powershell
+uv run kona probe --out probe-out\round7
+```
+
+If `stepFeedPeriod` comes back ACCEPTED, steps get the same treatment rest
+just got. Also still open: the cellular data delta against the 37.7 GB
+baseline, and whether the home charger undervolts the Pi 5.
 
 *The camera on the phone: fixed, merged, and confirmed on 2026-09-11.*
 `docs/camera-black-screen-handoff.md` is the whole record. Two bugs. The
