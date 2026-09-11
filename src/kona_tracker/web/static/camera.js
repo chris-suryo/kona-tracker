@@ -9,6 +9,11 @@
       dot = document.getElementById('dot'), txt = document.getElementById('livetxt'), tries = 0;
   var pollTimer = null, retryTimer = null, pending = null, epoch = 0;
   var suspended = document.hidden, streamFailed = false, statusFailed = false;
+  // The most recent server verdict from /status.json. The <img> can decode
+  // its first frame between polls; when it does we reveal at once instead of
+  // waiting up to a full poll cycle, but only if the server has said 'live' —
+  // so a decoded NO-SIGNAL placeholder is never shown as a live picture.
+  var lastState = null;
   function reload() {
     if (suspended) { return; }
     clearTimeout(retryTimer); retryTimer = null;
@@ -16,7 +21,12 @@
     streamFailed = false;
     img.src = '/stream.mjpg?t=' + Date.now();
   }
-  img.addEventListener('load', function () { tries = 0; });
+  img.addEventListener('load', function () {
+    tries = 0;
+    // A frame just decoded. If the server already says live, reveal now
+    // rather than waiting for the next poll to notice the same thing.
+    if (lastState === 'live' && !streamFailed && img.naturalWidth > 0) set('on', 'LIVE', '');
+  });
   img.addEventListener('error', function () {
     if (suspended) { return; }
     streamFailed = true;
@@ -44,6 +54,7 @@
       if (!s || ['live', 'stale', 'connecting', 'disconnected', 'idle'].indexOf(s.state) < 0) {
         throw new Error('invalid status');
       }
+      lastState = s.state;  // let the img 'load' handler reveal between polls
       if (statusFailed) {
         statusFailed = false; reload();
         set('stale', 'CONNECTING', 'Reconnecting video…');

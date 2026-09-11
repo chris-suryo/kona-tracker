@@ -88,6 +88,35 @@ test('camera starts unverified, polls serially, and masks the picture on timeout
   assert.equal(x.nodes.livetxt.textContent, 'CONNECTING');
 });
 
+test('a decoded first frame reveals at once, not on the next poll tick', async () => {
+  // Regression: the reveal used to live only inside poll(), so a frame that
+  // decoded just after a poll sat masked for a full 2000ms cycle. The <img>
+  // 'load' event now reveals it the moment it decodes, once the server is live.
+  const x = setup('camera.js');
+  x.nodes.cam.naturalWidth = 0;  // the MJPEG has not decoded a frame yet
+  x.requests[0].resolve(response({state:'live'})); await settle();
+  // Server says live, but with no frame the picture stays honestly masked.
+  assert.equal(x.nodes.livetxt.textContent, 'CONNECTING');
+  assert.equal(x.nodes.cam.classList.contains('unavailable'), true);
+  // The first frame decodes: reveal immediately, without firing the 2000ms poll.
+  x.nodes.cam.naturalWidth = 480;
+  x.nodes.cam.events.load();
+  assert.equal(x.nodes.livetxt.textContent, 'LIVE');
+  assert.equal(x.nodes.cam.classList.contains('unavailable'), false);
+});
+
+test('the load event never reveals a placeholder the server has not called live', async () => {
+  // A frame can decode (naturalWidth > 0) while the server is still connecting
+  // or disconnected — that frame is the NO-SIGNAL placeholder. The load-driven
+  // reveal must stay shut until /status.json actually reports live.
+  const x = setup('camera.js');
+  x.requests[0].resolve(response({state:'connecting'})); await settle();
+  x.nodes.cam.naturalWidth = 480;
+  x.nodes.cam.events.load();
+  assert.equal(x.nodes.livetxt.textContent, 'CONNECTING');
+  assert.equal(x.nodes.cam.classList.contains('unavailable'), true);
+});
+
 test('hidden camera releases stream and ignores obsolete responses after resume', async () => {
   const x = setup('camera.js');
   x.document.hidden = true; x.document.events.visibilitychange();
