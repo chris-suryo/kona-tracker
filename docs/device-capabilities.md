@@ -420,6 +420,41 @@ the query that would prove it, and if the radius is real the map could draw
 the safe zone as a circle instead of only reporting the breach after it
 happens. Queued for the next probe round.
 
+**Settled: there is no official way in, and there never was.**
+
+> *"Fi doesn't offer a public API, developer program, or webhooks for
+> accessing your dog's data."*
+
+This project has carried that as an assumption since the first slice. It is
+now Fi's own answer, which changes nothing about the approach and a lot
+about how confident we can be in it: the private GraphQL API is the only
+path, `kona probe` stays permanent because drift is guaranteed and
+unannounced, and no amount of waiting will produce a supported alternative.
+A data export was deflected to Fi's Customer Experience team rather than
+refused, so that is a real avenue and worth an email, but it is an account
+matter and not something the assistant can action.
+
+**The notification list is a feature spec we can already satisfy.**
+
+Asked what alerts Fi can send, it named: leaving or entering a Safe Zone,
+meeting or missing the daily step goal, collar low battery or
+disconnection, and walk reminders or milestones.
+
+Every one of those is computable from data this app **already fetches**.
+The escape flag covers the Safe Zone crossing, `steps` against `stepGoal`
+covers the goal, `batteryPercent` and the connection state cover the
+collar, and `ongoingActivity` covers walks. So the alerting Fi does is not
+something we need API access to receive; it is something we could derive
+from the snapshot we already hold, and the outbound heartbeat shows the
+shape such a thing would take. Worth remembering that the list also tells
+us what Fi's own product team decided is worth interrupting someone for,
+which is a reasonable prior for what belongs on the page.
+
+Note the phrase *"activity, behavior, and health info"* appears here too.
+That is the second unprompted mention of behaviour data, against a
+measured absence. It raises the value of the targeted probe, and lowers
+nothing: the field names are still rejected by the server.
+
 **How the assistant behaves, which shapes how to ask it.**
 
 A question phrased as a fault gets deflected rather than answered: asking
