@@ -48,5 +48,4 @@
   {% endif %}
   <details class="history-readings"><summary>View readings</summary><p class="chart-footnote">These are the values plotted above. Dots mean zero; dashed marks mean missing readings. Future hours are faint.</p><table><thead><tr><th>{{ 'Hour' if period == 'day' else 'Day' }}</th><th>{{ 'Steps' if metric == 'steps' else 'Rest (min)' }}</th></tr></thead><tbody>{% for b in buckets %}<tr><th>{{ b.label }}</th><td>{{ 'Not yet elapsed' if b.future else 'No reading' if b.value is none else b.value }}{% if b.partial %} · incomplete{% endif %}</td></tr>{% endfor %}</tbody></table></details>
 </section>
-<aside class="history-next"><a href="/preview/{{ 'rest' if metric == 'steps' else 'steps' }}">Explore {{ 'rest' if metric == 'steps' else 'steps' }} <span aria-hidden="true">↗</span></a></aside>
 {% endblock %}

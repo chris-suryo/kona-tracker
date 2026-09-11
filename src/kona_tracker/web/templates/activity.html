@@ -26,6 +26,7 @@
 {# A duration as the page's display numerals: `8h 30m` is a big tabular 8, a
    small h, a big 30, a small m. The pairs come from views.duration_parts. #}
 {% from "_duration.html" import duration %}
+{% from "_history_spark.html" import hourly_chart %}
 
 {% if lost %}
 <section class="safety-alert danger" role="alert">
@@ -66,7 +67,7 @@
     <span class="eyebrow">Steps today</span>
     <span class="d hero-number {{ '' if steps else 'empty' }}">{{ steps or '&ndash;'|safe }}</span>
     <span class="hero-note">{% if step_goal %}of {{ step_goal }}{% else %}No goal available{% endif %}</span>
-    {% if preview %}<a class="detail-link" href="/preview/steps">Explore sample steps <span aria-hidden="true">↗</span></a>{% endif %}
+    {% if preview %}<a class="metric-open" href="/preview/steps" aria-label="Open sample steps detail"><span aria-hidden="true">View day ↗</span></a>{% endif %}
   </div>
   <div class="goal-ring" aria-label="{{ ring.percent }} percent of today's step goal">
     <svg viewBox="0 0 120 120" aria-hidden="true">
@@ -79,6 +80,7 @@
   </div>
 </section>
 
+{% if preview %}{{ hourly_chart(sample_steps_chart, 'steps') }}{% endif %}
 <section class="rest-grid {{ 'dimmed' if stale else '' }}" aria-label="Rest">
   <div class="metric">
     <span class="eyebrow">Naps today</span>
@@ -105,7 +107,7 @@
 </section>
 
 {% if configured %}
-{% if preview %}<a class="detail-link rest-detail-link" href="/preview/rest">Explore sample rest <span aria-hidden="true">↗</span></a>{% endif %}
+{% if preview %}{{ hourly_chart(sample_rest_chart, 'rest') }}{% endif %}
 <section class="location-card {{ 'urgent' if escaped or lost else '' }}" aria-labelledby="location-title">
   <div class="location-heading">
     <div>

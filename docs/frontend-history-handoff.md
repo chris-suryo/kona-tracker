@@ -127,3 +127,36 @@ merges. Finish phone/light/dark/reduced-motion checks before Chris merges.
 The production-safe polish can ship with sample-only history routes; actual
 history must wait for verified data. Keep "View readings" driven by the same
 data as charts when integrating. The map provider decision is still open.
+
+## Final navigation pass
+
+Chris asked for more visual context on the homepage and fewer exploration
+links. Sample Activity now includes compact hourly Steps and Rest charts
+using the exact detail-page buckets. Tapping the steps total/ring or its
+"View day" pill opens Steps. Tapping either compact chart opens its detail.
+"View readings" and "View intervals" are pill disclosures. Detail pages
+return to Activity via the existing back link; cross-links between Steps
+and Rest were removed. All of this remains sample-only until real feeds
+are verified. No basemap changes were made.
+
+Final navigation validation: 280 pytest passed; Ruff lint and format checks
+clean. The local preview was restarted from the integrated branch at
+http://127.0.0.1:8765/activity?preview=1 with fixed fake-camera capabilities.
+Latest browser visual verification remains outstanding after the previously
+reported usage-limit rejection; no alternate browser access was attempted.
+
+Suggested Claude pickup prompt:
+
+> Continue kona-tracker from branch chatgpt/ui-pass, draft PR #7. Read
+> CLAUDE.md, PROJECT.md and docs/frontend-history-handoff.md first. The branch
+> includes main through f266de8 plus the frontend history prototype and
+> approved polish. Fetch current main and inspect newer merges before
+> changing anything. Preserve the camera snapshot polling implementation.
+> Finish visual QA on iPhone in both themes, especially the clickable steps
+> hero, homepage hourly charts, duration hierarchy, weekly averages and pull
+> refresh. Samples must never masquerade as live data. Next, integrate only
+> verified history data using the contract in the handoff; daily summaries
+> first if hourly buckets/intervals remain unavailable. No new dependencies,
+> inline executable scripts, CDN assets or Leaflet-byte changes. Keep the
+> reduced-motion block last, preserve deliberate zoom behavior, and keep
+> pytest/Ruff green. Chris reviews and merges; do not merge automatically.

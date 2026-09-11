@@ -347,6 +347,8 @@ def preview_activity_context() -> dict[str, Any]:
     )
     context = activity_context(snapshot, configured=True)
     context["preview"] = True
+    context["sample_steps_chart"] = sample_steps
+    context["sample_rest_chart"] = sample_rest
     return context
 
 

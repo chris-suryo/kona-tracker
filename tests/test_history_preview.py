@@ -72,3 +72,16 @@ def test_weekly_rest_average_excludes_missing_and_in_progress_days():
     assert context["complete_days"] == 5
     assert context["average"] == round(sum(b["value"] for b in complete) / 5)
     assert context["average"] != round(context["total"] / 7)
+
+
+def test_overview_charts_are_sample_only():
+    app = create_app(Settings(passcode="4242", secret="test"))
+    with TestClient(app) as client:
+        client.post("/login", data={"passcode": "4242"}, follow_redirects=False)
+        sample = client.get("/activity?preview=1").text
+        live = client.get("/activity").text
+        assert "Steps by hour" in sample and "Rest by hour" in sample
+        assert "Steps by hour" not in live and "/preview/steps" not in live
+        assert "Explore sample steps" not in sample
+        detail = client.get("/preview/steps").text
+        assert "View readings" in detail and "Explore rest" not in detail
