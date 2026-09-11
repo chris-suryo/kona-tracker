@@ -1,0 +1,73 @@
+{
+  "goal": "Overnight run of docs/overnight-brief.md: Chris's four phone UI items, the camera idle/reopen hypothesis made safe to test, the browser-test gate honesty, a dark-map prototype, screenshots, and a morning report.",
+  "completed": [
+    "Verified the starting state at 1ea0b99 (234 passed, ruff clean, CI run 81 green) before touching anything.",
+    "Goal ring past 100%: views.step_ring() (percent/arc/overflow), second <circle class=\"value over\"> in --t3, Jinja maths removed; 8 parametrized cases.",
+    "Durations as hours and minutes: views.duration_parts() -> [(figure, unit)], Jinja macro keeps the big-numeral look; 22m, 0m, whole hours, raw fallback tested.",
+    "Bottom row says 'Available 17 Sep' (data_start + 7) during the cutoff; midnight note only when cutoff or first night pending; 'since HH:MM' beside Right now from status.activity_since.",
+    "Profile page: no header on /settings (tab=None), top back link, no Profile eyebrow, Settings.camera_description() in owner's words, chevron as the shared SVG.",
+    "Camera: KONA_CAMERA_IDLE_SECONDS (default 120, was hard-coded 5 never wired) and KONA_CAMERA_REOPEN_SECONDS (default 2) cooldown in CameraHub, status reads connecting during the pause; fake-source tests prove the timings; .env.example and remote-access.md updated.",
+    "Browser test header states plainly that CI does not run it.",
+    "Phone-width Chromium screenshots (light+dark) committed under docs/screenshots/2026-09-11/ plus a synthetic-tile dark-map prototype.",
+    "/security-review: no findings above threshold (RTSP host via urlsplit, autoescape on new variables, stale-frame-across-cooldown all checked).",
+    "docs/overnight-report-2026-09-11.md: built / proposed / waiting on Chris. 260 passed, ruff clean, pushed to claude/elegant-sagan-tit1xp."
+  ],
+  "discovered": [
+    "The sandbox this ran in was checked out on a harness branch at c6870b1 with 173 tests, not the trunk; the brief's branch had to be fetched first. c6870b1 is an ancestor of 1ea0b99, so no history conflict.",
+    "FiSnapshot is a frozen dataclass: tests that want a variant must use dataclasses.replace, not attribute assignment.",
+    "tile.openstreetmap.org and fonts.googleapis.com are both blocked from this sandbox (proxy 403). Screenshots show system fonts and a grey map; the dark-map filter cannot be judged on real tiles here.",
+    "Global Playwright 1.56 (NODE_PATH=/opt/node22/lib/node_modules) drives the pre-installed Chromium without any install; Python playwright is absent.",
+    "The old idle_stop_seconds=5.0 was never passed by create_app, so no setting could have changed it before tonight.",
+    "The security-review skill diffs against origin/HEAD, which an unset clone lacks; pointing that symbolic ref at the branch's pushed tip scopes the review to the session."
+  ],
+  "decisions": [
+    "The cutoff row states a date ('Available 17 Sep'), not a distance or monthly figure: distance is untrusted and the monthly stat is withheld by the same cutoff. Reversible, flagged for Chris.",
+    "/settings renders with no header rather than as a third tab: the toggle's design is two destinations; the revert is one line (tab='settings').",
+    "Camera idle default 120 s and reopen cooldown 2 s; the LED staying on for two minutes is the accepted cost. Explicitly NOT claimed as a black-screen fix.",
+    "The dark-map filter is proposed with a synthetic prototype, not shipped: the brief said screenshot it rather than assume, and only a real tile can settle it.",
+    "The harness branch claude/elegant-sagan-tit1xp-wu5zdk is kept identical to the trunk and marked safe to delete; all real work is on the trunk as Chris asked."
+  ],
+  "lessons": [
+    "Verify the checkout matches the handoff before the tests: the sandbox was on a different branch with a different test count, and the brief's own instruction to stop on mismatch is what caught it.",
+    "A timing assertion in a hub test needs ~50 ms of slack for Windows' 16 ms clock; write it once, not after the Windows leg goes red.",
+    "For UI work the crafted-snapshot demo server (scratchpad serve_demo.py) plus global Playwright is a ten-minute path to real screenshots; it is worth keeping the pattern."
+  ],
+  "files_changed": [
+    "src/kona_tracker/web/views.py",
+    "src/kona_tracker/web/templates/activity.html",
+    "src/kona_tracker/web/templates/settings.html",
+    "src/kona_tracker/web/static/app.css",
+    "src/kona_tracker/web/settings.py",
+    "src/kona_tracker/web/app.py",
+    "src/kona_tracker/camera/hub.py",
+    ".env.example",
+    "docs/remote-access.md",
+    "docs/overnight-report-2026-09-11.md",
+    "docs/screenshots/2026-09-11/",
+    "tests/test_views.py",
+    "tests/test_fi_service.py",
+    "tests/test_web.py",
+    "tests/test_settings.py",
+    "tests/test_camera_hub.py",
+    "tests/browser_runtime.test.cjs"
+  ],
+  "open_questions": [
+    "Does the camera stay good across a thirty-second and a five-minute absence with the new defaults? Only Chris's webcam can answer.",
+    "What does the badge say when the picture is black (LIVE / CHECK CAMERA / STALE / OFFLINE, NO SIGNAL text or not)?",
+    "Does the invert/hue-rotate filter look right on real OpenStreetMap tiles?",
+    "Should the cutoff row show a Kona fact instead of the availability date?",
+    "Node on both CI runners for the browser test, or leave it manual?"
+  ],
+  "intent": "The brief's queue was finished in order and verified where a sandbox can verify (pytest, ruff, real Chromium); everything hardware- or Fi-bound is labelled ready to test, not fixed. Stopped after the report and wrap so Chris wakes to one branch, green CI and screenshots.",
+  "next_task": "Chris: git pull, restart kona serve, run the camera experiment (Camera open 5 min; away 30 s; away 5 min) and report the badge wording when black.",
+  "blockers": "None for the code. The camera hypothesis, the dark-map look and the probe's whereabouts line all need Chris's machine; nothing in the sandbox can reach the webcam, Fi, or OSM tiles.",
+  "resume_minutes": 10,
+  "dont_retry": [
+    "Do not claim the idle/cooldown change fixes the black screen; it is untestable without the webcam.",
+    "Do not ship the dark-map filter from a sandbox: OSM tiles are blocked here, so it cannot be seen on real data.",
+    "Do not assign attributes on FiSnapshot in tests; it is frozen. Use dataclasses.replace.",
+    "Do not run the security-review skill without origin/HEAD set; it fails before reviewing anything.",
+    "Do not try to delete remote branches from a sandbox; the git proxy refuses ref deletes."
+  ],
+  "session_id": "session_01KgmQrVuaAGmKyaioEr7d7t"
+}
