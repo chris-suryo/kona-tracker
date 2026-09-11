@@ -387,7 +387,7 @@ def create_app(
     @app.get("/snapshot.jpg")
     def snapshot():
         # Always an image (an <img> fallback can show it); the header is the truth.
-        frame, state = hub.snapshot()
+        frame, state = hub.snapshot()[:2]
         return Response(
             content=frame,
             media_type="image/jpeg",

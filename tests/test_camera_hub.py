@@ -117,7 +117,7 @@ def part_body(chunk: bytes) -> bytes:
 def test_snapshot_live_then_idle_stop():
     hub, sources = make_hub([[]])
     assert hub.status()["state"] == IDLE
-    frame, state = hub.snapshot()
+    frame, state = hub.snapshot()[:2]
     assert state == LIVE and frame_number(frame) == 1
     assert hub.status()["state"] == LIVE
     assert wait_for(lambda: sources[0].closed and hub.status()["state"] == IDLE)
@@ -133,7 +133,7 @@ def test_a_close_is_always_followed_by_a_pause_before_the_next_open(ending):
     first = [] if ending == "idle" else [2, OSError("camera unplugged")]
     hub, sources = make_hub([first, []], idle_stop_seconds=0.05, reopen_cooldown_seconds=0.4)
     try:
-        frame, state = hub.snapshot()
+        frame, state = hub.snapshot()[:2]
         assert state == LIVE
         if ending == "idle":
             assert wait_for(lambda: sources[0].closed and hub.status()["state"] == IDLE)
@@ -155,7 +155,7 @@ def test_a_close_is_always_followed_by_a_pause_before_the_next_open(ending):
 def test_the_first_open_and_a_stop_never_wait_for_the_cooldown():
     hub, sources = make_hub([[]], reopen_cooldown_seconds=5.0)
     started = time.monotonic()
-    _, state = hub.snapshot()
+    _, state = hub.snapshot()[:2]
     assert state == LIVE and time.monotonic() - started < 2.0
     hub._add_viewer()
     hub._remove_viewer()
@@ -187,7 +187,7 @@ def test_open_failure_gives_placeholder_and_redacted_error_then_reconnects():
     boom = RuntimeError("could not open rtsp://kona:hunter2@10.0.0.9:554/stream1")
     # backoff longer than the snapshot wait, so the first look sees the failure
     hub, sources = make_hub([boom, []], backoff_base=0.5, backoff_max=0.5)
-    frame, state = hub.snapshot(timeout=0.2)
+    frame, state = hub.snapshot(timeout=0.2)[:2]
     assert frame == NO_SIGNAL_JPEG and state == DISCONNECTED
     assert "hunter2" not in hub.status()["last_error"]
     assert "rtsp://***@10.0.0.9" in hub.status()["last_error"]
@@ -211,7 +211,7 @@ def test_a_fully_black_camera_is_not_reported_as_live():
         backoff_base=0.5,
         backoff_max=0.5,
     )
-    frame, state = hub.snapshot(timeout=0.2)
+    frame, state = hub.snapshot(timeout=0.2)[:2]
     status = hub.status()
     assert frame == NO_SIGNAL_JPEG and state == DISCONNECTED
     assert status["last_error_kind"] == "black_frame"
@@ -455,3 +455,106 @@ def test_noise_not_brightness_separates_a_dead_camera_from_a_dark_room():
     assert not frame_is_unusable(dark_room), "dark but noisy is a real, dark picture"
     lit = np.full((480, 640, 3), 90, dtype=np.uint8)
     assert not frame_is_unusable(lit), "plainly lit frames skip the noise check"
+
+
+def test_snapshot_after_waits_for_the_next_frame_and_numbers_it():
+    """The long-poll contract: send back the seq you have, get the one after
+    it. One request per frame, and the server does the waiting."""
+    hub, _ = make_hub([[]])
+    try:
+        first = hub.snapshot()
+        assert first.state == LIVE and first.seq >= 1 and first.error_kind is None
+        second = hub.snapshot(after_seq=first.seq)
+        assert second.state == LIVE and second.seq > first.seq
+        assert frame_number(second.jpeg) > frame_number(first.jpeg)
+        assert second.frame_age is not None and second.frame_age < hub.stale_after
+    finally:
+        hub.stop()
+
+
+def test_snapshot_after_from_a_previous_process_is_clamped_not_waited_on():
+    """Seq restarts at 0 with the process. A phone that kept its page open
+    across a `kona serve` restart sends a number that will not exist again
+    for hours; without the clamp it waits the whole timeout and is handed a
+    placeholder marked live, forever."""
+    hub, _ = make_hub([[]], stale_after=1.0)
+    try:
+        assert hub.snapshot().state == LIVE
+        started = time.monotonic()
+        snap = hub.snapshot(after_seq=10**9)
+        assert snap.state == LIVE and snap.jpeg != NO_SIGNAL_JPEG
+        assert time.monotonic() - started < 0.5, "must not wait out the timeout"
+    finally:
+        hub.stop()
+
+
+def test_snapshot_after_times_out_to_a_placeholder_that_is_never_live():
+    """No newer frame within `stale_after` means the one we have is stale by
+    definition, so the placeholder can never arrive labelled live."""
+    hub, sources = make_hub([[1, "forever"]], stale_after=0.3, hang_after=5.0)
+    hub._add_viewer()
+    try:
+        assert wait_for(lambda: hub.status()["state"] == LIVE)
+        first = hub.snapshot()
+        assert first.state == LIVE
+        snap = hub.snapshot(after_seq=first.seq)
+        assert snap.jpeg == NO_SIGNAL_JPEG and snap.state == STALE and snap.seq == first.seq
+    finally:
+        sources[0].release.set()
+        hub._remove_viewer()
+        hub.stop()
+
+
+def test_snapshot_after_returns_early_when_the_reader_dies():
+    """A poller must not sit out the timeout on a camera that just died; it
+    gets the honest state at once and the reason in `error_kind`."""
+    hub, _ = make_hub(
+        [[1, ("block", 0.2), OSError("unplugged")], []], stale_after=2.0, backoff_base=0.5
+    )
+    hub._add_viewer()
+    try:
+        assert wait_for(lambda: hub.status()["state"] == LIVE)
+        first = hub.snapshot()
+        started = time.monotonic()
+        snap = hub.snapshot(after_seq=first.seq)
+        elapsed = time.monotonic() - started
+        assert snap.jpeg == NO_SIGNAL_JPEG and snap.state == DISCONNECTED
+        assert snap.error_kind == "read" and elapsed < 1.0
+    finally:
+        hub._remove_viewer()
+        hub.stop()
+
+
+def test_seq_is_monotonic_across_reconnects():
+    """A reconnect resets the frame but never the counter, so a client's
+    `after` from before the blip still means "newer than that"."""
+    hub, sources = make_hub([[2, OSError("blip")], []])
+    hub._add_viewer()
+    try:
+        assert wait_for(lambda: hub.status()["state"] == LIVE)
+        a = hub.snapshot()
+        assert wait_for(lambda: len(sources) == 2 and hub.status()["state"] == LIVE)
+        b = hub.snapshot()
+        assert b.state == LIVE and b.seq > a.seq
+    finally:
+        hub._remove_viewer()
+        hub.stop()
+
+
+def test_polling_viewers_keep_the_camera_open_and_it_idles_after_they_stop():
+    """Each poll is its own short-lived viewer. Back-to-back polls must keep
+    the device open (no close-and-reopen per request, which is how a USB
+    webcam gets wedged), and the idle timer must still fire once they stop."""
+    hub, sources = make_hub([[], []], idle_stop_seconds=0.2)
+    try:
+        seq = 0
+        for _ in range(10):
+            snap = hub.snapshot(after_seq=seq)
+            assert snap.state == LIVE
+            seq = snap.seq
+            time.sleep(0.05)
+        assert hub.opens == 1
+        assert wait_for(lambda: sources[0].closed and hub.status()["state"] == IDLE)
+        assert hub.opens == 1
+    finally:
+        hub.stop()
