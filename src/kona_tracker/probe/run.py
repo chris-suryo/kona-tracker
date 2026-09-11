@@ -138,10 +138,13 @@ def run_probe(client: FiClient, out_dir: Path) -> ProbeReport:
                 report.files.append(path)
         # Sourced from pytryfi but never yet seen from a real collar. Each is
         # its own step so one unsupported shape cannot sink the others.
+        # `whereabouts` is the exact document the page now sends for her
+        # resting position, so this run is what verifies it.
         for label, q in (
             ("profile", queries.pet_profile(pet["id"])),
             ("device", queries.pet_device(pet["id"])),
             ("location", queries.pet_location(pet["id"])),
+            ("whereabouts", queries.pet_whereabouts(pet["id"])),
         ):
             data = _try(report, f"{label}:{slug}", lambda q=q: client.graphql(q))
             if data is not None:

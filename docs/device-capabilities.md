@@ -257,6 +257,33 @@ their shapes do not. Each needs a subfield guess and another correction.
 - `carrier`, `hardwareRevision`, `firmwareUpdate` on `Device`;
   `uncertaintyInfo` on `OngoingActivity`.
 
+### Round 5, queued 2026-09-11: her position while resting
+
+Chris caught the wrong claim in an earlier draft of the punchlist: the Fi
+app shows her location whether she is walking or asleep, and our query never
+asked for it. `pet_status` selected `OngoingRest { place { id name } }` and
+nothing else.
+
+**Sourced, not yet measured:** pytryfi's `FRAGMENT_ONGOING_ACTIVITY_DETAILS`
+selects `... on OngoingRest { position { latitude longitude } }`, and its
+`setCurrentLocation` reads `activityJSON['position']` for a rest — that is
+the field hass-tryfi's `device_tracker` reports. We already use the
+`OngoingWalk` half of that same fragment, verified on the 2026-09-10 walk.
+
+The page now asks for it in `pet_whereabouts` — **a document of its own**,
+because a rejected field fails the whole document and the verified collar
+fields must not go down with a guess. If Fi rejects it the page says
+"Location: Fi rejected the query" and draws the saved home pin as before.
+The probe sends the identical document, so the next run settles it. It also
+asks, one unknown each: `position { date }` on OngoingRest (a `Location`
+with a date, or a bare `Position`?), `uncertaintyInfo { __typename }`,
+`path` on OngoingWalk, and `lastLocation` / `currentLocation` on `Device`
+next to the confirmed `nextLocationUpdateExpectedBy`.
+
+The mock in `tests/conftest.py` answers `KonaWhereabouts` with pytryfi's
+shape. That is an assumption, not a measurement, and the tests say so; the
+one thing they prove is that a rejection costs exactly the map point.
+
 ### The redaction gap the walk exposed
 
 Once on cellular, `device.info` carried the home Wi-Fi SSID, the modem
@@ -336,8 +363,11 @@ Controls that **must not** appear:
 - hold-to-talk — impossible on Tapo, on any model
 - pan/tilt on a fixed camera — the page must ask, never assume
 
-The Activity tab now uses only the confirmed fields above. Its free MVP map
-uses Leaflet 1.9.4 and OpenStreetMap's standard raster tiles. At rest it uses
-the verified `homeLocation.position`; on a walk it switches to Fi's live
-route, then preserves and labels the last fix. It never geocodes or invents
-a coordinate.
+The Activity tab now uses only the confirmed fields above, plus the
+sourced-but-unmeasured resting position (Round 5). Its free MVP map uses
+Leaflet 1.9.4 and OpenStreetMap's standard raster tiles. On a walk it draws
+Fi's live route; at rest it draws the resting position with the time of
+Fi's last report; if Fi has stopped answering, the same fix is labelled
+"Last seen"; with no fix at all it falls back to the verified
+`homeLocation.position`, labelled Home. It never geocodes or invents a
+coordinate.

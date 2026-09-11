@@ -254,6 +254,38 @@ def speculative_queries(pet_id: str) -> list[tuple[str, str]]:
             f'query KonaSpeculativeFirmware {{ pet(id: "{pet_id}") {{ device {{ '
             "__typename firmwareUpdate { __typename } } } }",
         ),
+        # Round 5, 2026-09-11: the resting position. pytryfi selects
+        # `position { latitude longitude }` on OngoingRest and `path` on
+        # OngoingWalk; the page now asks for the former (`pet_whereabouts`).
+        # These ask around it, one unknown each: is the rest position a bare
+        # Position or a Location with a date; what `uncertaintyInfo` (named
+        # by a did-you-mean on 2026-09-10) looks like; and whether `device`
+        # keeps a last/current location next to `nextLocationUpdateExpectedBy`.
+        (
+            "restPositionDate",
+            f'query KonaSpeculativeRestPositionDate {{ pet(id: "{pet_id}") {{ ongoingActivity {{ '
+            "__typename ... on OngoingRest { position { __typename date } } } } }",
+        ),
+        (
+            "uncertainty",
+            f'query KonaSpeculativeUncertainty {{ pet(id: "{pet_id}") {{ ongoingActivity {{ '
+            "__typename ... on OngoingRest { uncertaintyInfo { __typename } } } } }",
+        ),
+        (
+            "walkPath",
+            f'query KonaSpeculativeWalkPath {{ pet(id: "{pet_id}") {{ ongoingActivity {{ '
+            "__typename ... on OngoingWalk { path { __typename } } } } }",
+        ),
+        (
+            "deviceLastLocation",
+            f'query KonaSpeculativeDeviceLastLocation {{ pet(id: "{pet_id}") {{ device {{ '
+            "__typename lastLocation { __typename } } } }",
+        ),
+        (
+            "deviceCurrentLocation",
+            f'query KonaSpeculativeDeviceCurrentLocation {{ pet(id: "{pet_id}") {{ device {{ '
+            "__typename currentLocation { __typename } } } }",
+        ),
     ]
 
 
@@ -281,6 +313,27 @@ def pet_status(pet_id: str) -> str:
         "... on OngoingWalk { distance positions { __typename date errorRadius "
         "position { __typename latitude longitude } } } } "
         "} }"
+    )
+
+
+def pet_whereabouts(pet_id: str) -> str:
+    """Where she is while resting: one field, in a document of its own.
+
+    The Fi app shows her position whether she is walking or asleep, and our
+    `pet_status` only ever asked `OngoingRest` for a place *name*. pytryfi's
+    fragment (the Home Assistant tracker's source) selects
+    `... on OngoingRest { position { latitude longitude } }`, so that is what
+    this asks for. It has not yet been seen from Kona's collar, which is why
+    it is not one more line in `pet_status`: a wrong field name fails the
+    whole document, and that would take battery, signal and the escape flag
+    down with it. Alone, a rejection costs exactly the map point, the page
+    says "Location: ...", and `kona probe` runs this same document.
+    """
+    return (
+        f'query KonaWhereabouts {{ pet(id: "{pet_id}") {{ __typename ongoingActivity {{ '
+        "__typename lastReportTimestamp "
+        "... on OngoingRest { position { __typename latitude longitude } } "
+        "} } }"
     )
 
 

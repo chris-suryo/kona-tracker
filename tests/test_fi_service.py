@@ -556,8 +556,14 @@ def test_snapshot_carries_profile_and_status_and_a_collar_failure_is_partial():
         return fake_fi_handler(request)
 
     snap = service(status_fails).snapshot()
-    assert snap.sleep_hours == 8.5 and snap.status is None and snap.profile is None
+    assert snap.sleep_hours == 8.5 and snap.profile is None
+    # The collar document failed, but her position comes from its own
+    # document and survives: a status that knows where she is and nothing
+    # else, rather than no status at all.
+    assert snap.status.battery_percent is None and snap.status.activity is None
+    assert snap.status.rest_position is not None
     assert snap.partial and snap.problem.startswith("Collar:")
+    assert activity_context(snap, configured=True)["map_kind"] == "rest"
 
 
 def test_activity_json_exposes_the_collar_without_the_photo_url():
@@ -732,3 +738,118 @@ def test_a_shape_change_in_the_collar_blob_is_a_partial_not_a_blank_page():
     assert snap.sleep_hours == 8.5, "sleep survived the collar blob changing shape"
     assert snap.status is not None and snap.status.battery_percent is None
     assert snap.problem is None
+
+
+# --------------------------------------------------------------------------
+# her position while resting
+# --------------------------------------------------------------------------
+
+
+def test_resting_position_is_parsed_from_its_own_query():
+    """Shape sourced from pytryfi's `... on OngoingRest { position }`, the
+    field the Home Assistant tracker reads. NOT yet measured on Kona's
+    collar: `tests/fixtures/whereabouts.json` is pytryfi's shape, and the
+    next `kona probe` run replaces it with the real body or refutes it."""
+    from kona_tracker.fi.parse import rest_position_from
+
+    point = rest_position_from(fixture("whereabouts")["data"])
+    assert (point.latitude, point.longitude) == (30.2675, -97.7429)
+    assert point.recorded_at == datetime(2026, 9, 10, 20, 24, 44, 315000, tzinfo=UTC)
+    assert point.accuracy_m is None, "Fi does not say; we do not invent one"
+
+    # She is walking: the document selects nothing on OngoingWalk.
+    assert rest_position_from(fixture("location")["data"]) is None
+    # Off the planet, hostile, or absent: None, never a raise.
+    bad = json.loads(json.dumps(fixture("whereabouts")["data"]))
+    bad["pet"]["ongoingActivity"]["position"]["latitude"] = 999
+    assert rest_position_from(bad) is None
+    assert rest_position_from({"pet": {"ongoingActivity": "nope"}}) is None
+    assert rest_position_from({"pet": {"ongoingActivity": {"position": [1, 2]}}}) is None
+    assert rest_position_from(None) is None
+
+
+def test_resting_position_reaches_the_map_with_its_own_words():
+    with web_client(service()) as c:
+        page = c.get("/activity").text
+        data = c.get("/activity.json").json()
+        ctx = activity_context(c.app.state.fi.snapshot(), configured=True)
+    assert ctx["map_kind"] == "rest" and ctx["location_live"] is False
+    assert ctx["map_points"] == [{"lat": 30.2675, "lon": -97.7429, "accuracy": None}]
+    assert "Resting at Home" in page and "Last report" in page
+    assert "Current walk" not in page and "Last GPS fix" not in page
+    assert data["rest_position"] == {
+        "latitude": 30.2675,
+        "longitude": -97.7429,
+        "reported_at": "2026-09-10T20:24:44.315000+00:00",
+    }
+    assert data["home_position"] == {"latitude": 30.2672, "longitude": -97.7431}
+
+
+def test_a_rejected_position_field_costs_only_the_map_point():
+    """The reason the field lives in its own document.
+
+    Nobody has seen Fi's answer to `position` on OngoingRest yet. If it is a
+    validation error, that error fails the whole document it is in -- so it
+    must not be in the one that carries battery, signal and the escape flag.
+    The message below is the hypothetical rejection in graphql-js's shape,
+    not a recorded one."""
+
+    def rejects_position(request):
+        if (
+            request.url.path == "/graphql"
+            and "KonaWhereabouts" in json.loads(request.content)["query"]
+        ):
+            return httpx.Response(
+                200,
+                json={
+                    "errors": [{"message": 'Cannot query field "position" on type "OngoingRest".'}],
+                    "data": None,
+                },
+            )
+        return fake_fi_handler(request)
+
+    with web_client(service(rejects_position)) as c:
+        snap = c.app.state.fi.snapshot()
+        page = c.get("/activity").text
+        data = c.get("/activity.json").json()
+    assert snap.status.battery_percent == 57 and snap.status.on_base is True
+    assert snap.profile.breed == "Labrador Retriever"
+    assert snap.status.rest_position is None
+    assert snap.partial and not snap.stale
+    assert snap.problem.startswith("Location:") and "kona probe" in snap.problem
+    ctx = activity_context(snap, configured=True)
+    assert ctx["map_kind"] == "home", "the saved home pin is the honest fallback"
+    assert "Part of this didn" in page and 'id="kona-map"' in page
+    assert data["rest_position"] is None and data["battery_percent"] == 57
+
+
+def test_a_stale_resting_fix_is_last_seen_not_resting():
+    """`stale` means Fi stopped answering. The fix is still real and still
+    drawn, with its time, but the page may not say she is resting *now*."""
+    from kona_tracker.fi.parse import CollarStatus, LocationPoint
+
+    fix = LocationPoint(30.2675, -97.7429, NOW - timedelta(hours=3))
+    fresh = FiSnapshot(fetched_at=NOW, status=CollarStatus(activity="rest", rest_position=fix))
+    assert activity_context(fresh, configured=True)["map_kind"] == "rest"
+    stale = FiSnapshot(
+        fetched_at=NOW, status=CollarStatus(activity="rest", rest_position=fix), stale=True
+    )
+    ctx = activity_context(stale, configured=True)
+    assert ctx["map_kind"] == "last" and ctx["location_updated"] is not None
+    assert ctx["map_points"][0]["lat"] == 30.2675
+
+
+def test_resting_position_wins_over_a_carried_forward_walk():
+    """After a walk, `_refresh` keeps the old route in case Fi sends nothing
+    newer. A resting position is newer by definition, so the map shows it."""
+    from kona_tracker.fi.parse import CollarStatus, LocationPoint
+
+    route = (LocationPoint(30.26, -97.74, NOW - timedelta(hours=2), 8),)
+    fix = LocationPoint(30.2675, -97.7429, NOW - timedelta(minutes=5))
+    snap = FiSnapshot(
+        fetched_at=NOW,
+        status=CollarStatus(activity="rest", positions=route, rest_position=fix),
+    )
+    ctx = activity_context(snap, configured=True)
+    assert ctx["map_kind"] == "rest" and len(ctx["map_points"]) == 1
+    assert ctx["map_points"][0]["lat"] == 30.2675

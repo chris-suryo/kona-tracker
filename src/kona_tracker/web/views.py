@@ -95,18 +95,27 @@ def activity_context(snapshot: FiSnapshot | None, configured: bool) -> dict[str,
     status = snapshot.status if snapshot else None
     sleep_hours = snapshot.sleep_hours if snapshot else None
     positions = status.positions if status else ()
-    last_position = positions[-1] if positions else None
+    rest_position = status.rest_position if status else None
     home_position = status.home_location if status else None
-    map_positions = positions or ((home_position,) if home_position else ())
-    map_kind = (
-        "current"
-        if positions and status and status.activity == "walk" and not snapshot.stale
-        else "last"
-        if positions
-        else "home"
-        if home_position
-        else None
-    )
+    stale = bool(snapshot and snapshot.stale)
+    walking = bool(positions and status and status.activity == "walk")
+    # What the map may claim, most current first. Only `current` and `rest`
+    # speak about now, so both need a fresh snapshot; a fix Fi sent before it
+    # stopped answering is still real, but it is "last seen", not "resting".
+    if walking and not stale:
+        map_kind, map_positions = "current", positions
+    elif rest_position and not stale:
+        map_kind, map_positions = "rest", (rest_position,)
+    elif rest_position:
+        map_kind, map_positions = "last", (rest_position,)
+    elif positions:
+        map_kind, map_positions = "last", positions
+    elif home_position:
+        map_kind, map_positions = "home", (home_position,)
+    else:
+        map_kind, map_positions = None, ()
+    # The home pin is a saved place, not a fix: it carries no time.
+    last_position = map_positions[-1] if map_positions and map_kind != "home" else None
     location_label = _location_label(status)
 
     return {
@@ -145,9 +154,7 @@ def activity_context(snapshot: FiSnapshot | None, configured: bool) -> dict[str,
             if last_position and last_position.recorded_at
             else None
         ),
-        "location_live": bool(
-            positions and status and status.activity == "walk" and not snapshot.stale
-        ),
+        "location_live": walking and not stale,
         "data_start_label": (
             "today"
             if snapshot and snapshot.data_start == snapshot.fetched_at.date()
@@ -244,6 +251,7 @@ def activity_json(snapshot: FiSnapshot | None, configured: bool) -> dict[str, An
     profile = snapshot.profile if snapshot else None
     status = snapshot.status if snapshot else None
     home_position = status.home_location if status else None
+    rest_position = status.rest_position if status else None
     return {
         "configured": configured,
         "breed": profile.breed if profile else None,
@@ -281,6 +289,17 @@ def activity_json(snapshot: FiSnapshot | None, configured: bool) -> dict[str, An
         "home_position": (
             {"latitude": home_position.latitude, "longitude": home_position.longitude}
             if home_position
+            else None
+        ),
+        "rest_position": (
+            {
+                "latitude": rest_position.latitude,
+                "longitude": rest_position.longitude,
+                "reported_at": (
+                    rest_position.recorded_at.isoformat() if rest_position.recorded_at else None
+                ),
+            }
+            if rest_position
             else None
         ),
         "data_start": snapshot.data_start.isoformat() if snapshot and snapshot.data_start else None,

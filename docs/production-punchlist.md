@@ -58,6 +58,17 @@ second one.
 
 ### CORRECTION 2026-09-11: Fi has her location always. We never asked for it.
 
+> **BUILT 2026-09-11, awaiting the probe.** pytryfi's fragment confirmed the
+> prime hypothesis on paper: `... on OngoingRest { position { latitude
+> longitude } }` is what the Home Assistant tracker reads. The page now
+> sends it as `pet_whereabouts`, a one-field document of its own, so a
+> rejection costs the map point and nothing else; the map has a `Resting at
+> Home · Last report HH:MM` tier, and `/activity.json` carries
+> `rest_position`. The Fi API is unreachable from the cloud sandbox, so the
+> field is **unmeasured until Chris runs** `uv run kona probe --out
+> probe-out\round5` and reads `whereabouts:kona` in `summary.md`. Details
+> in `docs/device-capabilities.md`, "Round 5".
+
 An earlier draft of this file said "Fi returns position points only while
 the dog is on a walk." **That is wrong, and Chris caught it.** The Fi app
 opens straight to her location whether she is walking or asleep. The data is

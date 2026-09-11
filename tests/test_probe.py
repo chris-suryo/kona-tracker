@@ -17,6 +17,7 @@ def test_probe_end_to_end_writes_redacted_files(fake_client, tmp_path):
         "pet-kona-location.json",
         "pet-kona-profile.json",
         "pet-kona-rest.json",
+        "pet-kona-whereabouts.json",
         "schema.json",
         "summary.md",
     ]
@@ -75,6 +76,31 @@ def test_speculative_queries_isolate_one_unknown_each():
     # with only the argument it took, so the remaining error is the real one.
     assert "restFeed(cursor: null)" in labelled["restFeed"]
     assert "activityFeed(limit: 3)" in labelled["activityFeed"]
+
+
+def test_round_five_asks_around_the_resting_position_one_unknown_each():
+    """The page now sends `... on OngoingRest { position }` (pytryfi's
+    fragment, unverified on Kona's collar) in `pet_whereabouts`; the probe
+    sends that same document, and these five ask what sits next to it."""
+    from kona_tracker.fi.queries import pet_whereabouts, speculative_queries
+
+    labelled = dict(speculative_queries("pet-1"))
+    for label in (
+        "restPositionDate",
+        "uncertainty",
+        "walkPath",
+        "deviceLastLocation",
+        "deviceCurrentLocation",
+    ):
+        assert label in labelled, label
+        assert "KonaRest" not in labelled[label], "that substring routes to the sleep refusal"
+    assert "... on OngoingRest { position { __typename date } }" in labelled["restPositionDate"]
+    assert "uncertaintyInfo { __typename }" in labelled["uncertainty"]
+    assert "lastLocation { __typename }" in labelled["deviceLastLocation"]
+    doc = pet_whereabouts("pet-1")
+    assert doc.startswith("query KonaWhereabouts")
+    assert "... on OngoingRest { position { __typename latitude longitude } }" in doc
+    assert "OngoingWalk" not in doc and "place" not in doc, "one field, one document"
 
 
 def test_gps_tracks_collapse_to_their_shape_in_the_summary():

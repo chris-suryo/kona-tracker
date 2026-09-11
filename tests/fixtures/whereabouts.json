@@ -1,0 +1,3 @@
+{"data": {"pet": {"__typename": "Pet", "ongoingActivity": {"__typename": "OngoingRest",
+  "lastReportTimestamp": "2026-09-10T20:24:44.315Z",
+  "position": {"__typename": "Position", "latitude": 30.2675, "longitude": -97.7429}}}}}

@@ -29,10 +29,17 @@ from kona_tracker.fi.parse import (
     pets_from,
     profile_from,
     rest_from,
+    rest_position_from,
     split_windows,
     status_from,
 )
-from kona_tracker.fi.queries import CURRENT_USER_PETS, pet_activity, pet_rest, pet_status
+from kona_tracker.fi.queries import (
+    CURRENT_USER_PETS,
+    pet_activity,
+    pet_rest,
+    pet_status,
+    pet_whereabouts,
+)
 
 DEFAULT_REFRESH_SECONDS = 300.0
 
@@ -191,6 +198,17 @@ def fetch_snapshot(
         status = status_from(data)
     except FiError as e:
         problems.append(f"Collar: {_explain(e)}")
+    try:
+        # Its own round trip on purpose: the field is sourced from pytryfi,
+        # not yet seen from her collar, and a rejected field fails the whole
+        # document it is in. Here that costs the map point and nothing else.
+        rest_position = rest_position_from(client.graphql(pet_whereabouts(pet.id)))
+        if status is not None:
+            status = replace(status, rest_position=rest_position)
+        elif rest_position is not None:
+            status = CollarStatus(rest_position=rest_position)
+    except FiError as e:
+        problems.append(f"Location: {_explain(e)}")
 
     return FiSnapshot(
         fetched_at=now,
@@ -259,9 +277,11 @@ class FiService:
         with self._lock:
             self._attempted_at = self._clock()
             if fresh is not None:
-                # OngoingRest has no coordinates. Preserve the last fix seen
-                # by this process and let its own timestamp say how old it is;
-                # never relabel it as a current location.
+                # A walk's route comes only with the walk. Once she is back
+                # to resting, keep the last route seen by this process and let
+                # its own timestamps say how old it is; the page prefers the
+                # resting position when Fi sends one, and never relabels an
+                # old fix as a current location.
                 previous_status = self._snapshot.status if self._snapshot else None
                 if (
                     fresh.status is not None
