@@ -37,6 +37,12 @@ class Settings:
     rtsp_transport: str = "tcp"
     stale_seconds: float = 3.0
     hang_seconds: float = 10.0
+    #: How long the camera stays open after the last viewer leaves, and the
+    #: least time between releasing it and opening it again. Long and
+    #: non-zero on purpose: a webcam closed and reopened within seconds is
+    #: how a USB device gets wedged (camera/hub.py explains).
+    camera_idle_seconds: float = 120.0
+    camera_reopen_seconds: float = 2.0
     cookie_max_age: int = 30 * 24 * 3600
     lockout_attempts: int = 5
     lockout_seconds: int = 30
@@ -213,6 +219,8 @@ def load_settings(env_file: Path | None = Path(".env"), fake_camera: bool = Fals
         rtsp_transport=get("KONA_RTSP_TRANSPORT", "tcp").strip().lower() or "tcp",
         stale_seconds=float(get("KONA_STALE_SECONDS", "3")),
         hang_seconds=float(get("KONA_HANG_SECONDS", "10")),
+        camera_idle_seconds=float(get("KONA_CAMERA_IDLE_SECONDS", "120")),
+        camera_reopen_seconds=float(get("KONA_CAMERA_REOPEN_SECONDS", "2")),
         fi_email=get("FI_EMAIL"),
         fi_password=get("FI_PASSWORD"),
         fi_refresh_seconds=float(get("KONA_FI_REFRESH_SECONDS", "300")),

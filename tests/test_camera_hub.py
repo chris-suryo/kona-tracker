@@ -29,6 +29,8 @@ class ScriptedSource:
         self._script = list(script)
         self._inner = FakeSource(fps=fps)
         self.closed = False
+        self.opened_at = time.monotonic()
+        self.closed_at = None
         self.release = threading.Event()
 
     def read_jpeg(self):
@@ -55,6 +57,7 @@ class ScriptedSource:
 
     def close(self):
         self.closed = True
+        self.closed_at = time.monotonic()
 
 
 def make_hub(scripts, **kw):
@@ -72,6 +75,7 @@ def make_hub(scripts, **kw):
 
     defaults = dict(
         idle_stop_seconds=0.2,
+        reopen_cooldown_seconds=0.0,  # the tests below opt in to it by name
         stale_after=0.3,
         hang_after=0.6,
         max_misses=3,
@@ -118,6 +122,46 @@ def test_snapshot_live_then_idle_stop():
     assert hub.status()["state"] == LIVE
     assert wait_for(lambda: sources[0].closed and hub.status()["state"] == IDLE)
     assert hub.opens == 1 and hub.reconnects == 0
+
+
+@pytest.mark.parametrize("ending", ["idle", "failure"])
+def test_a_close_is_always_followed_by_a_pause_before_the_next_open(ending):
+    """The hub used to release the webcam five seconds after the last viewer
+    left and reopen it the instant one returned: a close-then-open cycle on
+    every tab switch, which is the known way to wedge a USB webcam. Whatever
+    ended the first source, the second open keeps its distance."""
+    first = [] if ending == "idle" else [2, OSError("camera unplugged")]
+    hub, sources = make_hub([first, []], idle_stop_seconds=0.05, reopen_cooldown_seconds=0.4)
+    try:
+        frame, state = hub.snapshot()
+        assert state == LIVE
+        if ending == "idle":
+            assert wait_for(lambda: sources[0].closed and hub.status()["state"] == IDLE)
+            hub._add_viewer()  # someone comes back
+        else:
+            hub._add_viewer()  # someone stays through the failure
+            assert wait_for(lambda: sources[0].closed)
+        # While it waits, the page is told "connecting", not that something
+        # is broken: nothing has failed, the hub is keeping its distance.
+        assert wait_for(lambda: hub.status()["state"] == CONNECTING, timeout=0.3)
+        assert wait_for(lambda: len(sources) == 2 and hub.status()["state"] == LIVE)
+        # 50 ms of slack: Windows advances the clock in roughly 16 ms steps.
+        assert sources[1].opened_at - sources[0].closed_at >= 0.35
+    finally:
+        hub._remove_viewer()
+        hub.stop()
+
+
+def test_the_first_open_and_a_stop_never_wait_for_the_cooldown():
+    hub, sources = make_hub([[]], reopen_cooldown_seconds=5.0)
+    started = time.monotonic()
+    _, state = hub.snapshot()
+    assert state == LIVE and time.monotonic() - started < 2.0
+    hub._add_viewer()
+    hub._remove_viewer()
+    started = time.monotonic()
+    hub.stop()
+    assert time.monotonic() - started < 2.0 and sources[0].closed
 
 
 def test_two_viewers_share_one_source_and_get_distinct_frames():

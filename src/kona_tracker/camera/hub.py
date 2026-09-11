@@ -20,6 +20,16 @@ as a supervisor over disposable reader threads:
 
 Capture starts on the first viewer and stops after an idle grace so the
 camera is not held open (and a webcam LED goes off) when nobody is watching.
+
+That grace used to be five hard-coded seconds, which meant a glance at the
+Activity tab closed the webcam and coming back reopened it. A USB webcam
+that is closed and reopened in quick succession is the textbook way to
+wedge it on Windows: it opens cleanly, lights its LED and delivers nothing
+until it is physically replugged (docs/device-capabilities.md). So the
+grace is now a setting with a long default, and every close is followed by
+a cooldown before the next open, whatever caused the close. Neither is a
+proven fix for the black screen Chris sees; both remove a way for this app
+to manufacture that fault itself, and only his hardware can say more.
 """
 
 from __future__ import annotations
@@ -50,7 +60,8 @@ class CameraHub:
     def __init__(
         self,
         open_source: Callable[[], FrameSource],
-        idle_stop_seconds: float = 5.0,
+        idle_stop_seconds: float = 120.0,
+        reopen_cooldown_seconds: float = 2.0,
         max_fps: float = 15.0,
         stale_after: float = 3.0,
         hang_after: float = 10.0,
@@ -61,6 +72,7 @@ class CameraHub:
     ):
         self._open_source = open_source
         self._idle_stop = idle_stop_seconds
+        self._reopen_cooldown = reopen_cooldown_seconds
         self._min_interval = 1.0 / max_fps
         self.stale_after = stale_after
         self._hang_after = hang_after
@@ -80,6 +92,11 @@ class CameraHub:
         self._generation = 0
         self._reader_alive = False
         self._reader_started_at = 0.0
+        # When a source was last released, so the next open can keep its
+        # distance; and whether the supervisor is in that pause right now,
+        # which the status reports as connecting rather than as a failure.
+        self._last_close_at = 0.0
+        self._reopening = False
         # A blocked C call cannot be killed. Permit one replacement, then
         # wait for a slot instead of leaking a thread on every retry forever.
         self._readers: set[threading.Thread] = set()
@@ -99,6 +116,8 @@ class CameraHub:
             age = (time.monotonic() - self._last_frame_at) if self._frame else None
             if not supervising:
                 state = IDLE
+            elif self._reopening:
+                state = CONNECTING
             elif not self._reader_alive:
                 state = DISCONNECTED
             elif self._frame is None or age is None:
@@ -158,6 +177,19 @@ class CameraHub:
                         break
                     self._backoff = min(self._backoff * 2, self._backoff_max)
                 first = False
+                # A close is always followed by a pause before the next open,
+                # whether the close was idle, a failure or an abandoned
+                # reader finally returning. Interruptible, like the backoff.
+                with self._lock:
+                    pause = self._reopen_cooldown - (time.monotonic() - self._last_close_at)
+                    self._reopening = pause > 0
+                if pause > 0:
+                    try:
+                        if self._stop.wait(pause) or self._idle():
+                            break
+                    finally:
+                        with self._lock:
+                            self._reopening = False
                 with self._lock:
                     self._generation += 1
                     gen = self._generation
@@ -197,6 +229,7 @@ class CameraHub:
             with self._lock:
                 self._generation += 1  # invalidates any lingering reader
                 self._reader_alive = False
+                self._reopening = False
                 self._frame = None
                 self._supervisor = None
                 self._lock.notify_all()
@@ -277,6 +310,7 @@ class CameraHub:
             except Exception:
                 pass
             with self._lock:
+                self._last_close_at = time.monotonic()
                 if gen == self._generation:
                     self._reader_alive = False
                     self._fails += 1

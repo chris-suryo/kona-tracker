@@ -638,3 +638,14 @@ def test_healthz_distinguishes_no_reading_failure_and_partial_data(kind):
     )
     with TestClient(app) as c:
         assert c.get("/healthz").json()["fi"] == kind
+
+
+def test_the_app_hands_the_camera_timings_to_the_hub():
+    """create_app used to leave idle_stop_seconds at the hub's default, so
+    no setting could change it. Private attributes on purpose: the timings
+    are not something /status.json should advertise."""
+    settings = Settings(
+        passcode="4242", secret="s", camera_idle_seconds=300, camera_reopen_seconds=4
+    )
+    app = create_app(settings, source_factory=lambda: FakeSource(fps=100))
+    assert app.state.hub._idle_stop == 300 and app.state.hub._reopen_cooldown == 4

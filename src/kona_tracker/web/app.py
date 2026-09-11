@@ -195,6 +195,8 @@ def create_app(
     capabilities = control.capabilities
     hub = CameraHub(
         source_factory or default_source_factory(settings, control),
+        idle_stop_seconds=settings.camera_idle_seconds,
+        reopen_cooldown_seconds=settings.camera_reopen_seconds,
         max_fps=settings.camera_fps,
         stale_after=settings.stale_seconds,
         hang_after=settings.hang_seconds,

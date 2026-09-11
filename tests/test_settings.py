@@ -152,3 +152,19 @@ def test_the_profile_page_describes_the_camera_in_plain_words():
     assert rtsp.camera_description() == "Network camera at 192.168.1.40"
     fake = Settings(passcode="p", secret="s", camera_source="fake")
     assert fake.camera_description() == "Test pattern, no camera"
+
+
+def test_the_camera_stays_open_for_minutes_not_seconds(tmp_path, monkeypatch):
+    """Five hard-coded idle seconds turned every tab switch into a webcam
+    close-and-reopen, the known way to wedge a USB device. Both timings are
+    settings now, with defaults on the safe side."""
+    for k in ("KONA_CAMERA_IDLE_SECONDS", "KONA_CAMERA_REOPEN_SECONDS"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("KONA_PASSCODE", "123456")
+    monkeypatch.setenv("KONA_SECRET", "s")
+    s = load_settings(tmp_path / "none.env", fake_camera=True)
+    assert s.camera_idle_seconds == 120.0 and s.camera_reopen_seconds == 2.0
+    monkeypatch.setenv("KONA_CAMERA_IDLE_SECONDS", "600")
+    monkeypatch.setenv("KONA_CAMERA_REOPEN_SECONDS", "5")
+    s = load_settings(tmp_path / "none.env", fake_camera=True)
+    assert s.camera_idle_seconds == 600.0 and s.camera_reopen_seconds == 5.0
