@@ -1,0 +1,81 @@
+{
+  "goal": "Work Chris's overnight UI queue, then spend the day finding why the Camera tab shows nothing on his iPhone.",
+  "completed": [
+    "Overnight, five commits on the trunk, all merged to main by Chris as PR #6: goal ring past 100% with a second lap, durations as 8h 30m via duration_parts, the weekly cutoff row saying a date instead of 'Building a clean baseline', 'Resting since HH:MM' from a field Fi already sent, the profile page rebuilt as a destination with no header, and the camera idle hold raised from a hard-coded 5s to a KONA_CAMERA_IDLE_SECONDS setting plus a reopen cooldown.",
+    "Phone-width Chromium screenshots in both themes committed under docs/screenshots/2026-09-11/, plus a synthetic-tile dark-map prototype.",
+    "/security-review on the overnight diff: no findings above threshold.",
+    "Fixed a test that asserted a literal clock face, which failed on Chris's PC and could never fail in CI because both runners are UTC. Verified across eight timezones from UTC-11 to UTC+14.",
+    "Diagnosed and (via a local Windows session) fixed the slow reveal: the picture was ready at 69ms but stayed hidden until the 2054ms poll tick. Now 27ms, plus a Connecting overlay so the wait reads as working.",
+    "Diagnosed the real phone bug with Safari Web Inspector attached from a Mac. Wrote it up in docs/camera-black-screen-handoff.md, the platform facts in device-capabilities.md 2c, and put the live thread at the top of PROJECT.md.",
+    "Proved Cloudflare Tunnel works: cloudflared quick tunnel served the app on a public HTTPS URL."
+  ],
+  "discovered": [
+    "The Camera tab's real bug is ours, not Safari's. Abandoned MJPEG streams accumulate on the server, one per tab switch, and saturate the small thread pool the stream waits use. Restarting kona serve clears it every time, which is what proves it.",
+    "The two-pool detail explains the confusing signature: hub.mjpeg() waits via loop.run_in_executor(None, ...), asyncio's default executor at about a dozen threads, while Starlette's sync endpoints use anyio's separate pool of forty. So /status.json answers normally while video never arrives, and the server reports state live with a 40ms-old frame throughout.",
+    "Safari is intermittent, not incapable. An early strong claim that iOS Safari cannot render multipart/x-mixed-replace was wrong and was corrected in the docs the same day.",
+    "/snapshot.jpg returns 200 image/jpeg with X-Kona-State live on Chris's iPhone Safari, which clears the snapshot-polling plan as viable.",
+    "The camera's ceiling is 4.0 fps at 1280x720 and it is not lighting (a bright room gave the identical number) and not USB saturation (7.4 MB/s is well inside USB 2.0). Roughly 90ms of fixed per-frame cost, source unexamined.",
+    "iOS only lets Safari install a web app to the home screen, so the Chrome workaround and the home-screen icon cannot both be had until the fix lands.",
+    "The python processes on Chris's machine belong to an unrelated project at E:\\code\\flow and to Claude Desktop's windows-mcp extension. There were never any orphaned kona serve processes."
+  ],
+  "decisions": [
+    "Replace the held MJPEG stream with adaptive snapshot polling: fire the next request when the previous picture decodes. At 4 fps there is no smoothness difference, and a short request cannot become a zombie.",
+    "Stop chasing the frame rate. Four per second is adequate for a sleeping dog and the C270 is a stand-in for the Tapo.",
+    "Chrome on the phone is the day-to-day workaround until the fix lands, and it is a real one.",
+    "Do the server hygiene regardless of the transport: a bounded pool for stream waits, drop viewers that stop taking frames, and report connected viewers in /status.json.",
+    "Code and verification move to a local session; this cloud session keeps thinking, planning and docs. A cloud session cannot reach the webcam, the phone or PowerShell."
+  ],
+  "lessons": [
+    "Verify on the target device, not the convenient one. Three rounds of careful, measured, honest verification in desktop Chrome all passed while the iPhone stayed black. The app exists for an iPhone.",
+    "Measure before theorising, and let the measurement kill the theory. Lighting and USB bandwidth were both proposed with confidence and both were disproven by a one-minute test.",
+    "Do not write commands for a platform you cannot run. Two PowerShell snippets shipped broken, one used an unpipeable while loop and one put try inside a subexpression, and both wrote into C:\\WINDOWS\\system32 because the working directory was never set.",
+    "List before you kill. A confident theory about orphaned servers produced a PID kill list that was entirely other software, including Claude Desktop's own extension. Inspecting command lines first is what prevented the damage.",
+    "A test that asserts a literal clock face is asserting the machine's timezone. The repo had already solved this one file away by pinning the zone and deriving the expectation with astimezone.",
+    "camera-doctor and camera-test must never run against a live server: two owners of one USB device is itself a cause of black frames, and the 120s idle hold widens that window."
+  ],
+  "files_changed": [
+    "src/kona_tracker/web/views.py",
+    "src/kona_tracker/web/templates/activity.html",
+    "src/kona_tracker/web/templates/settings.html",
+    "src/kona_tracker/web/static/app.css",
+    "src/kona_tracker/web/static/camera.js",
+    "src/kona_tracker/web/templates/camera.html",
+    "src/kona_tracker/web/settings.py",
+    "src/kona_tracker/web/app.py",
+    "src/kona_tracker/camera/hub.py",
+    ".env.example",
+    "PROJECT.md",
+    "docs/camera-black-screen-handoff.md",
+    "docs/device-capabilities.md",
+    "docs/overnight-report-2026-09-11.md",
+    "docs/remote-access.md",
+    "docs/screenshots/2026-09-11/",
+    "tests/test_views.py",
+    "tests/test_fi_service.py",
+    "tests/test_web.py",
+    "tests/test_settings.py",
+    "tests/test_camera_hub.py",
+    "tests/browser_runtime.test.cjs"
+  ],
+  "open_questions": [
+    "Does adaptive snapshot polling actually hold up on the iPhone over a whole evening, and through the tunnel?",
+    "Keep the MJPEG path for desktop or delete it? Two transports for a two-person household is hard to justify.",
+    "What is the 90ms of fixed per-frame cost: the DirectShow backend, the camera's negotiated rate, or our own read path?",
+    "Does Fi return '... on OngoingRest { position }'? Probe round 5 still unrun, and the map's resting tier depends on it.",
+    "Is the passcode long enough to face a public URL? Four digits at five tries per thirty seconds is about sixteen hours."
+  ],
+  "intent": "Chris asked for a stopping point. He had spent a full day on one camera bug, wants to move to UI work next, and is going out to buy the Raspberry Pi. The fix is specified rather than built because it needs a browser and a phone to verify, and because stopping with a written plan beats stopping mid-refactor.",
+  "next_task": "Merge claude/camera-black-handoff into main (five doc commits, fast-forward), then hand the camera plan to a local session: adaptive snapshot polling, bounded stream pool, viewers in /status.json.",
+  "blockers": "The Camera tab hangs on iOS Safari after a tab switch. Chrome on the phone works and is the workaround, but the home-screen icon is stuck with Safari, so the two cannot be combined. The cloudflared quick tunnel was left running at one point without KONA_TRUSTED_PROXY_HEADER or KONA_SECURE_COOKIES set; stop it or complete remote-access.md Part 2 before handing the URL to anyone.",
+  "resume_minutes": 15,
+  "dont_retry": [
+    "Do not blame the hardware. camera-test gets ten frames at 1280x720 averaging 85KB after a replug.",
+    "Do not hunt for orphaned kona serve processes. There were none, and the kill list nearly took out unrelated software.",
+    "Do not propose the MJPG FOURCC change on the bandwidth argument. The measurements do not support it.",
+    "Do not blame lighting for the frame rate. A bright room gave the identical 4.0 fps.",
+    "Do not verify camera changes in desktop Chrome alone. That is how three fixes passed while the phone stayed black.",
+    "Do not claim iOS Safari cannot render multipart/x-mixed-replace. It can; it is intermittent.",
+    "Do not run camera-doctor as a first step, and never against a running server."
+  ],
+  "session_id": "session_01KgmQrVuaAGmKyaioEr7d7t"
+}
