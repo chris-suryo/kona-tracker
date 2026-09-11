@@ -1,6 +1,8 @@
 # Handoff — kona-tracker, 2026-09-10
 
 > **This is the current handoff.** Immediate queue:
+> `docs/production-punchlist.md` (Chris's phone requests, the map
+> diagnosis, and the 2026-09-11 security pass), then
 > `docs/next-session.md`. Getting it onto the phone from outside the
 > house: `docs/remote-access.md`. Anything in `docs/archive/` is a record
 > of a past day, not instructions.
