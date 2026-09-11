@@ -36,7 +36,7 @@ carrier connection yet; see "The measurement that settles this" below.
 JPEG quality is hard-coded at **80**, and not in a place anyone would find
 it. It is a constructor default on both real sources —
 `camera/source.py:228` (`OpenCVSource`) and `camera/source.py:286`
-(`RTSPSource`) — and **no caller ever passes it**: `web/app.py:138` builds
+(`RtspSource`) — and **no caller ever passes it**: `web/app.py:138` builds
 the source from index, width, height and fps only. There is no environment
 variable. Reaching quality at all needs a code change.
 
