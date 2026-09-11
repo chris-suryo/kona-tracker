@@ -26,10 +26,9 @@ map_positions = positions or ((home_position,) if home_position else ())
 and `positions` comes from `status.positions`, which `parse.py:265` fills
 **only** from `ongoingActivity { ... on OngoingWalk { positions } }`.
 
-That inline fragment is the whole story: **Fi returns position points only
-while the dog is on a walk.** Kona asleep on the sofa is an `OngoingRest`
-(or whatever Fi calls it), which carries no `positions` at all. So
-`positions` is empty, and the only thing left is `home_position` from
+That inline fragment is the whole story **for the query we currently
+send**: we only ever ask for positions inside `... on OngoingWalk`. Kona asleep on the sofa is an `OngoingRest`, and we ask that fragment for
+a place name only -- so `positions` comes back empty, and the only thing left is `home_position` from
 `homeLocation { position { latitude longitude } }`.
 
 If *that* is also absent, `map_points` is `[]` — and `activity.html` gates
@@ -57,30 +56,57 @@ that fails to arrive was measured earlier to **kill the cross-document view
 transition**. `base.html` already loads Google Fonts; Leaflet's CSS is the
 second one.
 
-### What "always up" actually requires
+### CORRECTION 2026-09-11: Fi has her location always. We never asked for it.
 
-This is a real feature, not a bug fix, and it needs a decision.
+An earlier draft of this file said "Fi returns position points only while
+the dog is on a walk." **That is wrong, and Chris caught it.** The Fi app
+opens straight to her location whether she is walking or asleep. The data is
+obviously there; the limitation is in *our query*, not in Fi.
 
-Fi gives us a live track **only during a walk**. The rest of the time the
-honest answers are "at home" (from `homeLocation`) or "we do not know".
-A map that always shows *something* must not imply a live fix it does not
-have. Three tiers, in the project's usual discipline:
+Look at what `pet_status` (`queries.py:279-282`) actually selects:
 
-1. **Walking** — the real track. Already built.
-2. **Not walking, `homeLocation` known** — a single pin at home, labelled as
-   home and as of when, never styled like a live fix. Needs `home_position`
-   to actually come back; verify in `/activity.json` first.
-3. **Neither** — a map-shaped panel that says so, the same way the camera
-   says NO SIGNAL. Not a blank box.
+```
+ongoingActivity { __typename start lastReportTimestamp areaName
+  ... on OngoingRest { place { __typename id name } }
+  ... on OngoingWalk { distance positions { ... position { latitude longitude } } } }
+```
 
-**And there may be a better field we have never asked for.**
-`queries.py:134-136` lists `locationHistory`, `currentLocation` and
-`lastLocation` as *speculative* — candidates the probe has never confirmed.
-If `lastLocation` exists, tier 2 becomes a real last-known fix with a
-timestamp instead of a static home pin, which is much closer to what Chris
-is asking for. **Run probe round 4 before designing tier 2.**
+**We ask `OngoingWalk` for positions and we ask `OngoingRest` for a place
+name and nothing else.** When she is resting we get the string "Home" and no
+coordinates -- not because Fi withheld them, but because the query never
+requested any. That is the same class of mistake as the sleep bug: the data
+was always there, the selection set was wrong.
 
----
+**The prime hypothesis, and it is cheap to test:** `OngoingRest` very likely
+carries a `position` (or `lastLocation` / `currentLocation`) of its own. Add
+it to the fragment and see. If the name is wrong, graphql-js answers with
+`Cannot query field "position" on type "OngoingRest". Did you mean ...?` --
+and that error is *allowlisted*, so it comes back in full rather than
+redacted. This project has used validation errors as the schema
+documentation twice now and it has worked both times.
+
+Secondary candidates, already listed as speculative at `queries.py:134-136`
+and never confirmed: `currentLocation`, `lastLocation`, `locationHistory` --
+and on `device`, which already exposes `nextLocationUpdateExpectedBy`. A
+field that tells us when the *next* location update is expected strongly
+implies a field holding the *last* one.
+
+Cross-check available: pytryfi and `sbabcock23/hass-tryfi` expose a Home
+Assistant `device_tracker` with a live lat/lon that works whether or not the
+dog is walking. Whatever field they read is the field we want. Read their
+source -- that is what broke the sleep query open.
+
+**This is the highest-value item in this file after D1.** It is not a
+"design a fallback" problem, it is a "ask for the right field" problem, and
+it is probably one line plus a parser change.
+
+### Only if the field genuinely does not exist
+
+Then, and only then, does the map need tiers that degrade honestly: live
+track while walking, last known fix with its timestamp otherwise, and an
+explicit "we do not know" panel rather than a blank box -- the same
+discipline as the camera's NO SIGNAL. Never render a stale position styled
+like a live one.
 
 ## B. Turn off pinch-to-zoom
 
