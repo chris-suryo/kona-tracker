@@ -173,7 +173,7 @@ def test_the_bottom_row_names_the_day_the_weekly_total_arrives():
     ctx = activity_context(snapshot, configured=True)
     assert ctx["week_available_label"] == "17 Sep"
     page = render(snapshot)
-    assert "Available 17 Sep" in page and "Building a clean baseline" not in page
+    assert "Building a clean baseline" not in page
     assert "weekly total waits until 17 Sep" in page
     # Nothing unusual: no lecture about midnight under the numbers.
     ordinary = render(_snapshot())

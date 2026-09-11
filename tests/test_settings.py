@@ -151,7 +151,7 @@ def test_the_profile_page_describes_the_camera_in_plain_words():
     )
     assert rtsp.camera_description() == "Network camera at 192.168.1.40"
     fake = Settings(passcode="p", secret="s", camera_source="fake")
-    assert fake.camera_description() == "Test pattern, no camera"
+    assert fake.camera_description() == "Test camera"
 
 
 def test_the_camera_stays_open_for_minutes_not_seconds(tmp_path, monkeypatch):

@@ -130,6 +130,29 @@ data as charts when integrating. The map provider decision is still open.
 
 ## Final navigation pass
 
+SUPERSEDED by the simplification below: Chris reviewed the added homepage
+charts and approved removing them from the overview.
+
+## Approved simplification (current design)
+
+Activity now orders collar status, compact location/map, tappable Steps,
+tappable Rest, then freshness. Hourly charts and weekly totals are removed
+from the overview; sample history remains in its detail routes. Steps/Rest
+use subtle chevrons rather than a separate View day button. Live summaries
+remain non-interactive until verified history is implemented. Sample banner
+is one line; entering Settings from it explicitly says preview has ended.
+Settings now says "Test camera" and "Preview sample data".
+
+Map investigation found the global no-referrer policy conflicts with OSM's
+browser Referer requirement (https://operations.osmfoundation.org/policies/tiles/).
+Tile images now opt into referrerPolicy=origin, revealing only the site
+origin; other requests retain no-referrer. No provider/CDN was added.
+The browser visibly rendered normal map tiles after this change. A tileerror
+fallback hides the map and states the background is unavailable. HTTP-200
+images containing error text cannot reliably be detected by this handler.
+The browser was available again: simplified dark layout and map were visually
+checked. Real iPhone, light theme and pull gesture QA still remain.
+
 Chris asked for more visual context on the homepage and fewer exploration
 links. Sample Activity now includes compact hourly Steps and Rest charts
 using the exact detail-page buckets. Tapping the steps total/ring or its

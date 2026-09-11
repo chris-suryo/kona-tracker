@@ -50,8 +50,8 @@ PUBLIC_PATHS = {"/login", "/healthz"}
 #: with script-src 'self' and no inline that means only /static/*.js, so it
 #: concedes nothing `data:` did not already. `img-src` names OpenStreetMap's
 #: tile host, a decision already recorded in docs/handoff.md;
-#: `Referrer-Policy: no-referrer` means it learns a tile area and nothing
-#: else. No HSTS: the LAN address is plain http on purpose.
+#: map.js opts tile images into origin-only referrers to meet the provider's
+#: requirements. Other requests retain no-referrer. No HSTS on the plain LAN.
 SECURITY_HEADERS = {
     "Content-Security-Policy": (
         "default-src 'self'; script-src 'self'; "
@@ -355,7 +355,7 @@ def create_app(
         )
 
     @app.get("/settings", response_class=HTMLResponse)
-    def profile_settings(request: Request):
+    def profile_settings(request: Request, from_preview: bool = False):
         snapshot = fi.snapshot() if fi else None
         context = activity_context(snapshot, configured=fi is not None)
         # Not a tab. With `tab` set the header drew the Activity/Camera
@@ -367,6 +367,7 @@ def create_app(
         # can be diagnosed from a phone instead of at the machine.
         context["camera"] = camera_health(hub.status())
         context["camera_description"] = settings.camera_description()
+        context["from_preview"] = from_preview
         return templates.TemplateResponse(request, "settings.html", context)
 
     @app.get("/avatar.jpg")

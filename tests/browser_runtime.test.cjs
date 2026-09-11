@@ -256,7 +256,7 @@ test('a new pull is not hidden by the previous dismissal timer', async () => {
 
 test('map init releases the previous Leaflet instance even when new points are absent', () => {
   let removed = 0, points = '[{"lat":30,"lon":-97}]';
-  const window = {}, layer = {addTo() {}}, map = {remove() { removed++; }, setView() {}};
+  const window = {}, layer = {addTo() {}, on() {}}, map = {remove() { removed++; }, setView() {}};
   const L = {map: () => map, tileLayer: () => layer, marker: () => layer,
     divIcon: () => ({}), control: {zoom: () => layer}};
   const document = {getElementById: id => id === 'map-points' ? (points ? {textContent:points} : null) : {}};

@@ -29,7 +29,7 @@
   <main class="page {{ self.pageclass() }}">
   {% if tab %}
   <header class="hdr">
-    <a class="avatar" href="/settings" aria-label="Open Kona's profile and settings">K<img src="/avatar.jpg" alt="" data-optional></a>
+    <a class="avatar" href="/settings{{ '?from_preview=1' if preview else '' }}" aria-label="Open Kona's profile and settings">K<img src="/avatar.jpg" alt="" data-optional></a>
     <nav class="seg" aria-label="Sections">
       <a href="/activity" class="{{ 'on' if tab == 'activity' else '' }}">Activity</a>
       <a href="/camera" class="{{ 'on' if tab == 'camera' else '' }}">Camera</a>

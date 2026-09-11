@@ -80,7 +80,8 @@ def test_overview_charts_are_sample_only():
         client.post("/login", data={"passcode": "4242"}, follow_redirects=False)
         sample = client.get("/activity?preview=1").text
         live = client.get("/activity").text
-        assert "Steps by hour" in sample and "Rest by hour" in sample
+        assert "Steps by hour" not in sample and "Rest by hour" not in sample
+        assert sample.index('class="location-card') < sample.index('class="steps-hero')
         assert "Steps by hour" not in live and "/preview/steps" not in live
         assert "Explore sample steps" not in sample
         detail = client.get("/preview/steps").text

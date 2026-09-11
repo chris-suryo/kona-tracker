@@ -103,7 +103,7 @@ class Settings:
         `hostname` excludes userinfo, and the URL is stored bare anyway.
         """
         if self.camera_source == "fake":
-            return "Test pattern, no camera"
+            return "Test camera"
         if self.camera_source == "rtsp":
             host = urlsplit(self.rtsp_url).hostname
             return f"Network camera at {host}" if host else "Network camera"

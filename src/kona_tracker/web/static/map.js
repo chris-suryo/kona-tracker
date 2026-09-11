@@ -18,10 +18,18 @@
     var latlngs = points.map(function (p) { return [p.lat, p.lon]; });
     var map = L.map(el, { zoomControl: false, scrollWheelZoom: false });
     activeMap = map;
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    var tiles = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
+      // OSM requires a browser referrer; disclose only the site origin.
+      referrerPolicy: 'origin',
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-    }).addTo(map);
+    });
+    tiles.on('tileerror', function () {
+      el.hidden = true;
+      var unavailable = document.getElementById('map-unavailable');
+      if (unavailable) { unavailable.hidden = false; }
+    });
+    tiles.addTo(map);
     if (latlngs.length > 1) {
       L.polyline(latlngs, { color: '#5F8A48', weight: 5, opacity: .9 }).addTo(map);
       map.fitBounds(latlngs, { padding: [28, 28], maxZoom: 17 });

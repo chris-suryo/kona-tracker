@@ -367,7 +367,7 @@ def test_activity_page_renders_real_numbers():
         )
         assert "9,000" in body
         assert "22<small>m</small>" in body and "so far today" in body  # today's naps
-        assert "31,000" in body and "This week" in body  # replaced the distance tile
+        assert "31,000" not in body  # weekly totals belong in detail views
         assert "raw units" not in body
         assert PASSWORD not in body and EMAIL not in body
 
@@ -379,7 +379,7 @@ def test_activity_page_renders_real_numbers():
         assert "password" not in json.dumps(data).lower()
 
         assert body.index("Steps today") < body.index("Naps today")
-        assert body.index("Naps today") < body.index("Location") < body.index("This week")
+        assert body.index("Location") < body.index("Steps today") < body.index("Naps today")
         assert 'id="kona-map"' in body and "Home" in body
 
 
@@ -653,7 +653,7 @@ def test_preview_is_obviously_sample_data_and_never_changes_live_json():
     with web_client(service()) as c:
         preview = c.get("/activity?preview=1").text
         live = c.get("/activity.json").json()
-    assert "Sample preview" in preview and "not Kona's live collar data" in preview
+    assert "Sample data · not live" in preview
     assert "7,420" in preview and "7<small>h</small>" in preview
     assert 'id="kona-map"' in preview
     assert live["steps"] == 4210, "preview mode must not enter Fi's cache or API"
