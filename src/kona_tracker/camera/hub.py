@@ -39,13 +39,21 @@ import logging
 import threading
 import time
 from collections.abc import AsyncIterator, Callable
-from typing import Any
+from concurrent.futures import ThreadPoolExecutor
+from typing import Any, NamedTuple
 
 from kona_tracker.camera.placeholder import NO_SIGNAL_JPEG
 from kona_tracker.camera.redact import redact_url
 from kona_tracker.camera.source import CameraFrameError, FrameSource
 
 BOUNDARY = "kona-frame"
+
+#: Concurrent MJPEG streams the hub will carry. The phone polls /snapshot.jpg
+#: now; what is left of streaming is curl and a desktop, and a household
+#: never needs more than this. It is also the size of the pool the stream
+#: waits run on: the two must match, or the (cap+1)th viewer queues on the
+#: pool, which is exactly the silent hang this exists to prevent.
+MAX_STREAMS = 4
 
 log = logging.getLogger("kona_tracker.camera")
 
@@ -54,6 +62,19 @@ CONNECTING = "connecting"
 LIVE = "live"
 STALE = "stale"
 DISCONNECTED = "disconnected"
+
+
+class Snapshot(NamedTuple):
+    """One answer from `CameraHub.snapshot()`: the pixels and, read at the
+    same instant, the words the page may put beside them. `seq` is the
+    frame's number, monotonic for the life of the process, so a client can
+    ask for "the one after this" and the server does the waiting."""
+
+    jpeg: bytes
+    state: str
+    seq: int
+    frame_age: float | None
+    error_kind: str | None
 
 
 class CameraHub:
@@ -102,6 +123,16 @@ class CameraHub:
         self._readers: set[threading.Thread] = set()
         self._backoff = backoff_base
         self._fails = 0  # bumps whenever a reader dies; wakes waiting viewers
+        # Stream waits get their own bounded pool rather than asyncio's default
+        # executor. A stream a phone abandoned without closing keeps its
+        # generator alive; on the shared executor enough of those starved
+        # everything, including new streams, while ordinary endpoints kept
+        # answering from anyio's separate pool. Fenced off, they can only
+        # starve each other, and the cap turns that into a loud 503.
+        self._streams = 0
+        self._stream_pool = ThreadPoolExecutor(
+            max_workers=MAX_STREAMS, thread_name_prefix="kona-stream"
+        )
 
         self.opens = 0  # successful source opens (tests, status)
         self.reconnects = 0  # reconnect attempts after the first connection
@@ -135,6 +166,12 @@ class CameraHub:
                 "last_error": self.last_error,
                 "last_error_kind": self.last_error_kind,
                 "readers": len(self._readers),
+                # `viewers` counts every caller inside snapshot() or mjpeg()
+                # right now and bounces with pollers; `streams` counts the
+                # long-lived generators, the number that would have made the
+                # 2026-09-11 hang a ten-minute diagnosis.
+                "viewers": self._viewers,
+                "streams": self._streams,
             }
 
     # -- lifecycle ----------------------------------------------------------
@@ -330,6 +367,8 @@ class CameraHub:
             readers = tuple(self._readers)
         for reader in readers:
             reader.join(timeout=max(0.0, deadline - time.monotonic()))
+        # Waits still queued belong to streams whose clients are gone.
+        self._stream_pool.shutdown(wait=False, cancel_futures=True)
 
     # -- viewers ------------------------------------------------------------
 
@@ -366,12 +405,32 @@ class CameraHub:
                 return self._frame if fresh else None, self._seq
             return None, after_seq  # stopped, or the reader died: caller shows the placeholder
 
-    def snapshot(self, timeout: float = 3.0) -> tuple[bytes, str]:
-        """(jpeg, state). A fresh frame if there is one within `timeout`,
-        else the placeholder with the honest state."""
+    def snapshot(self, after_seq: int = 0, timeout: float | None = None) -> Snapshot:
+        """A frame newer than `after_seq`, or the placeholder with the honest state.
+
+        `after_seq=0` (the capture button, a page's first poll) returns the
+        current frame at once when it is fresh. A client that sends back the
+        seq it last received is held until a newer frame exists, which is
+        what makes polling cost one request per frame rather than one per
+        guess, and lets a slow link fall behind by skipping frames instead of
+        queueing them.
+
+        `timeout` defaults to `stale_after` on purpose, as `mjpeg()` already
+        does. The page relies on "placeholder body => state is not live",
+        and that only holds when a caller waits at least as long as a frame
+        may be called fresh; a shorter wait could hand back the placeholder
+        while a frame under `stale_after` old still made the state `live`.
+
+        `after_seq` is clamped to the current seq. Seq restarts at 0 with the
+        process, so a phone that kept its page open across a `kona serve`
+        restart would otherwise wait the whole timeout for a number that will
+        not exist again for hours, and receive placeholders marked live.
+        """
+        wait = self.stale_after if timeout is None else timeout
         self._add_viewer()
         try:
             with self._lock:
+                after = min(after_seq, self._seq)
                 fresh = (
                     self._frame is not None
                     and self._reader_alive
@@ -379,11 +438,20 @@ class CameraHub:
                     and time.monotonic() - self._last_frame_at < self.stale_after
                 )
                 frame, seq = self._frame, self._seq
-            if not fresh:
-                frame, _ = self._wait_frame(after_seq=seq, timeout=timeout)
-            if frame is None:
-                return self._placeholder, self.status()["state"]
-            return frame, LIVE
+            if after > 0:
+                frame, seq = self._wait_frame(after_seq=after, timeout=wait)
+            elif not fresh:
+                frame, seq = self._wait_frame(after_seq=seq, timeout=wait)
+            # One reading of the status, so the words describe the same
+            # instant as the pixels. A real frame is live by construction.
+            status = self.status()
+            return Snapshot(
+                jpeg=self._placeholder if frame is None else frame,
+                state=status["state"] if frame is None else LIVE,
+                seq=seq,
+                frame_age=status["last_frame_age"],
+                error_kind=status["last_error_kind"],
+            )
         finally:
             self._remove_viewer()
 
@@ -404,14 +472,20 @@ class CameraHub:
         client disconnect (generator closed), on stop(), or after `max_frames`
         parts (placeholders count)."""
         self._add_viewer()
+        with self._lock:
+            self._streams += 1
         loop = asyncio.get_running_loop()
         seq = 0  # frames are numbered from 1; 0 means 'any frame'
         sent = 0
         showing_placeholder = False
         try:
             while max_frames is None or sent < max_frames:
+                if self._stop.is_set():
+                    break  # stop() shuts the pool; never submit to it after
                 wait = 1.0 if showing_placeholder else self.stale_after
-                frame, new_seq = await loop.run_in_executor(None, self._wait_frame, seq, wait)
+                frame, new_seq = await loop.run_in_executor(
+                    self._stream_pool, self._wait_frame, seq, wait
+                )
                 if self._stop.is_set():
                     break
                 seq = new_seq
@@ -424,4 +498,6 @@ class CameraHub:
                     showing_placeholder = False
                 sent += 1
         finally:
+            with self._lock:
+                self._streams -= 1
             self._remove_viewer()

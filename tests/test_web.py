@@ -1,7 +1,7 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from kona_tracker.camera.source import FakeSource
+from kona_tracker.camera.source import FakeSource, frame_number
 from kona_tracker.web.app import create_app
 from kona_tracker.web.auth import COOKIE_NAME
 from kona_tracker.web.settings import Settings
@@ -51,6 +51,9 @@ def test_snapshot_shows_placeholder_with_honest_state_when_camera_fails():
         snap = c.get("/snapshot.jpg")
         assert snap.status_code == 200 and snap.content == NO_SIGNAL_JPEG
         assert snap.headers["x-kona-state"] in ("disconnected", "connecting")  # never 'live'
+        # The reason travels as a short kind, never the message with its host.
+        assert snap.headers["x-kona-error"] == "open" and "hunter2" not in str(snap.headers)
+        assert "x-kona-frame-age" not in snap.headers, "no frame has ever existed"
         status = c.get("/status.json").json()
         assert "hunter2" not in status["last_error"] and "***@10.0.0.9" in status["last_error"]
     app.state.hub.stop()
@@ -163,6 +166,46 @@ def test_session_cookie_is_secure_only_when_asked():
     app.state.hub.stop()
 
 
+def test_snapshot_long_poll_returns_the_next_frame_with_identity_headers(client):
+    """The phone sends back the seq it has and is held for the one after it:
+    one request per frame, with the words about that frame in the same
+    response as its pixels."""
+    login(client)
+    first = client.get("/snapshot.jpg")
+    assert first.headers["x-kona-state"] == "live" and first.headers["x-kona-error"] == ""
+    seq = int(first.headers["x-kona-seq"])
+    assert seq >= 1 and float(first.headers["x-kona-frame-age"]) < 3.0
+    second = client.get("/snapshot.jpg", params={"after": seq})
+    assert second.status_code == 200 and second.headers["x-kona-state"] == "live"
+    assert int(second.headers["x-kona-seq"]) > seq
+    assert frame_number(second.content) > frame_number(first.content)
+
+
+def test_snapshot_after_rejects_garbage_and_stays_behind_the_gate(client):
+    assert client.get("/snapshot.jpg?after=5", follow_redirects=False).status_code == 401
+    login(client)
+    assert client.get("/snapshot.jpg", params={"after": "abc"}).status_code == 422
+    assert client.get("/snapshot.jpg", params={"after": -1}).status_code == 422
+
+
+def test_stream_is_refused_loudly_over_the_cap(client):
+    """An abandoned stream used to be a silent worker on the server until
+    nothing could start. Past the cap the answer is a 503 that names the
+    alternative, and the count is visible in /status.json."""
+    from kona_tracker.camera.hub import MAX_STREAMS
+
+    login(client)
+    hub = client.app.state.hub
+    hub._streams = MAX_STREAMS
+    try:
+        r = client.get("/stream.mjpg", params={"frames": 1})
+        assert r.status_code == 503 and r.headers["retry-after"] == "5"
+        assert "snapshot.jpg" in r.text
+        assert client.get("/status.json").json()["streams"] == MAX_STREAMS
+    finally:
+        hub._streams = 0
+
+
 def test_forged_cookie_is_rejected(client):
     client.cookies.set(COOKIE_NAME, "ok.forged.signature")
     assert client.get("/camera", follow_redirects=False).status_code == 303
@@ -237,6 +280,22 @@ def _app_with(model, source="fake"):
     control = default_control(settings)
     app = create_app(settings, source_factory=lambda: FakeSource(fps=100), control=control)
     return app, control
+
+
+def test_camera_page_polls_snapshots_and_holds_no_stream(client):
+    """A stream held open from the phone is what wedged the Camera tab: an
+    abandoned one lived on as a server worker until nothing could start.
+    The page now assigns each frame itself from a short request, and reads
+    the truth about it from that same response rather than a second poll."""
+    from kona_tracker.web.app import HERE
+
+    login(client)
+    page = client.get("/camera").text
+    assert 'src="/stream.mjpg"' not in page and 'id="cam"' in page
+    js = (HERE / "static" / "camera.js").read_text(encoding="utf-8")
+    assert "/snapshot.jpg?after=" in js and "X-Kona-Seq" in js
+    assert "status.json" not in js, "one source of truth per frame, not two pollers"
+    assert "stream.mjpg" not in js
 
 
 def test_the_pad_appears_only_when_something_can_actually_move_the_camera():
@@ -508,6 +567,7 @@ def test_every_response_carries_the_security_headers(client):
     assert "frame-ancestors 'none'" in csp and "script-src 'self'" in csp
     assert "unsafe-inline" not in csp and "nonce" not in csp
     assert "https://tile.openstreetmap.org" in csp and "data:" in csp
+    assert "blob:" in csp, "the Camera tab hands the <img> object URLs; without this it is black"
 
     responses = [
         client.get("/login"),

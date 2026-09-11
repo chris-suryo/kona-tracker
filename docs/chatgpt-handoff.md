@@ -55,6 +55,9 @@ has a test pinning it.
   re-download it.
 - **The reduced-motion block must stay last in `app.css`.** A test slices the
   file from that media query to the end.
+- **`img-src` in the CSP must keep `blob:`.** The Camera tab fetches each
+  frame and hands the `<img>` an object URL. Remove `blob:` and the picture
+  becomes a silent black rectangle with no error anywhere. A test pins it.
 - **Fi's API is undocumented and unversioned.** `fi/parse.py` holds the only
   parsers, shared by the probe and the page. Never add a field to a GraphQL
   document on a guess: a rejected field fails the *whole* document, which is

@@ -28,24 +28,24 @@ function element() {
     removeAttribute(name) { delete attrs[name]; if (name === 'src') this.naturalWidth = 0; },
     getAttribute: name => attrs[name] || null,
     appendChild() {}, querySelectorAll() { return []; }, querySelector() { return null; },
-    closest() { return null; }
+    closest() { return null; }, click() {}
   };
 }
 
 function setup(script, preview = false) {
   const names = ['cam', 'cap', 'dot', 'livetxt', 'capture', 'capture-hint', 'activity-body', 'pull'];
   const nodes = Object.fromEntries(names.map(name => [name, element()]));
-  const page = element(), label = element(), note = element(), freshness = element();
+  const page = element(), label = element(), note = element(), freshness = element(), camFrame = element();
   nodes.pull.querySelector = () => label;
   nodes['activity-body'].querySelector = selector => ({
     '.preview-banner': preview ? element() : null, '.freshness': freshness, 'p.note': note
   })[selector] || null;
   const document = {...element(), hidden: false,
     getElementById: id => nodes[id], querySelectorAll: () => [],
-    querySelector: s => s === 'main.activity-page' ? page : null,
+    querySelector: s => s === 'main.activity-page' ? page : s === '.cam' ? camFrame : null,
     createElement: element, createTextNode: text => ({textContent: text})
   };
-  const timers = new Map(), requests = [], window = {...element(), location: {href: ''}};
+  const timers = new Map(), requests = [], created = [], revoked = [], window = {...element(), location: {href: ''}};
   let nextTimer = 0, files = 0;
   const env = {
     document, window, AbortController, Date, console,
@@ -55,11 +55,17 @@ function setup(script, preview = false) {
       const req = {url, options, resolve, reject}; requests.push(req);
       options.signal?.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), {name:'AbortError'})));
     }),
+    // Object URLs are recorded, never created: the test can prove at most
+    // one is alive without a real Blob.
+    URL: {
+      createObjectURL: () => { const u = 'blob:' + (created.length + 1); created.push(u); return u; },
+      revokeObjectURL: u => { revoked.push(u); }
+    },
     File: class { constructor() { files++; } }, navigator: {},
     DOMParser: class { parseFromString() { return {getElementById: () => ({innerHTML:'new render'}), querySelector: () => null}; } }
   };
   vm.runInNewContext(fs.readFileSync(path.join(staticDir, script), 'utf8'), env);
-  return {nodes, page, label, note, document, window, requests, timers,
+  return {nodes, page, label, note, document, window, requests, timers, created, revoked, camFrame,
     files: () => files,
     fire(delay) {
       const entry = [...timers].find(([, t]) => t.delay === delay);
@@ -69,92 +75,136 @@ function setup(script, preview = false) {
   };
 }
 async function settle() { for (let n = 0; n < 12; n++) await Promise.resolve(); }
-function response(json, options = {}) { return {ok:true, redirected:false, json:async () => json, text:async () => '<main>new</main>', ...options}; }
+function response(json, options = {}) { return {ok:true, redirected:false, status:200, json:async () => json, text:async () => '<main>new</main>', blob:async () => ({}), ...options}; }
+// One /snapshot.jpg response: the pixels are a stand-in, the headers are the truth.
+function frame(state, seq, extra = {}) {
+  const map = {'X-Kona-State': state, 'X-Kona-Seq': String(seq), 'X-Kona-Error': extra.error || ''};
+  if (extra.age !== undefined) { map['X-Kona-Frame-Age'] = String(extra.age); }
+  return {ok:true, redirected:false, status:200, headers:{get: n => n in map ? map[n] : null},
+    blob:async () => ({state}), json:async () => null, text:async () => ''};
+}
 
-test('camera starts unverified, polls serially, and masks the picture on timeout', async () => {
+test('camera long-polls one frame at a time and reveals only a decoded live frame', async () => {
   const x = setup('camera.js');
   assert.equal(x.nodes.livetxt.textContent, 'CONNECTING');
   assert.equal(x.requests.length, 1);
-  x.requests[0].resolve(response({state:'live'})); await settle();
+  assert.equal(x.requests[0].url, '/snapshot.jpg?after=0');
+  x.requests[0].resolve(frame('live', 7)); await settle();
+  assert.deepEqual(x.created, ['blob:1']);
+  assert.equal(x.nodes.cam.src, 'blob:1');
+  assert.equal(x.nodes.cam.classList.contains('unavailable'), true, 'masked until it decodes');
+  x.nodes.cam.naturalWidth = 1280; x.nodes.cam.events.load();
   assert.equal(x.nodes.livetxt.textContent, 'LIVE');
   assert.equal(x.nodes.cam.classList.contains('unavailable'), false);
-  x.fire(2000); assert.equal(x.requests.length, 2);
-  assert.equal([...x.timers.values()].filter(t => t.delay === 2000).length, 0);
-  x.fire(5000); await settle();
-  assert.equal(x.nodes.livetxt.textContent, 'OFFLINE');
-  assert.equal(x.nodes.cam.classList.contains('unavailable'), true);
-  x.fire(2000); x.requests[2].resolve(response({state:'live'})); await settle();
-  assert.match(x.nodes.cam.src, /^\/stream.mjpg\?t=/);
-  assert.equal(x.nodes.livetxt.textContent, 'CONNECTING');
+  // The next request is already queued and asks for the frame after this one.
+  x.fire(0);
+  assert.equal(x.requests.length, 2);
+  assert.equal(x.requests[1].url, '/snapshot.jpg?after=7');
+  // Exactly one in flight: nothing else is scheduled while it is pending.
+  assert.equal([...x.timers.values()].filter(t => t.delay !== 10000).length, 0);
 });
 
-test('a decoded first frame reveals at once, not on the next poll tick', async () => {
-  // Regression: the reveal used to live only inside poll(), so a frame that
-  // decoded just after a poll sat masked for a full 2000ms cycle. The <img>
-  // 'load' event now reveals it the moment it decodes, once the server is live.
+test('a response the server did not call live stays masked and is described honestly', async () => {
   const x = setup('camera.js');
-  x.nodes.cam.naturalWidth = 0;  // the MJPEG has not decoded a frame yet
-  x.requests[0].resolve(response({state:'live'})); await settle();
-  // Server says live, but with no frame the picture stays honestly masked.
-  assert.equal(x.nodes.livetxt.textContent, 'CONNECTING');
+  x.requests[0].resolve(frame('stale', 3, {age: 4.2})); await settle();
+  assert.equal(x.created.length, 0, 'no object URL for a placeholder');
+  assert.equal(x.nodes.livetxt.textContent, 'STALE');
+  assert.equal(x.nodes.cap.textContent, 'No new frames for 4 s');
   assert.equal(x.nodes.cam.classList.contains('unavailable'), true);
-  // The first frame decodes: reveal immediately, without firing the 2000ms poll.
-  x.nodes.cam.naturalWidth = 480;
-  x.nodes.cam.events.load();
-  assert.equal(x.nodes.livetxt.textContent, 'LIVE');
-  assert.equal(x.nodes.cam.classList.contains('unavailable'), false);
+  assert.equal(x.camFrame.classList.contains('connecting'), true);
+  x.fire(500);  // the floor after a non-live answer; the server paces live ones
+  x.requests[1].resolve(frame('disconnected', 3, {error: 'black_frame'})); await settle();
+  assert.equal(x.nodes.livetxt.textContent, 'CHECK CAMERA');
+  assert.match(x.nodes.cap.textContent, /lens cover/);
+  assert.equal(x.camFrame.classList.contains('connecting'), false, 'a hard failure drops the overlay');
+  x.fire(500);
+  x.requests[2].resolve(frame('connecting', 3)); await settle();
+  assert.equal(x.nodes.livetxt.textContent, 'CONNECTING');
+  assert.equal(x.created.length, 0);
 });
 
-test('the load event never reveals a placeholder the server has not called live', async () => {
-  // A frame can decode (naturalWidth > 0) while the server is still connecting
-  // or disconnected — that frame is the NO-SIGNAL placeholder. The load-driven
-  // reveal must stay shut until /status.json actually reports live.
+test("a late decode never reveals after the server's latest word is not live", async () => {
   const x = setup('camera.js');
-  x.requests[0].resolve(response({state:'connecting'})); await settle();
-  x.nodes.cam.naturalWidth = 480;
-  x.nodes.cam.events.load();
-  assert.equal(x.nodes.livetxt.textContent, 'CONNECTING');
+  x.requests[0].resolve(frame('live', 1)); await settle();
+  x.fire(0);
+  x.requests[1].resolve(frame('stale', 1, {age: 5})); await settle();
+  assert.equal(x.nodes.livetxt.textContent, 'STALE');
+  x.nodes.cam.naturalWidth = 1280; x.nodes.cam.events.load();  // frame 1 decodes late
+  assert.equal(x.nodes.livetxt.textContent, 'STALE');
   assert.equal(x.nodes.cam.classList.contains('unavailable'), true);
 });
 
-test('hidden camera releases stream and ignores obsolete responses after resume', async () => {
+test('at most one object URL is alive: the previous is revoked on the next frame, the last on pause', async () => {
+  const x = setup('camera.js');
+  x.requests[0].resolve(frame('live', 1)); await settle(); x.fire(0);
+  x.requests[1].resolve(frame('live', 2)); await settle(); x.fire(0);
+  x.requests[2].resolve(frame('live', 3)); await settle();
+  assert.deepEqual(x.created, ['blob:1', 'blob:2', 'blob:3']);
+  assert.deepEqual(x.revoked, ['blob:1', 'blob:2']);
+  assert.equal(x.nodes.cam.src, 'blob:3');
+  x.document.hidden = true; x.document.events.visibilitychange();
+  assert.deepEqual(x.revoked, ['blob:1', 'blob:2', 'blob:3']);
+  assert.equal(x.nodes.cam.naturalWidth, 0);
+  assert.equal(x.nodes.livetxt.textContent, 'PAUSED');
+});
+
+test('failures back off and never spin; a 401 goes to login and schedules nothing more', async () => {
+  const x = setup('camera.js');
+  for (const delay of [500, 1000, 2000, 4000, 5000, 5000]) {
+    x.requests[x.requests.length - 1].reject(new Error('network')); await settle();
+    assert.equal(x.nodes.livetxt.textContent, 'OFFLINE');
+    x.fire(delay);  // fails loudly if that exact delay is not the one scheduled
+  }
+  // An answer resets the backoff.
+  x.requests[x.requests.length - 1].resolve(frame('live', 9)); await settle();
+  x.fire(0);
+  x.requests[x.requests.length - 1].reject(new Error('network')); await settle();
+  x.fire(500);
+  const before = x.requests.length;
+  x.requests[before - 1].resolve(response(null, {ok:false, status:401})); await settle();
+  assert.equal(x.window.location.href, '/login');
+  assert.equal(x.timers.size, 0, 'nothing scheduled after being sent to login');
+  assert.equal(x.requests.length, before);
+});
+
+test('a hidden page aborts its poll, shows PAUSED rather than OFFLINE, and resumes fresh', async () => {
   const x = setup('camera.js');
   x.document.hidden = true; x.document.events.visibilitychange();
   assert.equal(x.requests[0].options.signal.aborted, true);
-  assert.equal(x.nodes.cam.naturalWidth, 0);
+  await settle();
+  assert.equal(x.nodes.livetxt.textContent, 'PAUSED', 'the abort we caused is not a failure');
+  assert.equal(x.timers.size, 0);
   x.document.hidden = false; x.document.events.visibilitychange();
-  await settle(); assert.equal(x.requests.length, 2);
-  x.nodes.cam.naturalWidth = 640;
-  x.requests[1].resolve(response({state:'live'})); await settle();
-  assert.equal(x.nodes.livetxt.textContent, 'LIVE');
-  assert.equal([...x.timers.values()].filter(t => t.delay === 2000).length, 1);
-});
-
-test('HTTP failure and malformed status never display LIVE', async () => {
-  for (const r of [response({}, {ok:false}), response({state:'surprise'})]) {
-    const x = setup('camera.js'); x.requests[0].resolve(r); await settle();
-    assert.equal(x.nodes.livetxt.textContent, 'OFFLINE');
-  }
-});
-
-test('an idle hub restarts the stream; historical errors do not override connecting', async () => {
-  const x = setup('camera.js');
-  x.requests[0].resolve(response({state:'idle'})); await settle();
-  assert.match(x.nodes.cam.src, /^\/stream.mjpg\?t=/);
-  x.fire(2000);
-  x.requests[1].resolve(response({state:'connecting',last_error_kind:'black_frame'}));
-  await settle();
+  assert.equal(x.requests.length, 2);
   assert.equal(x.nodes.livetxt.textContent, 'CONNECTING');
+  x.requests[1].resolve(frame('live', 4)); await settle();
+  x.nodes.cam.naturalWidth = 1280; x.nodes.cam.events.load();
+  assert.equal(x.nodes.livetxt.textContent, 'LIVE');
 });
 
-test('a placeholder snapshot cannot be shared as Kona right now', async () => {
+test('a hung poll is abandoned at the deadline and retried with backoff', async () => {
   const x = setup('camera.js');
-  x.nodes.capture.events.click();
-  x.requests[1].resolve(response(null, {headers:{get: () => 'disconnected'}}));
+  x.fire(10000);
+  assert.equal(x.requests[0].options.signal.aborted, true);
   await settle();
+  assert.equal(x.nodes.livetxt.textContent, 'OFFLINE');
+  x.fire(500);
+  assert.equal(x.requests.length, 2);
+});
+
+test('capture finds its own request among the polls and shares only a live frame', async () => {
+  const x = setup('camera.js');
+  const shots = () => x.requests.filter(q => q.url.indexOf('/snapshot.jpg?t=') === 0);
+  x.nodes.capture.events.click();
+  assert.equal(shots().length, 1);
+  shots()[0].resolve(frame('disconnected', 1, {error: 'black_frame'})); await settle();
   assert.equal(x.files(), 0);
   assert.equal(x.nodes.capture.disabled, false);
   assert.match(x.nodes['capture-hint'].textContent, /Could not capture/);
+  x.nodes.capture.events.click();
+  shots()[1].resolve(frame('live', 2)); await settle();
+  assert.equal(x.files(), 1);
+  assert.equal(x.nodes['capture-hint'].textContent, 'Photo saved');
 });
 
 test('sample preview never installs automatic or pull refresh', () => {

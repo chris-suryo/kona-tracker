@@ -180,6 +180,13 @@ running the app must be on the same network.
    `camera-test` prints the frame size and fps, or the exact error with the
    password hidden. Paste that line into the next session if it fails.
 
+   **Never run `camera-test` or `camera-doctor` while `kona serve` is
+   running.** A USB webcam can be opened by one program at a time; two of
+   them contending for it produces black frames that look exactly like a
+   wedged device, and a running server keeps the camera for two minutes
+   after the last viewer leaves (`KONA_CAMERA_IDLE_SECONDS`). Stop the
+   server first. This cost most of a day on 2026-09-11.
+
 ## 5. When the Fi collar arrives (anywhere, any machine)
 
 Fi's API is a normal internet service, so this does **not** need the home

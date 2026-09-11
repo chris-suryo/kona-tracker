@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, Form, Request, Response
+from fastapi import FastAPI, Form, Query, Request, Response
 from fastapi.responses import (
     HTMLResponse,
     JSONResponse,
@@ -20,7 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from kona_tracker.camera.control import CameraControl, ControlUnsupported, FakeControl, NoControl
-from kona_tracker.camera.hub import BOUNDARY, CameraHub
+from kona_tracker.camera.hub import BOUNDARY, MAX_STREAMS, CameraHub
 from kona_tracker.camera.source import FakeSource, FrameSource, OpenCVSource, RtspSource
 from kona_tracker.fi.service import FiService
 from kona_tracker.web.auth import COOKIE_NAME, Lockout, PasscodeAuth, client_key
@@ -43,14 +43,19 @@ PUBLIC_PATHS = {"/login", "/healthz"}
 #: on it. Nothing here is a nonce -- every script the pages use is a file
 #: under /static, so `script-src 'self'` is enough and the JS stays cacheable.
 #: `data:` is for Leaflet, which points aborted tile images at a base64 GIF.
-#: `img-src` names OpenStreetMap's tile host, a decision already recorded in
-#: docs/handoff.md; `Referrer-Policy: no-referrer` means it learns a tile
-#: area and nothing else. No HSTS: the LAN address is plain http on purpose.
+#: `blob:` is for the Camera tab, which fetches each frame and hands the
+#: <img> an object URL; without it the picture is a silent black rectangle.
+#: A blob URL can only be minted by script already running in the page, and
+#: with script-src 'self' and no inline that means only /static/*.js, so it
+#: concedes nothing `data:` did not already. `img-src` names OpenStreetMap's
+#: tile host, a decision already recorded in docs/handoff.md;
+#: `Referrer-Policy: no-referrer` means it learns a tile area and nothing
+#: else. No HSTS: the LAN address is plain http on purpose.
 SECURITY_HEADERS = {
     "Content-Security-Policy": (
         "default-src 'self'; script-src 'self'; "
         "style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; "
-        "img-src 'self' data: https://tile.openstreetmap.org; connect-src 'self'; "
+        "img-src 'self' data: blob: https://tile.openstreetmap.org; connect-src 'self'; "
         "frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; "
         "manifest-src 'self'"
     ),
@@ -378,6 +383,19 @@ def create_app(
     @app.get("/stream.mjpg")
     def stream(frames: int | None = None):
         # `frames` caps the stream (curl debugging, tests); browsers omit it.
+        # The phone no longer uses this; it polls /snapshot.jpg. What remains
+        # is for curl and a desktop, and it is capped so abandoned streams can
+        # never again pile up silently until nothing can start. The check
+        # lives here and not in the generator because by the time the
+        # generator runs, the 200 and the multipart headers are already on
+        # the wire. The check-then-act gap is real and benign for a household.
+        if hub.status()["streams"] >= MAX_STREAMS:
+            return Response(
+                content=f"{MAX_STREAMS} streams are already open; poll /snapshot.jpg instead.\n",
+                status_code=503,
+                media_type="text/plain",
+                headers={"Retry-After": "5"},
+            )
         return StreamingResponse(
             hub.mjpeg(max_frames=frames),
             media_type=f"multipart/x-mixed-replace; boundary={BOUNDARY}",
@@ -385,14 +403,32 @@ def create_app(
         )
 
     @app.get("/snapshot.jpg")
-    def snapshot():
-        # Always an image (an <img> fallback can show it); the header is the truth.
-        frame, state = hub.snapshot()
-        return Response(
-            content=frame,
-            media_type="image/jpeg",
-            headers={"Cache-Control": "no-store", "X-Kona-State": state},
-        )
+    def snapshot(after: int = Query(0, ge=0)):
+        """One frame, and the truth about it in the same response.
+
+        `after` is the seq the caller last received. The hub holds the
+        request until a newer frame exists, for at most `stale_after`, so a
+        polling page costs one request per frame and a slow link skips
+        frames rather than queueing them. `after=0` returns the current
+        frame at once; that is the capture button and a page's first poll.
+
+        The body is always an image so an <img> can show it; the headers are
+        the truth. `X-Kona-State: live` means a real frame. The placeholder
+        never travels as live, because the hub waits at least `stale_after`
+        before giving up and a frame older than that is stale by definition.
+        `X-Kona-Error` is the hub's last error *kind*, a short token, never
+        the message, which can carry a redacted camera host.
+        """
+        snap = hub.snapshot(after_seq=after)
+        headers = {
+            "Cache-Control": "no-store",
+            "X-Kona-State": snap.state,
+            "X-Kona-Seq": str(snap.seq),
+            "X-Kona-Error": snap.error_kind or "",
+        }
+        if snap.frame_age is not None:
+            headers["X-Kona-Frame-Age"] = f"{snap.frame_age:.2f}"
+        return Response(content=snap.jpeg, media_type="image/jpeg", headers=headers)
 
     @app.get("/status.json")
     def status():
