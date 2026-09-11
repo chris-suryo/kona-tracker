@@ -11,11 +11,24 @@ Read `CLAUDE.md` first. It governs. Then this.
 
 ## The one-line summary
 
-**The hardware is fine and the app shows black anyway.** `camera-test`
-opens the same device with the same settings the server uses and gets real
-pictures. `kona serve` shows a black rectangle. The fault is above the
-camera source, in the hub or in the browser, and it has not been narrowed
-past that.
+**The picture does arrive. It takes far too long, and while it is coming
+the page is indistinguishable from a dead camera.** That is the bug to
+chase first, and it may be the whole story.
+
+Run on the phone against `kona serve --fake-camera`, which involves no
+webcam at all: the badge said CONNECTING over a black rectangle for long
+enough that Chris reported it as broken, and then it went LIVE on its own.
+So the reveal path works. It is just slow enough that a person gives up
+before it fires, and a person giving up is the failure.
+
+The hardware is separately cleared: `camera-test` opens the real device
+with the server's exact settings and gets real pictures.
+
+**The pan and tilt pad appearing under the fake camera is correct, not a
+stale build.** `default_control()` in `web/app.py` gives the fake source a
+`FakeControl`, which is steerable on purpose so the control surface exists
+before the hardware does. See `docs/device-capabilities.md`. A real C270
+gets `NoControl` and no pad.
 
 ---
 
@@ -51,6 +64,55 @@ retesting is a cheap way to rule it out.
 **Frame rate note.** `camera-test` measured 4.0 fps against a configured 15.
 Not obviously a fault, but worth remembering: `KONA_STALE_SECONDS` is 3, so
 a camera this slow has less headroom than the settings imply.
+
+---
+
+## Start here: why is the first frame so slow to appear?
+
+This is the highest-value thread, because it reproduces with
+`--fake-camera` on the machine itself, with no hardware and no phone.
+
+The image ships hidden. `web/templates/camera.html`:
+
+```html
+<img id="cam" class="unavailable" src="/stream.mjpg" alt="Live view of Kona">
+```
+
+`app.css` sets `.cam img.unavailable { visibility: hidden; }` over a `.cam`
+background of `#0b0e0c`. **A hidden image is a black rectangle that looks
+exactly like a dead camera.** The only code path that reveals it is in
+`web/static/camera.js`:
+
+```js
+if (s.state === 'live' && !streamFailed && img.naturalWidth > 0) set('on', 'LIVE', '');
+else if (s.state === 'live') set('stale', 'CONNECTING', 'Waiting for video on this phone…');
+```
+
+Three conditions, and `poll()` only re-evaluates every 2000 ms, so every
+missed condition costs another two seconds of black. Worth measuring rather
+than guessing:
+
+- How long until `/status.json` first reports `live`? The hub starts on the
+  first viewer, and `OpenCVSource` took 1.7 s just to open the real device.
+- When does `img.naturalWidth` first become non-zero for a
+  `multipart/x-mixed-replace` image? It stays 0 until a part has decoded.
+  Check whether `visibility: hidden` delays the decode in the browser.
+- Does an early `error` event latch `streamFailed` and hold the reveal
+  until the next successful `reload()`?
+
+Instrument it, do not reason about it: log a timestamp on the `<img>`
+`load` event, on each poll result, and at the moment `unavailable` is
+removed. Then the gap is a measurement instead of a theory.
+
+Two design questions follow, and they are worth raising with Chris rather
+than deciding alone:
+
+- Should the picture be revealed as soon as frames decode, without waiting
+  for a poll cycle to agree? The `load` event already fires on first frame.
+- Should the black rectangle say something honest while it waits? The badge
+  says CONNECTING, but the large black area says "broken" much louder, and
+  the whole character of this project is that the page never implies a
+  state it cannot back up.
 
 ---
 
@@ -197,10 +259,10 @@ uv run kona camera-test          # one open, the server's exact settings
 node --test tests/browser_runtime.test.cjs   # camera.js logic; CI does NOT run this
 ```
 
-`--fake-camera` deserves special mention: if the fake test pattern also
-shows as a black rectangle, the bug is entirely in the browser and the real
-camera is irrelevant. **That is the single cheapest experiment available and
-it should probably be run first.**
+`--fake-camera` is the one to work with. It reproduces the slow reveal with
+no hardware, on the PC, in a desktop browser with devtools open. Get the
+first frame to appear quickly there and the real camera becomes a much
+smaller question.
 
 ## When it is fixed
 
