@@ -558,3 +558,47 @@ def test_polling_viewers_keep_the_camera_open_and_it_idles_after_they_stop():
         assert hub.opens == 1
     finally:
         hub.stop()
+
+
+def test_mjpeg_waits_run_on_the_hubs_own_pool_and_stop_shuts_it_down():
+    """Stream waits used asyncio's default executor, shared with everything
+    else. Enough streams abandoned by a phone filled it and no new stream
+    could start while ordinary endpoints kept answering. They now have their
+    own bounded pool, so the worst they can do is starve each other."""
+    hub, _ = make_hub([[]])
+    names: set[str] = set()
+    original = hub._wait_frame
+
+    def spy(after_seq, timeout):
+        names.add(threading.current_thread().name)
+        return original(after_seq, timeout)
+
+    hub._wait_frame = spy
+    try:
+        assert len(collect(hub, 2)) == 2
+        assert names and all(n.startswith("kona-stream") for n in names), names
+    finally:
+        hub.stop()
+    assert hub._stream_pool._shutdown, "stop() must take the pool down with it"
+
+
+def test_status_counts_streams_and_viewers():
+    """The number that would have made the 2026-09-11 hang a ten-minute
+    diagnosis: how many long-lived streams the server is carrying."""
+    hub, _ = make_hub([[]])
+
+    async def go():
+        a, b = hub.mjpeg(), hub.mjpeg()
+        await a.__anext__()
+        await b.__anext__()
+        s = hub.status()
+        assert s["streams"] == 2 and s["viewers"] == 2
+        await a.aclose()
+        await b.aclose()
+        s = hub.status()
+        assert s["streams"] == 0 and s["viewers"] == 0
+
+    try:
+        asyncio.run(go())
+    finally:
+        hub.stop()

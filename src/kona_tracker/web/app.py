@@ -20,7 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from kona_tracker.camera.control import CameraControl, ControlUnsupported, FakeControl, NoControl
-from kona_tracker.camera.hub import BOUNDARY, CameraHub
+from kona_tracker.camera.hub import BOUNDARY, MAX_STREAMS, CameraHub
 from kona_tracker.camera.source import FakeSource, FrameSource, OpenCVSource, RtspSource
 from kona_tracker.fi.service import FiService
 from kona_tracker.web.auth import COOKIE_NAME, Lockout, PasscodeAuth, client_key
@@ -383,6 +383,19 @@ def create_app(
     @app.get("/stream.mjpg")
     def stream(frames: int | None = None):
         # `frames` caps the stream (curl debugging, tests); browsers omit it.
+        # The phone no longer uses this; it polls /snapshot.jpg. What remains
+        # is for curl and a desktop, and it is capped so abandoned streams can
+        # never again pile up silently until nothing can start. The check
+        # lives here and not in the generator because by the time the
+        # generator runs, the 200 and the multipart headers are already on
+        # the wire. The check-then-act gap is real and benign for a household.
+        if hub.status()["streams"] >= MAX_STREAMS:
+            return Response(
+                content=f"{MAX_STREAMS} streams are already open; poll /snapshot.jpg instead.\n",
+                status_code=503,
+                media_type="text/plain",
+                headers={"Retry-After": "5"},
+            )
         return StreamingResponse(
             hub.mjpeg(max_frames=frames),
             media_type=f"multipart/x-mixed-replace; boundary={BOUNDARY}",

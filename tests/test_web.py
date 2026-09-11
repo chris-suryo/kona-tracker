@@ -188,6 +188,24 @@ def test_snapshot_after_rejects_garbage_and_stays_behind_the_gate(client):
     assert client.get("/snapshot.jpg", params={"after": -1}).status_code == 422
 
 
+def test_stream_is_refused_loudly_over_the_cap(client):
+    """An abandoned stream used to be a silent worker on the server until
+    nothing could start. Past the cap the answer is a 503 that names the
+    alternative, and the count is visible in /status.json."""
+    from kona_tracker.camera.hub import MAX_STREAMS
+
+    login(client)
+    hub = client.app.state.hub
+    hub._streams = MAX_STREAMS
+    try:
+        r = client.get("/stream.mjpg", params={"frames": 1})
+        assert r.status_code == 503 and r.headers["retry-after"] == "5"
+        assert "snapshot.jpg" in r.text
+        assert client.get("/status.json").json()["streams"] == MAX_STREAMS
+    finally:
+        hub._streams = 0
+
+
 def test_forged_cookie_is_rejected(client):
     client.cookies.set(COOKIE_NAME, "ok.forged.signature")
     assert client.get("/camera", follow_redirects=False).status_code == 303
