@@ -1,6 +1,6 @@
 # Frontend history review — 11 September 2026
 
-Frontend work is on `chatgpt/ui-pass`, based on main `3be6863`, in the
+Frontend work is on `chatgpt/ui-pass`, originally based on main `3be6863`, in the
 `frontend` worktree. Keep backend/camera work in its existing checkout.
 This branch is for a PR; Chris merges. No new packages, map service or
 production Fi queries were added.
@@ -90,3 +90,40 @@ passed; 12 Node browser-runtime tests passed. Browser review exercised
 hour selection, Day/Week navigation, rest layout, and absence of PTZ in
 the fixed-camera preview. Dark theme was visually inspected; light theme
 and real iPhone Safari review remain before merge.
+
+## Latest refinement and pickup
+
+PR #7: https://github.com/chris-suryo/kona-tracker/pull/7 (draft, Chris merges).
+The branch now includes main through `f266de8`, including snapshot camera
+polling and bounded MJPEG waits from PRs #8/#9. The import-only conflict in
+web/app.py was resolved by retaining HTTPException and Query. The frontend
+did not redesign that camera transport.
+
+Chris approved the initial visuals and requested less text, a smaller
+minutes figure alongside hours, weekly rest averages, and smoother refresh.
+Implemented in `0b4fb3d`, followed by main integration `bc4d534`:
+
+- Shared duration markup makes trailing minutes smaller; minutes-only
+  durations retain their primary size.
+- Weekly rest leads with a daily average over five complete fixture days,
+  excluding today and the day with a missing reading. It is not a clinical
+  "normal" or a baseline. Average sleep/nap breakdown accompanies it.
+- Removed repeated explanatory copy; "View readings" contains the exact
+  plotted values and the missing/zero legend. Sample banners stay explicit.
+- Refresh follows the pull without transition lag, settles near its release
+  position, shows a brief result and fades/slides away. Timer cancellation
+  prevents an old dismissal from hiding a new gesture. Reduced motion remains.
+
+Validation after integrating main: 279 pytest passed; Ruff check and format
+check clean; 14 Node runtime tests passed. The latest visual inspection was
+blocked by automatic approval review reporting the account usage limit.
+Do not describe these latest refinements as visually verified on iPhone.
+`dos wrap --help` was blocked by Windows Application Control; this document
+records the session instead. No alternate execution was attempted.
+
+Next session: fetch `chatgpt/ui-pass`, read this file plus CLAUDE.md and
+PROJECT.md, inspect PR #7 against current main, and retain any later backend
+merges. Finish phone/light/dark/reduced-motion checks before Chris merges.
+The production-safe polish can ship with sample-only history routes; actual
+history must wait for verified data. Keep "View readings" driven by the same
+data as charts when integrating. The map provider decision is still open.
