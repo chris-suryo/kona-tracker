@@ -1037,3 +1037,24 @@ def test_an_unloadable_timezone_falls_back_to_the_servers_clock():
     assert ctx["as_of"] == NOW.astimezone().strftime("%H:%M") and ctx["clock_zone"] is None
     assert activity_json(snap, configured=True)["clock"] == "server"
     assert activity_json(None, configured=False)["clock"] is None
+
+
+def test_the_snapshot_carries_daily_rest_history():
+    """End to end: the parser being right is not the same as the fetch
+    wiring it through. Same mock the other snapshot tests use."""
+    with make_client() as client:
+        snap = fetch_snapshot(client, EMAIL, PASSWORD, now=NOW)
+
+    assert snap.rest_days, "history must reach the snapshot, not just the parser"
+    starts = [d.window.start for d in snap.rest_days]
+    assert starts == sorted(starts), "oldest first; a chart reads left to right"
+    # The day containing NOW is the in-progress one, and it is not averageable.
+    current = [d for d in snap.rest_days if d.in_progress]
+    assert len(current) == 1 and current[0].complete is False
+
+
+def test_a_failed_rest_query_leaves_an_empty_history_not_a_short_one():
+    """A short series would draw as "she slept less those days"."""
+    from kona_tracker.fi.service import FiSnapshot
+
+    assert FiSnapshot(fetched_at=NOW, pet_name="Kona").rest_days == []
