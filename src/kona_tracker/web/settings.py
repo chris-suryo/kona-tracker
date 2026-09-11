@@ -67,6 +67,17 @@ class Settings:
     #: forge this app's heartbeat and silence the alarm.
     heartbeat_url: str = ""
     heartbeat_seconds: float = 300.0
+    #: Basemap for the location map. `osm` is the default and needs no
+    #: account. `stadia` is Alidade Smooth Dark, which is natively dark
+    #: rather than a filtered light map, and needs a key.
+    map_tiles: str = "osm"  # osm | stadia
+    #: Treated as a secret in the repo -- it is gitignored like the passcode
+    #: -- but it is NOT secret from a viewer: browser tiles carry it in the
+    #: URL, so anyone who can load the page can read it. The blast radius is
+    #: this account's tile quota and nothing else. Domain-based auth would
+    #: avoid that, and needs a stable hostname the quick tunnel does not
+    #: provide; `docs/remote-access.md` 3a is the prerequisite.
+    stadia_api_key: str = ""
     # Same two keys the probe already uses, so `.env` stays one file with one
     # Fi login in it rather than two that can drift apart.
     fi_email: str = ""
@@ -188,6 +199,18 @@ def load_settings(env_file: Path | None = Path(".env"), fake_camera: bool = Fals
     trusted_proxy_ips = tuple(ip for ip in trusted_proxy_ips if ip) or ("127.0.0.1", "::1")
     secure_cookies = parse_bool(get("KONA_SECURE_COOKIES"), "KONA_SECURE_COOKIES")
     keep_awake = parse_bool(get("KONA_KEEP_AWAKE"), "KONA_KEEP_AWAKE")
+    map_tiles = get("KONA_MAP_TILES", "osm").strip().lower() or "osm"
+    stadia_api_key = get("KONA_STADIA_API_KEY").strip()
+    if map_tiles not in ("osm", "stadia"):
+        raise SettingsError(f"KONA_MAP_TILES must be osm or stadia, not {map_tiles!r}")
+    if map_tiles == "stadia" and not stadia_api_key:
+        # Refuse at load rather than serving a map whose every tile 401s.
+        # A blank basemap looks like a bug in this app, not a missing key.
+        raise SettingsError(
+            "KONA_MAP_TILES=stadia needs KONA_STADIA_API_KEY. Create a key at "
+            "client.stadiamaps.com and put it in .env, or set KONA_MAP_TILES=osm."
+        )
+
     if trusted_proxy_header and not secure_cookies:
         # A proxy header only makes sense behind a tunnel, and a tunnel is
         # HTTPS; a session cookie that can also travel over plain http is
@@ -232,4 +255,6 @@ def load_settings(env_file: Path | None = Path(".env"), fake_camera: bool = Fals
         keep_awake=keep_awake,
         heartbeat_url=get("KONA_HEARTBEAT_URL").strip(),
         heartbeat_seconds=float(get("KONA_HEARTBEAT_SECONDS", "300")),
+        map_tiles=map_tiles,
+        stadia_api_key=stadia_api_key,
     )

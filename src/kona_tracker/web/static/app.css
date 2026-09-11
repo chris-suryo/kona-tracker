@@ -114,7 +114,10 @@ body.activity-page { overscroll-behavior-y: contain; }
 .leaflet-control-attribution { font: 9px/1.2 system-ui, sans-serif !important; }
 .leaflet-control-zoom a { color: #171A15 !important; }
 @media (prefers-color-scheme: dark) {
-  .map .leaflet-tile-pane { filter: brightness(.72) saturate(.7) contrast(1.08); }
+  /* Fakes a dark basemap out of light OSM raster tiles. `.tiles-dark` is set
+     by map.js when the tiles are already dark (Stadia Alidade Smooth Dark),
+     where filtering again would crush them. */
+  .map:not(.tiles-dark) .leaflet-tile-pane { filter: brightness(.72) saturate(.7) contrast(1.08); }
 }
 
 .steps-hero { display: flex; align-items: center; gap: 18px; padding: 28px 0 26px; border-bottom: 1px solid var(--line); }

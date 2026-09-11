@@ -166,6 +166,50 @@ def dial_offset(hours: float | None) -> float:
     return round(TRACK * (1.0 - fraction), 1)
 
 
+#: Alidade Smooth Dark. `{r}` is Leaflet's retina placeholder and is what
+#: makes this sharp on a phone; it resolves to "@2x" on a HiDPI screen.
+STADIA_DARK = "https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png"
+STADIA_ATTRIBUTION = (
+    '&copy; <a href="https://stadiamaps.com/">Stadia Maps</a>, '
+    '&copy; <a href="https://openmaptiles.org/">OpenMapTiles</a>, '
+    '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+)
+#: The key rides in the query string because the app sends no referrer
+#: header for domain auth to read. See settings.stadia_api_key.
+STADIA_TILES_QUERY = "{base}?api_key={key}"
+OSM_TILES = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+OSM_ATTRIBUTION = (
+    '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+)
+
+
+def map_tile_config(map_tiles: str, stadia_api_key: str = "") -> dict[str, Any]:
+    """Tile layer settings for `map.js`, rendered as a JSON data block.
+
+    A separate function, and the only place the Stadia key is written into a
+    URL, so there is exactly one line to audit. `dark` says whether the CSS
+    filter that fakes a dark basemap should run: Alidade Smooth Dark already
+    is dark, and filtering it darkens it twice.
+
+    Falls back to OpenStreetMap rather than raising. A missing key is refused
+    at settings load (`settings.py`), so by the time a request renders, the
+    only way to be here without one is `map_tiles="osm"`.
+    """
+    if map_tiles == "stadia" and stadia_api_key:
+        return {
+            "url": STADIA_TILES_QUERY.format(base=STADIA_DARK, key=stadia_api_key),
+            "attribution": STADIA_ATTRIBUTION,
+            "maxZoom": 20,
+            "dark": True,
+        }
+    return {
+        "url": OSM_TILES,
+        "attribution": OSM_ATTRIBUTION,
+        "maxZoom": 19,
+        "dark": False,
+    }
+
+
 def activity_context(snapshot: FiSnapshot | None, configured: bool) -> dict[str, Any]:
     """Everything `activity.html` needs, with no data invented on the way."""
     window = snapshot.window if snapshot else None

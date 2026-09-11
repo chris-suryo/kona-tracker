@@ -568,6 +568,9 @@ def test_every_response_carries_the_security_headers(client):
     assert "unsafe-inline" not in csp and "nonce" not in csp
     assert "https://tile.openstreetmap.org" in csp and "data:" in csp
     assert "blob:" in csp, "the Camera tab hands the <img> object URLs; without this it is black"
+    assert "https://tiles.stadiamaps.com" in csp, (
+        "the optional Stadia basemap; without this every tile is silently blocked"
+    )
 
     responses = [
         client.get("/login"),
@@ -709,3 +712,85 @@ def test_the_app_hands_the_camera_timings_to_the_hub():
     )
     app = create_app(settings, source_factory=lambda: FakeSource(fps=100))
     assert app.state.hub._idle_stop == 300 and app.state.hub._reopen_cooldown == 4
+
+
+def test_map_defaults_to_openstreetmap_and_carries_no_key():
+    """The fallback is the tested default, not an accident.
+
+    A missing key must never produce a Stadia URL with an empty `api_key=`:
+    every tile would 401 and the map would be blank with no error anywhere.
+    """
+    from kona_tracker.web.views import map_tile_config
+
+    cfg = map_tile_config("osm")
+    assert cfg["url"].startswith("https://tile.openstreetmap.org")
+    assert "api_key" not in cfg["url"]
+    assert cfg["dark"] is False, "OSM raster is light; the CSS filter must still run"
+
+    # Belt and braces: `stadia` without a key is refused at settings load, but
+    # if it ever reached here it must fall back rather than emit a blank key.
+    assert map_tile_config("stadia", "")["url"].startswith("https://tile.openstreetmap.org")
+
+
+def test_stadia_config_names_the_style_the_retina_placeholder_and_attribution():
+    from kona_tracker.web.views import map_tile_config
+
+    cfg = map_tile_config("stadia", "NOT-A-REAL-KEY")
+    assert "alidade_smooth_dark" in cfg["url"]
+    assert "{r}" in cfg["url"], "Leaflet's retina placeholder; this is what sharpens it on a phone"
+    assert cfg["url"].endswith("?api_key=NOT-A-REAL-KEY")
+    assert "Stadia Maps" in cfg["attribution"] and "OpenMapTiles" in cfg["attribution"]
+    assert "OpenStreetMap" in cfg["attribution"], "required even on Stadia tiles"
+    assert cfg["dark"] is True, "already dark; the CSS filter must not darken it twice"
+
+
+def test_stadia_selected_without_a_key_is_refused_by_name(tmp_path, monkeypatch):
+    """Fail at load, not at the first tile request.
+
+    A blank basemap looks like a bug in this app rather than a missing key,
+    and the person who has to diagnose it is the one who set the variable.
+    """
+    from kona_tracker.web.settings import SettingsError, load_settings
+
+    for key in ("KONA_MAP_TILES", "KONA_STADIA_API_KEY"):
+        monkeypatch.delenv(key, raising=False)
+    env = tmp_path / ".env"
+    env.write_text("KONA_PASSCODE=abcdef\nKONA_SECRET=s\nKONA_MAP_TILES=stadia\n", encoding="utf-8")
+    try:
+        load_settings(env)
+    except SettingsError as e:
+        assert "KONA_STADIA_API_KEY" in str(e)
+    else:
+        raise AssertionError("a stadia basemap with no key must not load")
+
+    env.write_text(
+        "KONA_PASSCODE=abcdef\nKONA_SECRET=s\nKONA_MAP_TILES=elevation\n", encoding="utf-8"
+    )
+    try:
+        load_settings(env)
+    except SettingsError as e:
+        assert "osm or stadia" in str(e)
+    else:
+        raise AssertionError("an unknown basemap name must not load")
+
+
+def test_the_rendered_page_carries_the_tile_config_as_data_not_code():
+    """End-to-end: the pure function being right is not the same as the page
+    getting it. The block sits inside the `{% if map_points %}` gate, so a
+    map and its tile settings appear and disappear together.
+    """
+    from kona_tracker.camera.source import FakeSource
+    from kona_tracker.web.settings import Settings
+
+    settings = Settings(
+        passcode="4242", secret="s", map_tiles="stadia", stadia_api_key="NOT-A-REAL-KEY"
+    )
+    app = create_app(settings, source_factory=lambda: FakeSource(fps=100))
+    with TestClient(app) as c:
+        c.post("/login", data={"passcode": "4242"}, follow_redirects=False)
+        body = c.get("/activity?preview=1").text
+
+    assert '<script type="application/json" id="map-config">' in body
+    assert "alidade_smooth_dark" in body
+    # Data, never code: it must not arrive as an executable script.
+    assert "<script>" not in body.split('id="map-config"')[0][-200:]
