@@ -361,6 +361,78 @@ fires. Tests pin all of it.
 user-scalable=no` from `base.html` and delete the last block of `app.js`.
 Two edits, nothing else depends on it.
 
+## 2c. The live picture does not render in iOS Safari
+
+**Measured 2026-09-11 on Chris's iPhone**, with Safari Web Inspector
+attached from a Mac over USB, against the real C270 on the LAN. This is the
+first time any part of this app was inspected on the device it is built for,
+and it overturns an assumption the code was written on.
+
+The Camera tab sits on "Connecting…" forever. At that moment:
+
+| what | reading |
+|---|---|
+| `document.getElementById('cam').naturalWidth` | `0` |
+| `document.getElementById('cam').complete` | `false` |
+| the `/stream.mjpg` request | open, loading, never completes |
+| Web Inspector's body view for it | "Resource has no content" |
+| `/healthz` on the server, same moment | `camera=live` |
+| a desktop browser on the same server | shows the live picture |
+
+`naturalWidth: 0` is the browser saying it has never decoded a frame. So the
+picture is not hidden by CSS or withheld by the reveal logic. **There is no
+image.** The conclusion is that iOS Safari does not render
+`multipart/x-mixed-replace` in an `<img>`, which Chrome and Firefox do.
+
+This matters more than it sounds. Every camera fix before this was verified
+in desktop Chrome, a different engine, which is why several rounds of
+"verified" work left the phone black. **The Camera tab has, as far as we can
+tell, never worked in Safari on an iPhone.** The comment at the top of
+`camera.js` assumes Safari supports MJPEG and only stalls after sleep or
+wake; that assumption is the thing to distrust.
+
+### The part that does not fit yet
+
+Loading `/snapshot.jpg` directly in Safari on the phone — a single ordinary
+JPEG, nothing multipart about it — also failed to render. Safari offered it
+as a download, reported as 0 KB, and did the same for `/stream.mjpg`.
+
+A plain JPEG failing is **not** explained by the multipart theory, and it
+matters because the proposed fix is to poll that exact endpoint. An empty
+download is also what a `401` from the passcode gate would produce, since
+`app.py` returns a bodyless 401 for `/snapshot` and `/stream` paths rather
+than redirecting. Whether that is what happened is unknown.
+
+**Do not build the snapshot-polling change until this is resolved.** The
+check is one line in the Web Inspector console on the phone, on the camera
+page where the session cookie is definitely working:
+
+```js
+fetch('/snapshot.jpg?t=' + Date.now(), { cache: 'no-store' })
+  .then(r => r.status + ' ' + r.headers.get('content-type') + ' ' + r.headers.get('X-Kona-State'))
+```
+
+and, to prove it decodes rather than merely arrives:
+
+```js
+var i = new Image();
+i.onload = function () { console.log('OK', i.naturalWidth); };
+i.onerror = function () { console.log('FAIL'); };
+i.src = '/snapshot.jpg?t=' + Date.now();
+```
+
+`200 image/jpeg live` plus `OK 1280` means the fix is sound. Anything else
+means the problem is larger than the streaming format and the plan changes.
+
+### Unresolved: which Chrome worked
+
+Chris reported the image coming through "in Chrome" immediately after
+testing on the phone. It is not recorded whether that was Chrome on the
+iPhone or the desktop browser already known to work. The difference is not
+academic: Chrome on iOS is obliged to use WebKit, so if **iPhone** Chrome
+renders the stream, the "WebKit cannot do multipart" conclusion is too
+broad and the real cause is narrower. Settle this before writing code.
+
 ## 3. Apple TV and general home automation
 
 **Technically possible.** pyatv is mature, covers power, remote navigation,
