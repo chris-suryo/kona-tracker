@@ -43,14 +43,19 @@ PUBLIC_PATHS = {"/login", "/healthz"}
 #: on it. Nothing here is a nonce -- every script the pages use is a file
 #: under /static, so `script-src 'self'` is enough and the JS stays cacheable.
 #: `data:` is for Leaflet, which points aborted tile images at a base64 GIF.
-#: `img-src` names OpenStreetMap's tile host, a decision already recorded in
-#: docs/handoff.md; `Referrer-Policy: no-referrer` means it learns a tile
-#: area and nothing else. No HSTS: the LAN address is plain http on purpose.
+#: `blob:` is for the Camera tab, which fetches each frame and hands the
+#: <img> an object URL; without it the picture is a silent black rectangle.
+#: A blob URL can only be minted by script already running in the page, and
+#: with script-src 'self' and no inline that means only /static/*.js, so it
+#: concedes nothing `data:` did not already. `img-src` names OpenStreetMap's
+#: tile host, a decision already recorded in docs/handoff.md;
+#: `Referrer-Policy: no-referrer` means it learns a tile area and nothing
+#: else. No HSTS: the LAN address is plain http on purpose.
 SECURITY_HEADERS = {
     "Content-Security-Policy": (
         "default-src 'self'; script-src 'self'; "
         "style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; "
-        "img-src 'self' data: https://tile.openstreetmap.org; connect-src 'self'; "
+        "img-src 'self' data: blob: https://tile.openstreetmap.org; connect-src 'self'; "
         "frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; "
         "manifest-src 'self'"
     ),

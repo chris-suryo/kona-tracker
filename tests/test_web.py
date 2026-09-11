@@ -264,6 +264,22 @@ def _app_with(model, source="fake"):
     return app, control
 
 
+def test_camera_page_polls_snapshots_and_holds_no_stream(client):
+    """A stream held open from the phone is what wedged the Camera tab: an
+    abandoned one lived on as a server worker until nothing could start.
+    The page now assigns each frame itself from a short request, and reads
+    the truth about it from that same response rather than a second poll."""
+    from kona_tracker.web.app import HERE
+
+    login(client)
+    page = client.get("/camera").text
+    assert 'src="/stream.mjpg"' not in page and 'id="cam"' in page
+    js = (HERE / "static" / "camera.js").read_text(encoding="utf-8")
+    assert "/snapshot.jpg?after=" in js and "X-Kona-Seq" in js
+    assert "status.json" not in js, "one source of truth per frame, not two pollers"
+    assert "stream.mjpg" not in js
+
+
 def test_the_pad_appears_only_when_something_can_actually_move_the_camera():
     """The invariant: a control appears when the *connected driver* can do
     it, not when the model could in principle. A C225 over RTSP can pan,
@@ -533,6 +549,7 @@ def test_every_response_carries_the_security_headers(client):
     assert "frame-ancestors 'none'" in csp and "script-src 'self'" in csp
     assert "unsafe-inline" not in csp and "nonce" not in csp
     assert "https://tile.openstreetmap.org" in csp and "data:" in csp
+    assert "blob:" in csp, "the Camera tab hands the <img> object URLs; without this it is black"
 
     responses = [
         client.get("/login"),
