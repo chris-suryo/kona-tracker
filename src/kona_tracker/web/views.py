@@ -396,6 +396,127 @@ def preview_activity_context() -> dict[str, Any]:
     return context
 
 
+#: The chart's y-axis floor, in minutes: twelve hours. A quiet week must not
+#: stretch a 40-minute nap to the full height and read as a big day.
+REST_CHART_FLOOR_MIN = 720
+#: Chart geometry shared with the sample page so the same CSS draws both.
+CHART_WIDTH = 336.0
+CHART_HEIGHT = 150.0
+
+
+def _minutes(seconds: int | float | None) -> int | None:
+    """Whole minutes, or None. A missing reading is not a zero-minute day."""
+    return None if seconds is None else int(round(seconds / 60))
+
+
+def rest_history_context(
+    snapshot: FiSnapshot | None, configured: bool, selected: int | None = None
+) -> dict[str, Any]:
+    """Everything `rest_history.html` needs: one bar per day the collar has
+    existed, from `FiSnapshot.rest_days`, with nothing invented on the way.
+
+    What Fi gives is a daily total of sleep and a daily total of naps. It
+    does not give hours, and it does not give when she fell asleep or woke.
+    So this page draws days, not hours, and has no interval timeline -- the
+    sample page's timeline is a design sketch of data Fi does not send, and
+    inferring intervals from totals is the one thing every note in this
+    project says not to do.
+
+    Averages cover complete days only, and the page says how many that is.
+    Today is in progress; the collar's first day was partial. Both draw as
+    bars so the week is visibly the week, and both are labelled.
+    """
+    days = list(snapshot.rest_days) if snapshot else []
+    profile = snapshot.profile if snapshot else None
+    zone = kona_zone(profile.timezone if profile else None)
+    fetched_local = _clock(snapshot.fetched_at, zone) if snapshot else None
+
+    buckets: list[dict[str, Any]] = []
+    for d in days:
+        # A day is named by its window's start as Fi sent it, exactly as the
+        # hero's "9 Sep to 10 Sep" is (`window_from`, above). Fi anchors the
+        # window at midnight in the owner's zone, so that date *is* the day;
+        # re-deriving it through Kona's timezone can only disagree with the
+        # hero, and did, by one day, when the two were first drawn together.
+        start = d.window.start
+        buckets.append(
+            {
+                "date": start.date().isoformat(),  # type: ignore[union-attr]
+                "label": f"{_day(start)}",
+                "short": start.strftime("%a"),  # type: ignore[union-attr]
+                "value": _minutes(d.total),
+                "sleep": _minutes(d.window.sleep),
+                "nap": _minutes(d.window.nap),
+                "complete": d.complete,
+                "in_progress": d.in_progress,
+                "partial_first_day": d.partial_first_day,
+                # The sample page's vocabulary, so its CSS applies unchanged.
+                "partial": not d.complete,
+                "future": False,
+            }
+        )
+
+    complete = [b for b in buckets if b["complete"]]
+
+    def _avg(key: str) -> int | None:
+        readings = [b[key] for b in complete if b[key] is not None]
+        return int(round(sum(readings) / len(readings))) if readings else None
+
+    peak = max((b["value"] or 0 for b in buckets), default=0)
+    maximum = max(REST_CHART_FLOOR_MIN, ((peak + 59) // 60) * 60)
+    if buckets:
+        spacing = CHART_WIDTH / len(buckets)
+        for i, b in enumerate(buckets):
+            b["x"] = round(2 + i * spacing, 2)
+            b["width"] = round(spacing - 12, 2)
+            b["height"] = round((b["value"] or 0) / maximum * CHART_HEIGHT, 2)
+            b["sleep_height"] = round((b["sleep"] or 0) / maximum * CHART_HEIGHT, 2)
+            b["nap_height"] = round((b["nap"] or 0) / maximum * CHART_HEIGHT, 2)
+            b["href"] = f"/rest?selected={i}#chart-title"
+
+    chosen = buckets[selected] if selected is not None and selected < len(buckets) else None
+    first, last = (buckets[0], buckets[-1]) if buckets else (None, None)
+    # Say only what was actually left out. With no collar cutoff configured
+    # there is no "first day" to exclude, and the sentence must not claim one.
+    left_out = []
+    if any(b["in_progress"] for b in buckets):
+        left_out.append("today")
+    if any(b["partial_first_day"] for b in buckets):
+        left_out.append("the collar's first day")
+    excluded_note = (
+        f"{' and '.join(left_out)} {'are' if len(left_out) > 1 else 'is'} excluded"
+        if left_out
+        else None
+    )
+    return {
+        "tab": None,
+        "preview": False,
+        "configured": configured,
+        "has_days": bool(buckets),
+        "stale": bool(snapshot and snapshot.stale),
+        "problem": snapshot.problem if snapshot else None,
+        "fetched_label": fetched_local.strftime("%H:%M") if fetched_local else None,
+        "clock_zone": fetched_local.strftime("%Z") if zone and fetched_local else None,
+        "excluded_note": excluded_note,
+        "range_label": (
+            f"{first['label']} – {last['label']}"
+            if first and last and first != last
+            else first["label"]
+            if first
+            else None
+        ),
+        "buckets": buckets,
+        "complete_days": len(complete),
+        "total_days": len(buckets),
+        "average": _avg("value"),
+        "average_sleep": _avg("sleep"),
+        "average_nap": _avg("nap"),
+        "maximum": maximum,
+        "selected": selected,
+        "chosen": chosen,
+    }
+
+
 def activity_json(snapshot: FiSnapshot | None, configured: bool) -> dict[str, Any]:
     """The same data as the page, for polling later. Never the credentials."""
     window = snapshot.window if snapshot else None
@@ -408,6 +529,25 @@ def activity_json(snapshot: FiSnapshot | None, configured: bool) -> dict[str, An
     rest_position = status.rest_position if status else None
     return {
         "configured": configured,
+        # One entry per day the collar has existed, oldest first, seconds as
+        # Fi sends them. `complete` is the only flag needed to decide
+        # inclusion in an average; the other two say why a day is not.
+        "rest_history": [
+            {
+                "date": d.window.start.date().isoformat(),  # type: ignore[union-attr]
+                "start": d.window.start.isoformat(),  # type: ignore[union-attr]
+                "end": d.window.end.isoformat(),  # type: ignore[union-attr]
+                "sleep_s": d.window.sleep,
+                "nap_s": d.window.nap,
+                "total_s": d.total,
+                "complete": d.complete,
+                "in_progress": d.in_progress,
+                "partial_first_day": d.partial_first_day,
+            }
+            for d in snapshot.rest_days
+        ]
+        if snapshot
+        else None,
         "breed": profile.breed if profile else None,
         "birthday": profile.birthday.isoformat() if profile and profile.birthday else None,
         # The photo URL itself stays server-side; the page uses /avatar.jpg.
