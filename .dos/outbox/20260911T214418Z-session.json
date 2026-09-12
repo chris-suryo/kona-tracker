@@ -1,0 +1,84 @@
+{
+  "goal": "Autonomous run while Chris was away: reconcile ChatGPT's UI pass onto main, build real rest history end to end, add a README and return checklist, sweep the codebase for errors, and leave six reviewable PRs in merge order.",
+  "completed": [
+    "Reconciled PR #7 (chatgpt/ui-pass, unmergeable 'dirty') onto current main as PR #14 - both sides kept, referrerPolicy left out (hostname leak), tileerror handler wraps the config-driven tile layer. 285 pytest + 14 browser tests + ruff clean, read in full.",
+    "PR #13: rest_history() data layer - restSummaryFeed(limit=14) pages back to every day since 2026-09-07; RestDay carries in_progress / partial_first_day flags, total is None when nothing was measured. Tests use the five windows the collar actually returned.",
+    "PR #17: real /rest page (days not hours, one bar per day, averages over complete days only, exclusion copy names only what was excluded), homepage 'View rest' link, rest_history in /activity.json. Phone-width screenshots dark+light in docs/screenshots/2026-09-11/.",
+    "PR #15: README.md (quick start, commands, which-doc-to-trust table), pyproject readme field, docs/handoff.md demoted to dated, PROJECT.md return checklist with all six PRs in merge order.",
+    "PR #16: probe round 7 - four one-unknown queries (stepFeed/restFeed with period: DAILY, overnightRestSummary with date, heatmap with range).",
+    "PR #12: Tailscale remote-access docs after the Cloudflare quick tunnel broke; .env.example says KONA_SECURE_COOKIES=false for LAN and Tailscale.",
+    "PR #11 (Stadia Alidade Smooth Dark basemap, opt-in via .env) merged by Chris earlier in the session.",
+    "Comprehensive sweep of existing code found no bugs; the two bugs caught today were in code written today, both by looking at a screenshot rather than a test (day label off by one, unconditional exclusion copy)."
+  ],
+  "discovered": [
+    "restSummaryFeed(cursor: null, period: DAILY, limit: N) is production and pages back; limit=14 returned 5 daily windows = every day since the collar came online 2026-09-07. No new document needed for rest history.",
+    "stepFeed and restFeed exist and need period: ActivityRestStrainPeriod!; overnightRestSummary needs date: DateTime!; heatmap needs startDate/endDate. Whether stepFeed(period: DAILY) is accepted is round 7's question.",
+    "Fi reports SLEEP=0 for the collar's first day (partial) and for today (in progress); neither is a zero-rest day and they are different kinds of incomplete.",
+    "An element-level referrerPolicy on a Leaflet tile layer overrides the page's Referrer-Policy: no-referrer header, so it would send the tunnel hostname to the tile host.",
+    "Cloudflare quick tunnel that worked at lunch failed by dinner with 405s on both IPv4 and IPv6; cause never found. Tailscale works (secure cookies must be false)."
+  ],
+  "decisions": [
+    "Chris merges every PR; the six open PRs are stacked and listed in merge order in PROJECT.md: #14, #13, #17, #12, #15, #16. Close #7 after #14.",
+    "Day windows are named by their start date as Fi sent it (UTC date), matching the Activity hero - never re-derived through Kona's timezone.",
+    "Averages cover complete days only; in-progress and partial-first-day days draw as bars but are never averaged.",
+    "referrerPolicy stays off the tile layer until a stable hostname exists for domain-based tile auth.",
+    "Stadia key rides in the tile URL (visible to logged-in viewers); domain auth deferred to a named tunnel."
+  ],
+  "lessons": [
+    "Never tail -1 a linter: ruff's 'Found 1 error.' was hidden and PR #10 went red. Read the whole output.",
+    "A screenshot caught what tests did not, twice. Render the page before opening the PR.",
+    "Probe one unknown per speculative query; validation errors are the data.",
+    "The repo can be wrong about the world: it said a Pi 5 was already bought, and Chris said no. Check claims about hardware with the human.",
+    "Playwright from the scratchpad needs NODE_PATH=/opt/node22/lib/node_modules; a mock server started via subshell is not $!, and pkill -f matches its own command line - use fuser -k <port>/tcp."
+  ],
+  "files_changed": [
+    "README.md",
+    "PROJECT.md",
+    "pyproject.toml",
+    ".env.example",
+    "docs/handoff.md",
+    "docs/remote-access.md",
+    "docs/scaling-limits.md",
+    "docs/production-punchlist.md",
+    "docs/frontend-history-handoff.md",
+    "docs/screenshots/2026-09-11/*.png",
+    "src/kona_tracker/fi/parse.py",
+    "src/kona_tracker/fi/service.py",
+    "src/kona_tracker/fi/queries.py",
+    "src/kona_tracker/web/app.py",
+    "src/kona_tracker/web/views.py",
+    "src/kona_tracker/web/settings.py",
+    "src/kona_tracker/web/static/app.css",
+    "src/kona_tracker/web/static/app.js",
+    "src/kona_tracker/web/static/map.js",
+    "src/kona_tracker/web/templates/activity.html",
+    "src/kona_tracker/web/templates/rest_history.html",
+    "src/kona_tracker/web/templates/base.html",
+    "tests/test_rest_history.py",
+    "tests/test_rest_detail.py",
+    "tests/test_probe.py",
+    "tests/test_web.py",
+    "tests/test_views.py",
+    "tests/browser_runtime.test.cjs",
+    ".dos/outbox/20260911T214418Z-session.json"
+  ],
+  "open_questions": [
+    "Does stepFeed(period: DAILY) return step history? Round 7 answers it.",
+    "Why did the Cloudflare quick tunnel break (rate limit? something local?) - undiagnosed; downgrade to 2026.9.0 failed with MSI 1603.",
+    "Real cellular cost of watching the camera: 37.7 GB baseline noted, delta not measured yet.",
+    "Does Chris's Pi 5 charger cause undervoltage warnings?",
+    "How does the reconciled Activity layout look on a real iPhone, light theme, with gestures? Nobody has checked."
+  ],
+  "intent": "Chris stepped away for a few hours and asked for an autonomous run; everything buildable without him is built and sits in six PRs he can merge in order. Stopped at the point where the next steps need his machine: merge, pull, restart, run probe round 7.",
+  "next_task": "Merge #14, #13, #17, #12, #15, #16 in that order and close #7; then git pull, uv sync, restart, run uv run kona probe --out probe-out\\round7 and paste summary.md.",
+  "blockers": null,
+  "resume_minutes": 15,
+  "dont_retry": [
+    "Blaming the Cloudflare tunnel failure on IPv6 - curl -6 and -4 both returned 405.",
+    "Downgrading cloudflared via winget without uninstalling first - MSI error 1603.",
+    "pkill -f serve_mock.py to stop the screenshot server - it matches itself and exits 144; use fuser -k 8102/tcp.",
+    "ruff check | tail -1 as a pass/fail signal.",
+    "Re-deriving day labels through the profile timezone - disagrees with the hero by one day."
+  ],
+  "session_id": "session_01KgmQrVuaAGmKyaioEr7d7t"
+}

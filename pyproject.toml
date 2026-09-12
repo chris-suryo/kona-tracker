@@ -2,7 +2,7 @@
 name = "kona-tracker"
 version = "0.1.0"
 description = "Private, passcode-gated web app to check on Kona (Fi collar data, camera later)."
-readme = "PROJECT.md"
+readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.141.1",

@@ -1,6 +1,9 @@
 # Handoff — kona-tracker, 2026-09-10
 
-> **This is the current handoff.** Immediate queue:
+> **Dated 2026-09-10; `PROJECT.md` is current and supersedes this file.**
+> Kept because the reasoning in it is still right even where the facts have
+> moved on (the camera is a C270 and works; the map's basemap is optional
+> Stadia; probe rounds 5 and 6 have run). Immediate queue as of the 10th:
 > `docs/production-punchlist.md` (Chris's phone requests, the map
 > diagnosis, and the 2026-09-11 security pass), then
 > `docs/next-session.md`. Getting it onto the phone from outside the

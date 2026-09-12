@@ -74,6 +74,47 @@ every item; `docs/scaling-limits.md` is the standing list of ceilings;
 
 **next:**
 
+*When Chris is back -- bookmarked 2026-09-11 evening, not yet run:*
+
+Six PRs are open and none is merged. Merge in this order, then pull.
+
+1. **#14** -- ChatGPT's UI pass reconciled onto current main. **Replaces #7**,
+   which GitHub reports as unmergeable (`dirty`); close #7 without merging.
+2. **#13** -- daily rest history in the data layer (`rest_days` on the
+   snapshot).
+3. **#17** -- the real `/rest` page drawn from that data, and "View rest"
+   pointing at it. Stacked on #14 and #13; it shrinks to two commits once
+   they land. Screenshots in `docs/screenshots/2026-09-11/rest-real-*.png`.
+4. **#12** -- the Tailscale path and the Secure-cookie trap, in docs.
+5. **#15** -- the README, this note, and the session artifact.
+6. **#16** -- probe round 7 (`stepFeed`/`restFeed` with a period,
+   `overnightRestSummary` with a date, `heatmap` with a range).
+
+Then, in PowerShell in the kona-tracker folder:
+
+```powershell
+git checkout main
+git pull origin main
+uv sync
+uv run kona serve
+```
+
+Check `http://localhost:8000`: Activity should be the new Steps-first layout,
+the map still dark Stadia tiles, the camera still live, and **"View rest"
+should open a real page** -- one bar per day since the collar came online,
+averages over complete days only. **"View activity" still has no real
+destination**: there is no verified step history until round 7 answers.
+
+Then run round 7 and paste `probe-out\round7\summary.md` back:
+
+```powershell
+uv run kona probe --out probe-out\round7
+```
+
+If `stepFeedPeriod` comes back ACCEPTED, steps get the same treatment rest
+just got. Also still open: the cellular data delta against the 37.7 GB
+baseline, and whether the home charger undervolts the Pi 5.
+
 *The camera on the phone: fixed, merged, and confirmed on 2026-09-11.*
 `docs/camera-black-screen-handoff.md` is the whole record. Two bugs. The
 slow reveal is fixed. The second, the one that hung the phone on
@@ -98,25 +139,34 @@ exercise of `docs/remote-access.md` Part 0.
 1. **After a week of polling holding up**, delete `/stream.mjpg` and the
    containment that exists only for it.
 
-*Needs Chris, and blocks the Fi half:*
-2. **Probe round 5.** `uv run kona probe --out probe-out\round5`, then read
-   `whereabouts` in `summary.md`. It settles whether Fi returns
-   `... on OngoingRest { position }`, which is the one field the map's
-   resting tier rests on. Sourced from pytryfi, not yet measured on Kona's
-   collar. If Fi rejects it the page already says so and falls back to the
-   home pin, so nothing is broken either way.
+*Fi, measured 2026-09-11 (probe rounds 5 and 6):*
+2. **Resting position: confirmed.** `whereabouts` returned
+   `... on OngoingRest { position }` on Kona's collar, so the map's resting
+   tier stands on measured ground. **Rest history: confirmed.**
+   `restSummaryFeed(limit: 14)` returned every day since the collar came
+   online; PR #13 reads it. **Steps history: a path exists.** `stepFeed`
+   and `restFeed` are real fields that need `period:
+   ActivityRestStrainPeriod!`; `overnightRestSummary` needs `date:
+   DateTime!`; `heatmap` needs `startDate`/`endDate`. Round 7 asks each
+   with one argument supplied so the next error names the next thing.
 
-*The road to always-on, in order, and nothing here has been run:*
-3. `docs/remote-access.md` Part 1: a Cloudflare quick tunnel, about fifteen
-   minutes, no domain needed. The proving step.
+*The road to always-on, in order:*
+3. **Done 2026-09-11:** the Cloudflare quick tunnel worked over cellular
+   with Wi-Fi off -- the first real exercise of Part 0 -- and then, hours
+   later, stopped handing out tunnels for a reason never established
+   (network provably fine; a downgrade of cloudflared never installed).
+   `docs/remote-access.md` "When it breaks" has the record. Tailscale is
+   what carried the evening, and is now documented as the path for one
+   person's own phone.
 4. `KONA_HEARTBEAT_URL` against healthchecks.io, so a sleeping or dead PC
-   raises an alarm. Part 3d.
-5. `KONA_KEEP_AWAKE=true` while serving, rather than switching sleep off in
-   the power plan. Part 3b has the electricity arithmetic.
-6. A domain, then a named tunnel, so the URL survives a restart. Part 3a.
-   Without it the quick tunnel hands out a new address every time.
-7. The Pi as the real host. Everything above is a patch on a machine that
-   was never meant to be a server.
+   raises an alarm. Part 3d. Not yet run.
+5. **Set 2026-09-11:** `KONA_KEEP_AWAKE=true`.
+6. A domain, then a named tunnel, so the URL survives a restart and does not
+   depend on the quick-tunnel API that failed. Part 3a. This is also what
+   would let the Stadia map key move to domain auth.
+7. The Pi as the real host. Bought 2026-09-11; it is TurboPi's brain first.
+   Everything above is a patch on a machine that was never meant to be a
+   server.
 
 *Still owed, needs the hardware:*
 8. One lights-off evening to check the camera's black-frame rule behaves in
