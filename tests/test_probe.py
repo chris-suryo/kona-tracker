@@ -161,3 +161,33 @@ def test_rest_history_probe_asks_for_more_windows_than_the_page_uses(fake_client
     assert "kona [history]" in summary
     assert f"asked restSummaryFeed for limit={HISTORY_LIMIT}" in summary
     assert "windows back" in summary
+
+
+def test_round_seven_supplies_the_one_argument_each_round_six_error_named():
+    """Round 6 proved four fields exist and named the single argument each
+    requires. Round 7 asks each with that argument and nothing but
+    `__typename`, so the next error names exactly the next unknown."""
+    from datetime import date
+
+    from kona_tracker.fi.queries import speculative_queries
+
+    labelled = dict(speculative_queries("pet-1", on=date(2026, 9, 11)))
+    for label in ("stepFeedPeriod", "restFeedPeriod", "overnightDate", "heatmapRange"):
+        assert label in labelled, label
+        assert "KonaRest" not in labelled[label], "that substring routes to the sleep refusal"
+        assert labelled[label].lstrip().startswith("query KonaSpeculative"), label
+
+    # The enum value restSummaryFeed already accepts; whether it is the same
+    # enum is the unknown being asked.
+    assert "stepFeed(period: DAILY) { __typename }" in labelled["stepFeedPeriod"]
+    assert "restFeed(period: DAILY) { __typename }" in labelled["restFeedPeriod"]
+    # Dates are anchored to the injected day, in UTC, so a run in any
+    # timezone sends the same literal and the summary is reproducible.
+    assert 'overnightRestSummary(date: "2026-09-10T00:00:00Z")' in labelled["overnightDate"]
+    assert 'startDate: "2026-09-04T00:00:00Z"' in labelled["heatmapRange"]
+    assert 'endDate: "2026-09-11T00:00:00Z"' in labelled["heatmapRange"]
+
+    # Round 4's zero-argument asks are kept as the record of how each
+    # argument was learned; the new ones must not replace them.
+    assert "stepFeed(cursor: null)" in labelled["stepFeed"]
+    assert "overnightRestSummary { __typename date }" in labelled["overnight"]

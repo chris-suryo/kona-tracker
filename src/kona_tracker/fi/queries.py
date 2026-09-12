@@ -5,6 +5,8 @@ exists only to harvest the server's validation errors ("Did you mean ...?")
 when introspection is disabled. Nothing here is documented by Fi.
 """
 
+from datetime import UTC, date, datetime, timedelta
+
 # Full schema dump. `ofType` is nested a few levels so NON_NULL/LIST wrappers
 # still resolve to a named type.
 INTROSPECTION = """
@@ -152,13 +154,19 @@ def pet_speculative(pet_id: str) -> str:
     return f'query KonaSpeculative {{ pet(id: "{pet_id}") {{ {fields} }} }}'
 
 
-def speculative_queries(pet_id: str) -> list[tuple[str, str]]:
+def speculative_queries(pet_id: str, on: date | None = None) -> list[tuple[str, str]]:
     """Every speculative query, labelled. One per type we know exists.
 
     The operation names all start with `KonaSpeculative` so a mock can route
     them together. Each errors independently, and every error names the type
     it was checked against, which is itself a fact worth recording.
+
+    `on` anchors the round-7 queries that need a date; it defaults to today
+    in UTC and is injectable so a test does not depend on the calendar.
     """
+    today = on or datetime.now(UTC).date()
+    yesterday = (today - timedelta(days=1)).isoformat()
+    week_ago = (today - timedelta(days=7)).isoformat()
     return [
         ("pet", pet_speculative(pet_id)),
         (
@@ -285,6 +293,38 @@ def speculative_queries(pet_id: str) -> list[tuple[str, str]]:
             "deviceCurrentLocation",
             f'query KonaSpeculativeDeviceCurrentLocation {{ pet(id: "{pet_id}") {{ device {{ '
             "__typename currentLocation { __typename } } } }",
+        ),
+        # Round 7, 2026-09-11 evening. Round 6 established that four fields
+        # exist and named the one argument each requires:
+        #   stepFeed / restFeed      period: ActivityRestStrainPeriod!
+        #   overnightRestSummary     date: DateTime!
+        #   heatmap                  startDate, endDate: DateTime!
+        # Each is asked with that argument supplied and nothing else selected
+        # but `__typename`, so the next error names exactly the next thing:
+        # an enum value Fi does not accept, a scalar format it rejects, or --
+        # if accepted -- the type whose subfields the round after this asks
+        # for. `DAILY` is the value `restSummaryFeed` already accepts; whether
+        # it is the same enum is precisely the unknown.
+        (
+            "stepFeedPeriod",
+            f'query KonaSpeculativeStepFeedPeriod {{ pet(id: "{pet_id}") {{ '
+            "stepFeed(period: DAILY) { __typename } } }",
+        ),
+        (
+            "restFeedPeriod",
+            f'query KonaSpeculativeRestFeedPeriod {{ pet(id: "{pet_id}") {{ '
+            "restFeed(period: DAILY) { __typename } } }",
+        ),
+        (
+            "overnightDate",
+            f'query KonaSpeculativeOvernightDate {{ pet(id: "{pet_id}") {{ '
+            f'overnightRestSummary(date: "{yesterday}T00:00:00Z") {{ __typename date }} }} }}',
+        ),
+        (
+            "heatmapRange",
+            f'query KonaSpeculativeHeatmapRange {{ pet(id: "{pet_id}") {{ '
+            f'heatmap(startDate: "{week_ago}T00:00:00Z", endDate: "{today.isoformat()}T00:00:00Z") '
+            "{ __typename } } }",
         ),
     ]
 
