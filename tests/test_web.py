@@ -230,7 +230,7 @@ def test_snapshot_and_stream_with_cookie(client):
 def test_usb_camera_offers_capture_and_share_but_no_motion_controls(client):
     login(client)
     page = client.get("/camera").text
-    assert 'id="capture"' in page and 'src="/static/camera.js"' in page
+    assert 'id="capture"' in page and 'src="/static/camera.js?v=' in page
     from kona_tracker.web.app import HERE
 
     assert "navigator.share" in (HERE / "static" / "camera.js").read_text(encoding="utf-8")
@@ -602,7 +602,7 @@ def test_pages_have_no_inline_script_and_no_inline_handlers(client):
         assert "javascript:" not in page, path
     preview = client.get("/activity?preview=1").text
     assert '<script type="application/json" id="map-points">' in preview
-    assert 'src="/static/map.js"' in preview and 'src="/static/app.js"' in preview
+    assert 'src="/static/map.js?v=' in preview and 'src="/static/app.js?v=' in preview
     assert "data-optional" in preview, "the avatar fallback moved from onerror= to app.js"
 
 

@@ -20,8 +20,8 @@
   <meta name="apple-mobile-web-app-title" content="Kona">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/app.css">
-  <script src="/static/app.js" defer></script>
+  <link rel="stylesheet" href="{{ asset('app.css') }}">
+  <script src="{{ asset('app.js') }}" defer></script>
   {% block head %}{% endblock %}
 </head>
 <body class="{% block pageclass %}{% endblock %}">

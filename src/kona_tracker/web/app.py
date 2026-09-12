@@ -23,6 +23,7 @@ from kona_tracker.camera.control import CameraControl, ControlUnsupported, FakeC
 from kona_tracker.camera.hub import BOUNDARY, MAX_STREAMS, CameraHub
 from kona_tracker.camera.source import FakeSource, FrameSource, OpenCVSource, RtspSource
 from kona_tracker.fi.service import FiService
+from kona_tracker.web.assets import asset_url, asset_versions
 from kona_tracker.web.auth import COOKIE_NAME, Lockout, PasscodeAuth, client_key
 from kona_tracker.web.awake import allow_sleep, keep_awake
 from kona_tracker.web.heartbeat import Heartbeat
@@ -200,6 +201,11 @@ def create_app(
     )
     templates = Jinja2Templates(directory=str(HERE / "templates"))
     app.mount("/static", StaticFiles(directory=str(HERE / "static")), name="static")
+    # Every stylesheet and script URL carries a hash of its own bytes, so a
+    # phone that cached one cannot serve it against newer HTML. See assets.py
+    # for the day that cost us.
+    versions = asset_versions(HERE / "static")
+    templates.env.globals["asset"] = lambda name: asset_url(versions, name)
 
     auth = PasscodeAuth(
         settings.passcode,
