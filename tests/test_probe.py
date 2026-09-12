@@ -191,3 +191,40 @@ def test_round_seven_supplies_the_one_argument_each_round_six_error_named():
     # argument was learned; the new ones must not replace them.
     assert "stepFeed(cursor: null)" in labelled["stepFeed"]
     assert "overnightRestSummary { __typename date }" in labelled["overnight"]
+
+
+def test_round_eight_sends_the_enum_value_fi_suggested_and_guesses_subfields():
+    """Round 7's DAILY was refused with "Did you mean DAY?"; round 8 sends
+    DAY, checks WEEK to size the enum, and guesses subfields bare so the
+    validation errors name each miss. DAILY must not be sent to these two
+    fields again -- that answer is already recorded."""
+    from datetime import date
+
+    from kona_tracker.fi.queries import speculative_queries
+
+    labelled = dict(speculative_queries("pet-1", on=date(2026, 9, 12)))
+    for label in (
+        "stepFeedDay",
+        "restFeedDay",
+        "restFeedWeek",
+        "restFeedFields",
+        "stepFeedFields",
+        "overnightFields",
+        "heatmapFields",
+        "activityFeedItems",
+    ):
+        assert label in labelled, label
+        assert "KonaRest" not in labelled[label], "that substring routes to the sleep refusal"
+        assert labelled[label].lstrip().startswith("query KonaSpeculative"), label
+
+    assert "stepFeed(period: DAY) { __typename }" in labelled["stepFeedDay"]
+    assert "restFeed(period: DAY) { __typename }" in labelled["restFeedDay"]
+    assert "restFeed(period: WEEK) { __typename }" in labelled["restFeedWeek"]
+    for label in ("restFeedFields", "stepFeedFields"):
+        assert "period: DAY" in labelled[label] and "DAILY" not in labelled[label]
+        assert "{ items first" in labelled[label], "bare guesses, so each miss is named"
+    assert 'overnightRestSummary(date: "2026-09-11T00:00:00Z")' in labelled["overnightFields"]
+    assert 'startDate: "2026-09-05T00:00:00Z"' in labelled["heatmapFields"]
+    assert "activityFeed(limit: 3) { items" in labelled["activityFeedItems"]
+    # Round 7 stays as the record of how DAY was learned.
+    assert "stepFeed(period: DAILY)" in labelled["stepFeedPeriod"]

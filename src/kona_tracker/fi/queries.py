@@ -326,6 +326,64 @@ def speculative_queries(pet_id: str, on: date | None = None) -> list[tuple[str, 
             f'heatmap(startDate: "{week_ago}T00:00:00Z", endDate: "{today.isoformat()}T00:00:00Z") '
             "{ __typename } } }",
         ),
+        # Round 8, 2026-09-12. Round 7's answer to `period: DAILY` was
+        # "Did you mean the enum value DAY?" -- so ActivityRestStrainPeriod is
+        # a different enum from the one restSummaryFeed takes, and its values
+        # read like the Fi app's own tabs (Day / Week / Month / Year). The Fi
+        # app draws rest per hour on its Day tab, so `restFeed(period: DAY)`
+        # is the best candidate for the hourly buckets this project has been
+        # told do not exist. Three asks confirm the enum; the rest guess at
+        # subfields, because introspection is off and a validation error is
+        # the only way to learn a field name. Guesses are sent bare, several
+        # to a query, the way the device and activity rounds did: a scalar
+        # that exists passes silently, an object that exists says "must have
+        # a selection of subfields", and a miss says "Did you mean". The
+        # names come from the shapes Fi has already shown -- PhotoFeed has
+        # `first` and `items`, restSummaryFeed has `restSummaries`.
+        (
+            "stepFeedDay",
+            f'query KonaSpeculativeStepFeedDay {{ pet(id: "{pet_id}") {{ '
+            "stepFeed(period: DAY) { __typename } } }",
+        ),
+        (
+            "restFeedDay",
+            f'query KonaSpeculativeRestFeedDay {{ pet(id: "{pet_id}") {{ '
+            "restFeed(period: DAY) { __typename } } }",
+        ),
+        (
+            "restFeedWeek",
+            f'query KonaSpeculativeRestFeedWeek {{ pet(id: "{pet_id}") {{ '
+            "restFeed(period: WEEK) { __typename } } }",
+        ),
+        (
+            "restFeedFields",
+            f'query KonaSpeculativeRestFeedFields {{ pet(id: "{pet_id}") {{ '
+            "restFeed(period: DAY) { items first rests restEntries entries "
+            "buckets intervals pageInfo cursor } } }",
+        ),
+        (
+            "stepFeedFields",
+            f'query KonaSpeculativeStepFeedFields {{ pet(id: "{pet_id}") {{ '
+            "stepFeed(period: DAY) { items first steps stepEntries entries "
+            "buckets pageInfo cursor } } }",
+        ),
+        (
+            "overnightFields",
+            f'query KonaSpeculativeOvernightFields {{ pet(id: "{pet_id}") {{ '
+            f'overnightRestSummary(date: "{yesterday}T00:00:00Z") {{ '
+            "sleep naps nap rest duration start end restSummary summary intervals } } }",
+        ),
+        (
+            "heatmapFields",
+            f'query KonaSpeculativeHeatmapFields {{ pet(id: "{pet_id}") {{ '
+            f'heatmap(startDate: "{week_ago}T00:00:00Z", endDate: "{today.isoformat()}T00:00:00Z") '
+            "{ points cells data entries buckets } } }",
+        ),
+        (
+            "activityFeedItems",
+            f'query KonaSpeculativeActivityFeedItems {{ pet(id: "{pet_id}") {{ '
+            "activityFeed(limit: 3) { items first activities entries pageInfo } } }",
+        ),
     ]
 
 
