@@ -184,6 +184,32 @@ def pets_from(data: Any) -> list[Pet]:
     return pets
 
 
+@dataclass(frozen=True)
+class RestDay:
+    """One calendar day of rest, and whether it may be averaged.
+
+    `complete` is the only flag a caller needs to decide inclusion; the two
+    below it say *why* a day was excluded, because "in progress" and "the
+    collar was set up partway through this day" read very differently on a
+    page and must not be collapsed into one grey bar.
+    """
+
+    window: RestWindow
+    complete: bool
+    in_progress: bool = False
+    partial_first_day: bool = False
+
+    @property
+    def total(self) -> int | float | None:
+        """Sleep plus naps, or None when neither was measured.
+
+        A day Fi has no reading for is not a zero, and summing None as 0 is
+        exactly how this project has been wrong before.
+        """
+        parts = [x for x in (self.window.sleep, self.window.nap) if x is not None]
+        return sum(parts) if parts else None
+
+
 def rest_from(data: Any, period: str = "dailyStat") -> list[RestWindow]:
     """Rest windows for one aliased period, newest first as Fi returns them.
 
@@ -206,6 +232,53 @@ def rest_from(data: Any, period: str = "dailyStat") -> list[RestWindow]:
             )
         )
     return windows
+
+
+def rest_history(
+    windows: list[RestWindow], now: datetime, data_start: date | None = None
+) -> list[RestDay]:
+    """Daily rest windows, oldest first, each marked complete or not.
+
+    Measured on Kona's collar 2026-09-11: asking `restSummaryFeed` for
+    `limit=14` returned five daily windows, one per day since the collar came
+    online. The feed pages back; it simply had never been asked to. So daily
+    history needs no new document and no guessed field -- only a larger limit.
+
+    Two kinds of day must never be averaged with the rest, and they are not
+    the same kind of incomplete:
+
+    * **The day containing `now`** is in progress. Its SLEEP was 0 on both
+      probe runs, because tonight has not happened yet.
+    * **The day `data_start` falls in** is the day the collar was set up, so
+      the collar was not on Kona for all of it. Fi still reports a whole
+      calendar window for it, with no coverage figure, so this cannot be
+      detected from the response -- only from knowing when the collar
+      started. Kona's 2026-09-07 reads SLEEP=0, NAP=13576.
+
+    Anything strictly before `data_start` belongs to a replaced or unworn
+    collar and is dropped rather than marked, the same rule `service.py`
+    already applies to the single window.
+    """
+    days: list[RestDay] = []
+    for window in windows:
+        if window.start is None or window.end is None:
+            # A window with no bounds cannot be placed on a calendar, and a
+            # chart cannot honestly draw it. Dropped, not guessed at.
+            continue
+        day = window.start.date()
+        if data_start and day < data_start:
+            continue
+        in_progress = window.start <= now < window.end
+        first_day = bool(data_start and day == data_start)
+        days.append(
+            RestDay(
+                window=window,
+                complete=not in_progress and not first_day,
+                in_progress=in_progress,
+                partial_first_day=first_day,
+            )
+        )
+    return sorted(days, key=lambda d: d.window.start)  # type: ignore[arg-type,return-value]
 
 
 def split_windows(

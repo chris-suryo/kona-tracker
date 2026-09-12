@@ -16,7 +16,7 @@ from __future__ import annotations
 import logging
 import threading
 from collections.abc import Callable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, timedelta
 
 from kona_tracker.fi.client import FiClient, FiError, FiGraphQLError
@@ -24,12 +24,14 @@ from kona_tracker.fi.parse import (
     ActivityStats,
     CollarStatus,
     PetProfile,
+    RestDay,
     RestWindow,
     activity_from,
     hours_from_duration,
     pets_from,
     profile_from,
     rest_from,
+    rest_history,
     rest_position_from,
     split_windows,
     status_from,
@@ -87,6 +89,10 @@ class FiSnapshot:
     #: aggregates can belong to a replaced or unworn collar.
     data_start: date | None = None
     historical_totals_hidden: bool = False
+    #: Daily rest, oldest first, one entry per day the collar has existed.
+    #: Empty when the history query failed -- never a silent short list, which
+    #: a chart would draw as "she slept less" rather than "we do not know".
+    rest_days: list[RestDay] = field(default_factory=list)
 
     @property
     def sleep_hours(self) -> float | None:
@@ -121,6 +127,14 @@ class FiSnapshot:
 
 def _now() -> datetime:
     return datetime.now(UTC)
+
+
+#: How many daily rest windows to ask `restSummaryFeed` for. A ceiling:
+#: Fi returns what it has, which was five on 2026-09-11 (the collar's whole
+#: life). Two weeks is enough for a week chart plus the incomplete days at
+#: either end, and small enough that a slow response is not mistaken for a
+#: failure.
+REST_HISTORY_DAYS = 14
 
 
 def _explain(error: FiError) -> str:
@@ -180,9 +194,19 @@ def fetch_snapshot(
     profile: PetProfile | None = None
     status: CollarStatus | None = None
     problems: list[str] = []
+    # Initialised here, not in the try: a failed rest query must leave an
+    # empty history rather than an undefined name, and empty is the honest
+    # answer -- a chart draws nothing rather than a short series that reads
+    # as "she slept less those days".
+    rest_days: list[RestDay] = []
     try:
-        windows = rest_from(client.graphql(pet_rest(pet.id, limit=2)), "dailyStat")
+        # One request, both jobs. REST_HISTORY_DAYS is a ceiling, not an
+        # expectation: Fi returns the days it has, which on 2026-09-11 was
+        # five -- the collar's whole life. Asking for more costs nothing.
+        raw = client.graphql(pet_rest(pet.id, limit=REST_HISTORY_DAYS))
+        windows = rest_from(raw, "dailyStat")
         window, today = split_windows(windows, now)
+        rest_days = rest_history(windows, now, data_start)
         if data_start and window and (window.start is None or window.start.date() < data_start):
             window = None
         if window is None and today is None:
@@ -231,6 +255,7 @@ def fetch_snapshot(
         problem=" ".join(problems) or None,
         data_start=data_start,
         historical_totals_hidden=bool(data_start and now.date() < data_start + timedelta(days=7)),
+        rest_days=rest_days,
     )
 
 
