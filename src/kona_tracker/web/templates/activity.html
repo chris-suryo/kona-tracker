@@ -19,13 +19,14 @@
 <div id="activity-body">
 {% if preview %}
 <aside class="preview-banner" aria-label="Sample data preview">
-  <div><strong>Sample preview</strong><span>This is not Kona's live collar data.</span></div>
-  <a href="/activity">Return to live</a>
+  <div><strong>Sample data · not live</strong></div>
+  <a href="/activity">Exit preview</a>
 </aside>
 {% endif %}
 {# A duration as the page's display numerals: `8h 30m` is a big tabular 8, a
    small h, a big 30, a small m. The pairs come from views.duration_parts. #}
-{% macro duration(parts) %}{% for figure, unit in parts %}{{ figure }}<small>{{ unit }}</small>{% endfor %}{% endmacro %}
+{% from "_duration.html" import duration %}
+
 
 {% if lost %}
 <section class="safety-alert danger" role="alert">
@@ -39,33 +40,12 @@
 </section>
 {% endif %}
 
-<section class="collar-summary" aria-label="Kona's current collar status">
-  <div>
-    <span class="eyebrow">{{ 'Last reported' if stale else 'Right now' }}</span>
-    <strong>
-      {% if activity == 'walk' %}On a walk
-      {% elif activity == 'rest' %}Resting
-      {% elif not configured %}Collar not connected
-      {% else %}Status unavailable{% endif %}
-    </strong>
-    {% set walk_note = activity == 'walk' and walk_distance_m %}
-    {% if walk_note or (activity in ('walk', 'rest') and activity_since) %}
-    <span>{% if walk_note %}{{ walk_distance_m }} m so far{% if activity_since %} · {% endif %}{% endif %}{% if activity_since %}since {{ activity_since }}{% endif %}</span>
-    {% endif %}
-  </div>
-  <div class="connection">
-    {% if on_base is sameas true %}<span class="status-dot {{ 'warn-dot' if stale else 'live' }}"></span>On charger
-    {% elif on_base is sameas false and signal %}<span class="status-dot {{ 'warn-dot' if stale else 'live' }}"></span>Cellular {{ signal }}%
-    {% elif configured and has_data %}<span class="status-dot"></span>Connection unknown
-    {% endif %}
-  </div>
-</section>
-
 <section class="steps-hero {{ 'dimmed' if stale else '' }}" aria-label="Steps today">
   <div class="hero-copy">
     <span class="eyebrow">Steps today</span>
     <span class="d hero-number {{ '' if steps else 'empty' }}">{{ steps or '&ndash;'|safe }}</span>
     <span class="hero-note">{% if step_goal %}of {{ step_goal }}{% else %}No goal available{% endif %}</span>
+    {% if preview %}<a class="metric-open" href="/preview/steps" aria-label="Open sample steps detail"><span aria-hidden="true">View activity ›</span></a>{% endif %}
   </div>
   <div class="goal-ring" aria-label="{{ ring.percent }} percent of today's step goal">
     <svg viewBox="0 0 120 120" aria-hidden="true">
@@ -78,7 +58,9 @@
   </div>
 </section>
 
+
 <section class="rest-grid {{ 'dimmed' if stale else '' }}" aria-label="Rest">
+{% if preview %}<a class="rest-open" href="/preview/rest" aria-label="Open sample rest detail"><span aria-hidden="true">View rest ›</span></a>{% endif %}
   <div class="metric">
     <span class="eyebrow">Naps today</span>
     {% if nap_parts %}
@@ -104,6 +86,7 @@
 </section>
 
 {% if configured %}
+
 <section class="location-card {{ 'urgent' if escaped or lost else '' }}" aria-labelledby="location-title">
   <div class="location-heading">
     <div>
@@ -117,12 +100,17 @@
         {% else %}Location unavailable{% endif %}
       </strong>
     </div>
-    {% if location_updated %}<span>{{ 'Updated' if map_kind == 'current' else 'Last report' if map_kind == 'rest' else 'Last seen' }} {{ location_updated }}</span>{% endif %}
+    {% if location_updated %}<span>{{ 'Collar reported' if map_kind in ('current', 'rest') else 'Last seen' }} {{ location_updated }}</span>{% endif %}
   </div>
   {% if map_kind == 'home' %}<p class="location-note">Saved Home location · not Kona's reported position</p>{% endif %}
+  {% if activity in ('walk', 'rest') and (activity_since or walk_distance_m) %}
+  <p class="location-note activity-timing">{% if activity == 'walk' and walk_distance_m %}{{ walk_distance_m }} m walked{% if activity_since %} · {% endif %}{% endif %}{% if activity_since %}{{ 'Started' if activity == 'walk' else 'Resting since' }} {{ activity_since }}{% endif %}</p>
+  {% endif %}
+  {% if on_base is not none %}<p class="location-note connection"><span class="status-dot {{ 'warn-dot' if stale else 'live' }}"></span>{% if on_base %}On charger{% elif signal %}Cellular {{ signal }}%{% else %}Cellular{% endif %}</p>{% endif %}
   {% if stale %}<p class="location-note warn">From the last successful Fi update{% if as_of %} · {{ as_of }}{% endif %}</p>{% endif %}
   {% if map_points %}
   <div id="kona-map" class="map" aria-label="Map showing Kona's {% if map_kind == 'current' %}current walk route{% elif map_kind == 'rest' %}resting place{% elif map_kind == 'home' %}Home location{% else %}last reported location{% endif %}"></div>
+  <p id="map-unavailable" class="map-empty" hidden>Map unavailable. The map provider did not supply the background. Collar report details are shown above.</p>
   {% else %}
   <div class="map-empty">
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s6-5.2 6-11a6 6 0 1 0-12 0c0 5.8 6 11 6 11Z"/><circle cx="12" cy="10" r="2"/></svg>
@@ -132,21 +120,9 @@
 </section>
 {% endif %}
 
-<section class="week-row {{ 'dimmed' if stale else '' }}">
-  {% if historical_totals_hidden %}
-  {# The total is withheld until it cannot include the previous collar. Say
-     the date that changes, not a status line about our own data hygiene. #}
-  <span><span class="eyebrow">This week</span><strong class="phrase">{% if week_available_label %}Available {{ week_available_label }}{% else %}Not yet available{% endif %}</strong></span>
-  <span>weekly steps</span>
-  {% else %}
-  <span><span class="eyebrow">This week</span><strong class="d {{ '' if week_steps else 'empty' }}">{{ week_steps or '&ndash;'|safe }}</strong></span>
-  <span>steps</span>
-  {% endif %}
-</section>
-
 <div class="freshness" data-as-of="{{ as_of or '' }}">
   {% if as_of and stale %}<span class="status-dot warn-dot"></span>Last successful update {{ as_of }}{% if clock_zone %} {{ clock_zone }}{% endif %}
-  {% elif as_of %}<span class="status-dot live"></span>Updated {{ as_of }}{% if clock_zone %} {{ clock_zone }}{% endif %}
+  {% elif as_of %}<span class="status-dot live"></span>Checked Fi {{ as_of }}{% if clock_zone %} {{ clock_zone }}{% endif %}
   {% elif not configured %}<span class="status-dot"></span>Waiting for setup
   {% elif problem %}<span class="status-dot bad-dot"></span>No answer from Fi
   {% endif %}

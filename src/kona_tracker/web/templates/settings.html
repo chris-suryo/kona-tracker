@@ -15,6 +15,7 @@
     <p>{% if breed %}{{ breed }}{% endif %}{% if breed and age %}<span aria-hidden="true"> · </span>{% endif %}{% if age %}{{ age }}{% endif %}</p>
   </div>
 </section>
+{% if from_preview %}<p class="note">Preview ended. These are this server's actual settings.</p>{% endif %}
 
 <section class="settings-group" aria-labelledby="collar-settings-title">
   <h2 id="collar-settings-title">Collar</h2>
@@ -34,7 +35,7 @@
 <section class="settings-group" aria-labelledby="display-settings-title">
   <h2 id="display-settings-title">Dashboard</h2>
   <a class="settings-link" href="/activity?preview=1">
-    <span><strong>Preview a complete week</strong><small>Clearly labelled sample data; live data stays untouched.</small></span>
+    <span><strong>Preview sample data</strong><small>Explore the layout with fictional readings.</small></span>
     <span class="go" aria-hidden="true">{% include "_chevron.svg" %}</span>
   </a>
 </section>

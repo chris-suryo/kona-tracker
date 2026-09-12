@@ -113,7 +113,7 @@ def test_the_page_draws_a_second_lap_and_prints_the_true_percentage():
 
 def test_the_page_prints_naps_and_last_night_as_hours_and_minutes():
     page = render(_snapshot())
-    assert "8<small>h</small>30<small>m</small>" in page
+    assert '8<small>h</small><span class="duration-minutes">30<small>m</small></span>' in page
     assert "22<small>m</small>" in page
     assert "<small>h</small></span>\n    <span>so far today" not in page
 
@@ -127,7 +127,7 @@ def test_resting_since_uses_the_start_fi_already_sends():
     assert "Resting" in page and f"since {expected}" in page
     # A walk keeps its distance and gains the start time beside it.
     page = render(_snapshot(activity="walk", activity_since=since, walk_distance=420))
-    assert f"420 m so far · since {expected}" in page
+    assert f"420 m walked · Started {expected}" in page
     # Nothing to say without a start; the line simply is not there.
     assert activity_context(_snapshot(activity="rest"), configured=True)["activity_since"] is None
 
@@ -173,7 +173,7 @@ def test_the_bottom_row_names_the_day_the_weekly_total_arrives():
     ctx = activity_context(snapshot, configured=True)
     assert ctx["week_available_label"] == "17 Sep"
     page = render(snapshot)
-    assert "Available 17 Sep" in page and "Building a clean baseline" not in page
+    assert "Building a clean baseline" not in page
     assert "weekly total waits until 17 Sep" in page
     # Nothing unusual: no lecture about midnight under the numbers.
     ordinary = render(_snapshot())

@@ -219,6 +219,7 @@ test('refresh timeout unlocks retry and explains failure', async () => {
   x.window.KonaRefresh(); x.window.KonaRefresh();
   assert.equal(x.requests.length, 1);
   x.fire(20000); await settle();
+  x.fire(650); x.fire(220);
   assert.equal(x.nodes.pull.hidden, true);
   assert.match(x.note.textContent, /Couldn't refresh/);
   x.window.KonaRefresh(); assert.equal(x.requests.length, 2);
@@ -240,12 +241,35 @@ test('cancelled touch never triggers a refresh', () => {
   assert.equal(x.requests.length, 0);
 });
 
+test('a new pull is not hidden by the previous dismissal timer', async () => {
+  const x = setup('app.js'); x.window.scrollY = 0;
+  x.window.KonaRefresh(); x.requests[0].resolve(response({})); await settle();
+  assert.equal(x.nodes.pull.classList.contains('finished'), true);
+  x.page.events.touchstart({touches:[{clientY:0}], target:element()});
+  x.page.events.touchmove({touches:[{clientY:150}]});
+  assert.equal([...x.timers.values()].some(t => t.delay === 650), false);
+  assert.equal(x.nodes.pull.hidden, false);
+  x.page.events.touchend();
+  assert.equal(x.requests.length, 2);
+  assert.equal(x.nodes.pull.style.transform, '');
+});
+
 test('map init releases the previous Leaflet instance even when new points are absent', () => {
   let removed = 0, points = '[{"lat":30,"lon":-97}]';
-  const window = {}, layer = {addTo() {}}, map = {remove() { removed++; }, setView() {}};
+  const window = {}, layer = {addTo() {}, on() {}}, map = {remove() { removed++; }, setView() {}};
   const L = {map: () => map, tileLayer: () => layer, marker: () => layer,
     divIcon: () => ({}), control: {zoom: () => layer}};
-  const document = {getElementById: id => id === 'map-points' ? (points ? {textContent:points} : null) : {}};
+  // A real element always has classList; map.js toggles `tiles-dark` on it so
+  // the CSS filter that fakes a dark basemap does not run over already-dark
+  // Stadia tiles. The stub needs it or the harness fails where a browser
+  // would not. No #map-config here on purpose: the OSM fallback must work
+  // when the block is absent.
+  const classes = new Set();
+  const mapEl = {classList: {toggle: (n, on) => on ? classes.add(n) : classes.delete(n),
+                             contains: n => classes.has(n)}};
+  const document = {getElementById: id => id === 'map-points'
+    ? (points ? {textContent:points} : null)
+    : (id === 'kona-map' ? mapEl : null)};
   vm.runInNewContext(fs.readFileSync(path.join(staticDir,'map.js'),'utf8'), {window,document,L});
   window.KonaMap.init(); assert.equal(removed, 1);
   points = null; window.KonaMap.init(); assert.equal(removed, 2);
