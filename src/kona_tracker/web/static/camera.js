@@ -137,6 +137,118 @@
   set('stale', 'CONNECTING', 'Opening the camera…');
   if (suspended) { pause(); } else { poll(); }
 
+  // Zoom. The C120 has no motor, so "zoom" is what the Tapo app's is: the
+  // picture, closer. Pinch to zoom, one finger to pan while zoomed,
+  // double-tap to jump in on a spot or back out. The whole page keeps its
+  // deliberate no-zoom rule (app.js); this is the one surface where a
+  // pinch means something, and it means this, not the page. The transform
+  // is on the <img> alone, so the badge, the shutter and each new frame
+  // are untouched -- a frame arriving mid-pinch lands already zoomed.
+  var ZOOM_MAX = 4, ZOOM_TAP = 2.5, SNAP_BELOW = 1.08, TAP_MS = 300, TAP_PX = 24;
+  var zoom = { s: 1, x: 0, y: 0 };
+  var pinch = null, drag = null, lastPoint = null, touchBegan = 0, touchMoved = false;
+  var lastTap = 0, lastTapAt = null;
+  var zoomBadge = document.getElementById('zoom-level');
+
+  function frameSize() {
+    return { w: frame.clientWidth || img.clientWidth || 1, h: frame.clientHeight || img.clientHeight || 1 };
+  }
+  function clampPan() {
+    // The picture may never leave a gap: at scale s it is s times the
+    // frame, so its left edge can travel from 0 back to (1 - s) widths.
+    var f = frameSize();
+    // `|| 0` folds a -0 into 0, so an "untouched" state compares equal.
+    zoom.x = Math.min(0, Math.max(f.w * (1 - zoom.s), zoom.x)) || 0;
+    zoom.y = Math.min(0, Math.max(f.h * (1 - zoom.s), zoom.y)) || 0;
+  }
+  function applyZoom() {
+    if (zoom.s < SNAP_BELOW) { zoom.s = 1; zoom.x = 0; zoom.y = 0; }
+    clampPan();
+    img.style.transform = zoom.s === 1 ? '' : 'translate(' + zoom.x.toFixed(1) + 'px,' + zoom.y.toFixed(1) + 'px) scale(' + zoom.s.toFixed(3) + ')';
+    if (frame) { frame.classList.toggle('zoomed', zoom.s !== 1); }
+    if (zoomBadge) {
+      zoomBadge.hidden = zoom.s === 1;
+      zoomBadge.textContent = zoom.s.toFixed(1).replace(/\.0$/, '') + '\u00d7';
+    }
+  }
+  // Scale about a point on the frame, so the spot under the fingers stays
+  // under the fingers. With the transform's origin at the top-left corner,
+  // the point p maps to x + p*s; holding it fixed across a scale change
+  // from s to s2 gives x2 = p - (p - x) * (s2 / s).
+  function scaleAbout(px, py, s2) {
+    s2 = Math.min(ZOOM_MAX, Math.max(1, s2));
+    var k = s2 / zoom.s;
+    zoom.x = px - (px - zoom.x) * k;
+    zoom.y = py - (py - zoom.y) * k;
+    zoom.s = s2;
+    applyZoom();
+  }
+  function local(touch) {
+    var r = frame.getBoundingClientRect ? frame.getBoundingClientRect() : { left: 0, top: 0 };
+    return { x: touch.clientX - r.left, y: touch.clientY - r.top };
+  }
+  function span(a, b) { return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) || 1; }
+
+  frame.addEventListener('touchstart', function (e) {
+    if (e.target.closest && e.target.closest('button')) { return; }  // the shutter is a button, not a gesture
+    if (e.touches.length === 2) {
+      var m = local({ clientX: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+                      clientY: (e.touches[0].clientY + e.touches[1].clientY) / 2 });
+      pinch = { dist: span(e.touches[0], e.touches[1]), s: zoom.s, mx: m.x, my: m.y };
+      drag = null;
+    } else if (e.touches.length === 1) {
+      var p = local(e.touches[0]);
+      touchBegan = Date.now(); touchMoved = false;
+      drag = zoom.s > 1 ? { x: p.x, y: p.y, ox: zoom.x, oy: zoom.y } : null;
+      lastPoint = p;
+    }
+  }, { passive: false });
+  frame.addEventListener('touchmove', function (e) {
+    if (pinch && e.touches.length === 2) {
+      // The midpoint anchors the scale; the fingers' drift pans by the rest.
+      var m = local({ clientX: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+                      clientY: (e.touches[0].clientY + e.touches[1].clientY) / 2 });
+      var s2 = pinch.s * span(e.touches[0], e.touches[1]) / pinch.dist;
+      zoom.x += m.x - pinch.mx; zoom.y += m.y - pinch.my;
+      pinch.mx = m.x; pinch.my = m.y;
+      scaleAbout(m.x, m.y, s2);
+      e.preventDefault();
+    } else if (e.touches.length === 1) {
+      var p = local(e.touches[0]);
+      if (lastPoint && Math.hypot(p.x - lastPoint.x, p.y - lastPoint.y) >= TAP_PX) { touchMoved = true; }
+      if (drag) {
+        zoom.x = drag.ox + (p.x - drag.x); zoom.y = drag.oy + (p.y - drag.y);
+        applyZoom();
+        e.preventDefault();  // zoomed in, a swipe pans the picture, not the page
+      }
+    }
+  }, { passive: false });
+  function endTouch(e) {
+    if (e.touches.length < 2) { pinch = null; }
+    if (e.touches.length === 0) {
+      // A tap is a touch that neither moved nor lingered. Two of them, close
+      // in time and place, are a double-tap: in on that spot, or back out.
+      var now = Date.now();
+      var quick = touchBegan && now - touchBegan < TAP_MS && !touchMoved;
+      if (quick && lastPoint) {
+        if (lastTap && now - lastTap < TAP_MS && lastTapAt && Math.hypot(lastPoint.x - lastTapAt.x, lastPoint.y - lastTapAt.y) < TAP_PX) {
+          lastTap = 0;
+          if (zoom.s === 1) { scaleAbout(lastPoint.x, lastPoint.y, ZOOM_TAP); } else { zoom.s = 1; applyZoom(); }
+        } else {
+          lastTap = now; lastTapAt = lastPoint;
+        }
+      } else if (!quick) {
+        lastTap = 0;
+      }
+      drag = null; lastPoint = null; touchBegan = 0;
+    }
+    applyZoom();
+  }
+  frame.addEventListener('touchend', endTouch);
+  frame.addEventListener('touchcancel', endTouch);
+  window.KonaZoom = { get: function () { return { s: zoom.s, x: zoom.x, y: zoom.y }; }, reset: function () { zoom.s = 1; applyZoom(); } };
+  applyZoom();  // a clean 1x: no transform, no badge
+
   // Share a real JPEG when the browser permits file sharing (iPhone over
   // HTTPS or localhost). On an ordinary LAN HTTP address, save the same
   // image instead; the camera action still completes honestly.

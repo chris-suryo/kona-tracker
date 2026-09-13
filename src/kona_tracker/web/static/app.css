@@ -170,8 +170,14 @@ body.activity-page { overscroll-behavior-y: contain; }
 /* camera */
 .cam-page { padding: 0; }
 .cam-page .hdr { padding-left: 20px; padding-right: 20px; }
-.cam { position: relative; margin: 12px 0 0; overflow: hidden; background: #0b0e0c; }
-.cam img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; }
+.cam { position: relative; margin: 12px 0 0; overflow: hidden; background: #0b0e0c; touch-action: pan-y; }
+/* Zoomed in, a swipe pans the picture; the page must not take it. */
+.cam.zoomed { touch-action: none; }
+.cam img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; transform-origin: 0 0; will-change: transform; }
+.cam .top { gap: 8px; }
+.zoom-level { font-size: 11px; letter-spacing: .06em; font-weight: 700; padding: 6px 10px; border-radius: 999px;
+              background: rgba(0,0,0,.45); border: 1px solid rgba(255,255,255,.15); font-variant-numeric: tabular-nums; }
+.zoom-level[hidden] { display: none; }
 .cam img.unavailable { visibility: hidden; }
 /* Honest waiting state: while connecting, the hidden near-black frame carries
    a centred "Connecting…" over it so it reads as working. Shown only when
