@@ -59,16 +59,20 @@ def render(snapshot: FiSnapshot) -> str:
 @pytest.mark.parametrize(
     ("steps", "goal", "expected"),
     [
-        (14_000, 28_000, {"percent": 50, "arc": 50.0, "overflow": 0.0}),
-        (28_000, 28_000, {"percent": 100, "arc": 100.0, "overflow": 0.0}),
+        (14_000, 28_000, {"percent": 50, "arc": 50.0, "overflow": 0.0, "known": True}),
+        (28_000, 28_000, {"percent": 100, "arc": 100.0, "overflow": 0.0, "known": True}),
         # The day she does half again her goal used to read "exactly done".
-        (42_000, 28_000, {"percent": 150, "arc": 100.0, "overflow": 50.0}),
+        (42_000, 28_000, {"percent": 150, "arc": 100.0, "overflow": 50.0, "known": True}),
         # A third lap would paint over the second and say nothing new.
-        (100_000, 28_000, {"percent": 357, "arc": 100.0, "overflow": 100.0}),
-        (0, 28_000, {"percent": 0, "arc": 0.0, "overflow": 0.0}),
-        (3_000, None, {"percent": 0, "arc": 0.0, "overflow": 0.0}),
-        (None, 28_000, {"percent": 0, "arc": 0.0, "overflow": 0.0}),
-        (3_000, 0, {"percent": 0, "arc": 0.0, "overflow": 0.0}),
+        (100_000, 28_000, {"percent": 357, "arc": 100.0, "overflow": 100.0, "known": True}),
+        # A real morning before she has moved: 0% is a measurement, and the
+        # ring is allowed to say so.
+        (0, 28_000, {"percent": 0, "arc": 0.0, "overflow": 0.0, "known": True}),
+        # No goal, or no steps: nothing has been measured, so the ring draws
+        # empty and the label is a dash rather than a confident "0%".
+        (3_000, None, {"percent": None, "arc": 0.0, "overflow": 0.0, "known": False}),
+        (None, 28_000, {"percent": None, "arc": 0.0, "overflow": 0.0, "known": False}),
+        (3_000, 0, {"percent": None, "arc": 0.0, "overflow": 0.0, "known": False}),
     ],
 )
 def test_the_ring_keeps_going_past_the_goal(steps, goal, expected):
