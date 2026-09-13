@@ -138,3 +138,66 @@ def test_rtsp_cap_keeps_the_aspect_ratio():
         1280,
         720,
     )
+
+
+class _QueuedCap:
+    """A VideoCapture with frames already queued: grabs come back at once
+    until the queue is empty, then the next grab 'waits on the wire'."""
+
+    def __init__(self, queued: int, live_wait: float = 0.04):
+        self.queued = queued
+        self.live_wait = live_wait
+        self.grabs = 0
+        self.now = 0.0
+
+    def clock(self) -> float:
+        return self.now
+
+    def grab(self) -> bool:
+        self.grabs += 1
+        if self.queued > 0:
+            self.queued -= 1
+            self.now += 0.0002
+        else:
+            self.now += self.live_wait
+        return True
+
+
+def test_drain_skips_every_queued_frame_and_stops_at_the_first_live_one():
+    """Eight seconds of lag was frames waiting in FFmpeg's queue. A read now
+    throws away everything that returns instantly and decodes only the frame
+    that had to wait for the network."""
+    from kona_tracker.camera.source import drain_to_live
+
+    cap = _QueuedCap(queued=50)
+    assert drain_to_live(cap, clock=cap.clock) is True
+    # 50 queued + the one that waited = 51, and not one more: the drain must
+    # not hold a live frame back while it waits for the next.
+    assert cap.grabs == 51
+    assert cap.queued == 0
+
+
+def test_drain_costs_one_extra_grab_when_nothing_is_queued():
+    from kona_tracker.camera.source import drain_to_live
+
+    cap = _QueuedCap(queued=0)
+    assert drain_to_live(cap, clock=cap.clock) is True
+    assert cap.grabs == 2, "first grab primes, second waits and is live"
+
+
+def test_drain_is_bounded_even_if_every_grab_is_instant():
+    from kona_tracker.camera.source import MAX_DRAIN, drain_to_live
+
+    cap = _QueuedCap(queued=10_000)
+    assert drain_to_live(cap, clock=cap.clock) is True
+    assert cap.grabs == MAX_DRAIN + 1
+
+
+def test_drain_reports_a_dead_source():
+    from kona_tracker.camera.source import drain_to_live
+
+    class Dead:
+        def grab(self):
+            return False
+
+    assert drain_to_live(Dead()) is False
