@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Kona · Steps{% endblock %}
+{% block pageclass %}history-page{% endblock %}
+{% block body %}
+<nav class="subnav" aria-label="Back"><a class="back" href="/activity">{% include "_chevron.svg" %}<span>Activity</span></a></nav>
+<header class="history-heading"><h1>Steps</h1></header>
+
+{% if not configured %}
+<section class="history-total" aria-label="Not configured">
+  <span class="eyebrow">From her collar</span>
+  <p>Fi is not configured. Set <code>FI_EMAIL</code> and <code>FI_PASSWORD</code> in <code>.env</code> and restart.</p>
+</section>
+{% else %}
+<section class="history-total {{ 'dimmed' if stale else '' }}" aria-label="Steps today">
+  <span class="eyebrow">Steps today{% if hours_date %} · {{ hours_date }}{% endif %}</span>
+  <strong class="d {{ '' if steps else 'empty' }}">{{ steps or '&ndash;'|safe }}</strong>
+  <p>{% if step_goal %}of {{ step_goal }} · {{ ring.percent }}% of today's goal{% else %}No goal available{% endif %}{% if distance %} · {{ distance }}{% endif %}{% if stale %} · last good reading{% elif fetched_label %} · checked Fi {{ fetched_label }}{% if clock_zone %} {{ clock_zone }}{% endif %}{% endif %}</p>
+</section>
+{% if hours %}
+<section class="history-chart" aria-labelledby="hours-title">
+  <div class="chart-heading"><h2 id="hours-title">Steps by hour</h2><span>{{ '{:,}'.format(hours_maximum) }} steps{% if hours_through %} · {{ hours_through }}{% endif %}</span></div>
+  <svg class="bar-chart steps" viewBox="0 0 340 178" role="group" aria-label="Today's steps by hour. Select an hour for its reading.">
+    <path class="chart-rule" d="M0 12H340 M0 87H340 M0 162H340"/>
+    {% for b in hours %}
+    <a href="{{ b.href }}" aria-label="{{ b.label }}: {{ 'not yet' if b.future else 'no reading' if b.value is none else (b.value|string) ~ ' steps' }}"{% if hour == loop.index0 %} aria-current="true"{% endif %}>
+      <rect class="bar-hit" x="{{ b.x }}" y="10" width="{{ b.width + 3 }}" height="158"/>
+      {% if b.future %}<path class="future-bar" d="M{{ b.x }} 162h{{ b.width }}"/>
+      {% elif b.value is none %}<path class="missing-bar" d="M{{ b.x }} 162h{{ b.width }}"/>
+      {% elif b.value == 0 %}<circle class="zero-bar" cx="{{ b.x + b.width / 2 }}" cy="162" r="2"/>
+      {% else %}<rect class="step-bar" x="{{ b.x }}" y="{{ 162 - b.height }}" width="{{ b.width }}" height="{{ b.height }}" rx="1.5"/>{% endif %}
+    </a>{% endfor %}
+  </svg>
+  <div class="chart-axis"><span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>24:00</span></div>
+  <p class="chart-selection" aria-live="polite">{% if hour_chosen %}<strong>{{ hour_chosen.label }}</strong> · {% if hour_chosen.future %}Not yet{% elif hour_chosen.value is none %}No reading{% else %}{{ '{:,}'.format(hour_chosen.value) }} steps{% endif %}{% else %}Tap an hour to see its reading.{% endif %}</p>
+  <details class="history-readings"><summary>View readings</summary>
+    <p class="chart-footnote">The values plotted above, as Fi reported them. Dots mean zero; dashed marks mean no reading; faint marks are hours still to come. The day total is Fi's own figure and can run ahead of the bars.</p>
+    <table><thead><tr><th>Hour</th><th>Steps</th></tr></thead><tbody>
+    {% for b in hours %}<tr><th>{{ b.label }}</th><td>{% if b.future %}Not yet{% elif b.value is none %}No reading{% else %}{{ '{:,}'.format(b.value) }}{% endif %}</td></tr>{% endfor %}
+    </tbody></table>
+  </details>
+</section>
+{% else %}
+<section class="history-chart" aria-label="No hourly data">
+  <p class="chart-selection">{% if problem %}{{ problem }}{% else %}Fi has not returned today's hourly steps yet.{% endif %}</p>
+</section>
+{% endif %}
+{% endif %}
+{% endblock %}

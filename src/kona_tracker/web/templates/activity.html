@@ -45,7 +45,7 @@
     <span class="eyebrow">Steps today</span>
     <span class="d hero-number {{ '' if steps else 'empty' }}">{{ steps or '&ndash;'|safe }}</span>
     <span class="hero-note">{% if step_goal %}of {{ step_goal }}{% else %}No goal available{% endif %}</span>
-    {% if preview %}<a class="metric-open" href="/preview/steps" aria-label="Open sample steps detail"><span aria-hidden="true">View activity ›</span></a>{% endif %}
+    {% if preview %}<a class="metric-open" href="/preview/steps" aria-label="Open sample steps detail"><span aria-hidden="true">View activity ›</span></a>{% elif configured %}<a class="metric-open" href="/steps" aria-label="Open today's steps by hour"><span aria-hidden="true">View steps ›</span></a>{% endif %}
   </div>
   <div class="goal-ring" aria-label="{{ ring.percent }} percent of today's step goal">
     <svg viewBox="0 0 120 120" aria-hidden="true">

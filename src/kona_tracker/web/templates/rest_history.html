@@ -31,6 +31,25 @@
     <span><i class="nap-key"></i>Avg naps <strong>{% if average_nap is not none %}{{ minutes(average_nap) }}{% else %}&ndash;{% endif %}</strong></span>
   </div>
 </section>
+{% if hours %}
+<section class="history-chart" aria-labelledby="hours-title">
+  <div class="chart-heading"><h2 id="hours-title">Today by hour</h2><span>{{ hours_maximum }} min{% if hours_through %} · {{ hours_through }}{% endif %}</span></div>
+  <svg class="bar-chart rest" viewBox="0 0 340 178" role="group" aria-label="Today's rest by hour. Select an hour for its reading.">
+    <path class="chart-rule" d="M0 12H340 M0 87H340 M0 162H340"/>
+    {% for b in hours %}
+    <a href="{{ b.href }}" aria-label="{{ b.label }}: {{ 'not yet' if b.future else 'no reading' if b.value is none else (b.value|string) ~ ' minutes' }}"{% if hour == loop.index0 %} aria-current="true"{% endif %}>
+      <rect class="bar-hit" x="{{ b.x }}" y="10" width="{{ b.width + 3 }}" height="158"/>
+      {% if b.future %}<path class="future-bar" d="M{{ b.x }} 162h{{ b.width }}"/>
+      {% elif b.value is none %}<path class="missing-bar" d="M{{ b.x }} 162h{{ b.width }}"/>
+      {% elif b.value == 0 %}<circle class="zero-bar" cx="{{ b.x + b.width / 2 }}" cy="162" r="2"/>
+      {% else %}<rect class="sleep-bar" x="{{ b.x }}" y="{{ 162 - b.sleep_height }}" width="{{ b.width }}" height="{{ b.sleep_height }}" rx="1.5"/><rect class="nap-bar" x="{{ b.x }}" y="{{ 162 - b.height }}" width="{{ b.width }}" height="{{ b.nap_height }}" rx="1.5"/>{% endif %}
+    </a>{% endfor %}
+  </svg>
+  <div class="chart-axis"><span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>24:00</span></div>
+  <p class="chart-selection" aria-live="polite">{% if hour_chosen %}<strong>{{ hour_chosen.label }}</strong> · {% if hour_chosen.future %}Not yet{% elif hour_chosen.value is none %}No reading{% else %}{{ minutes(hour_chosen.value) }} of rest{% if hour_chosen.sleep is not none or hour_chosen.nap is not none %} · sleep {{ minutes(hour_chosen.sleep or 0) }}, naps {{ minutes(hour_chosen.nap or 0) }}{% endif %}{% endif %}{% else %}Tap an hour to see its reading. So far today: {% if hours_total is not none %}{{ minutes(hours_total) }}{% else %}&ndash;{% endif %} of rest.{% endif %}</p>
+</section>
+{% endif %}
+
 <section class="history-chart" aria-labelledby="chart-title">
   <div class="chart-heading"><h2 id="chart-title">Rest by day</h2><span>{{ '{:,}'.format(maximum) }} min</span></div>
   <svg class="bar-chart rest" viewBox="0 0 340 178" role="group" aria-label="Daily rest chart. Select a day for its reading.">
@@ -44,7 +63,7 @@
     </a>{% endfor %}
   </svg>
   <div class="chart-axis">{% for b in buckets %}<span>{{ b.short }}</span>{% endfor %}</div>
-  <p class="chart-selection" aria-live="polite">{% if chosen %}<strong>{{ chosen.label }}</strong> · {% if chosen.value is none %}No reading{% else %}{{ minutes(chosen.value) }} of rest{% if chosen.sleep is not none or chosen.nap is not none %} · sleep {{ minutes(chosen.sleep or 0) }}, naps {{ minutes(chosen.nap or 0) }}{% endif %}{% endif %}{% if chosen.in_progress %} · still in progress{% elif chosen.partial_first_day %} · collar set up this day, so part of it was not measured{% endif %}{% else %}Tap a day to see its reading. Fi reports daily totals, not hours.{% endif %}</p>
+  <p class="chart-selection" aria-live="polite">{% if chosen %}<strong>{{ chosen.label }}</strong> · {% if chosen.value is none %}No reading{% else %}{{ minutes(chosen.value) }} of rest{% if chosen.sleep is not none or chosen.nap is not none %} · sleep {{ minutes(chosen.sleep or 0) }}, naps {{ minutes(chosen.nap or 0) }}{% endif %}{% endif %}{% if chosen.in_progress %} · still in progress{% elif chosen.partial_first_day %} · collar set up this day, so part of it was not measured{% endif %}{% else %}Tap a day to see its reading.{% endif %}</p>
   <details class="history-readings"><summary>View readings</summary>
     <p class="chart-footnote">These are the values plotted above, as Fi reported them. Dots mean zero; dashed marks mean no reading. Days marked incomplete are not averaged.</p>
     <table><thead><tr><th>Day</th><th>Sleep</th><th>Naps</th><th>Rest</th></tr></thead><tbody>

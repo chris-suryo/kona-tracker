@@ -38,6 +38,7 @@ from kona_tracker.web.views import (
     map_tile_config,
     preview_activity_context,
     rest_history_context,
+    steps_context,
     walk_context,
 )
 
@@ -370,7 +371,11 @@ def create_app(
         return templates.TemplateResponse(request, "activity.html", context)
 
     @app.get("/rest", response_class=HTMLResponse)
-    def rest_history(request: Request, selected: int | None = Query(default=None, ge=0, le=60)):
+    def rest_history(
+        request: Request,
+        selected: int | None = Query(default=None, ge=0, le=60),
+        hour: int | None = Query(default=None, ge=0, le=23),
+    ):
         """Kona's real daily rest, one bar per day the collar has existed.
 
         Days, not hours: Fi reports a daily total of sleep and of naps and
@@ -379,8 +384,18 @@ def create_app(
         neither, on purpose.
         """
         snapshot = fi.snapshot() if fi else None
-        context = rest_history_context(snapshot, configured=fi is not None, selected=selected)
+        context = rest_history_context(
+            snapshot, configured=fi is not None, selected=selected, hour=hour
+        )
         return templates.TemplateResponse(request, "rest_history.html", context)
+
+    @app.get("/steps", response_class=HTMLResponse)
+    def steps_today(request: Request, hour: int | None = Query(default=None, ge=0, le=23)):
+        """Today's steps by the hour, from stepFeed(period: DAY) -- the Fi
+        app's Day tab. Fi's own day total on top; the bars can lag it."""
+        snapshot = fi.snapshot() if fi else None
+        context = steps_context(snapshot, configured=fi is not None, hour=hour)
+        return templates.TemplateResponse(request, "steps.html", context)
 
     @app.get("/walks/{walk_id}", response_class=HTMLResponse)
     def walk(request: Request, walk_id: str):
