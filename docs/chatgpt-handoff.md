@@ -1,9 +1,15 @@
 # Handoff to a ChatGPT session
 
 Paste the block at the bottom into ChatGPT. This page is the long version it
-can read from the repo. Written 2026-09-11, after the production-punchlist
-pass. `docs/handoff.md` is the project; this is the brief for a visiting
+can read from the repo. Written 2026-09-11, refreshed 2026-09-13 for the
+visual audit. `PROJECT.md` is the project; this is the brief for a visiting
 assistant.
+
+**2026-09-13: the current job is an audit, not a branch.** Claude Code is
+working on several branches at once, so a second assistant writing code
+produces exactly the reconciliation that PR #7 cost a whole session. Ask for
+a report with screenshots and specific proposals; the implementation comes
+back here.
 
 ---
 
@@ -11,7 +17,7 @@ assistant.
 
 A private, passcode-gated, iPhone-first web app so Chris and his sister can
 check on Kona, a one-year-old Labrador. Two tabs: **Activity** from her Fi
-collar, **Camera** from a USB webcam in the house. Python, FastAPI, Jinja
+collar, **Camera** from a Tapo C120 over RTSP in the house. Python, FastAPI, Jinja
 templates, plain CSS, no build step, no JavaScript framework, no npm. It runs
 on a Windows PC at home because the video originates there. `docs/design-brief.md`
 explains why it is HTML and not React, and is the block to paste into a
@@ -19,13 +25,8 @@ design session.
 
 ## Where the code is
 
-**`main`**, as of 2026-09-11. Branch from it and open a PR; Chris merges.
-CI green on ubuntu and windows. Two PRs are open and expected to land the
-same day this was written -- #8 (the camera rewrite) and #9 (the Fi data
-brief) -- so if `main` lacks `docs/scaling-limits.md`, check whether they
-have merged yet. (Earlier versions of this file pointed at
-`claude/elegant-sagan-tit1xp` and said `main` was stale. That is no longer
-the shape of the project.)
+**`main`**, as of 2026-09-13. Everything through PR #33 is merged. CI green
+on ubuntu and windows.
 
 ## The five rules that matter most here
 
@@ -77,6 +78,39 @@ pull-to-refresh that repaints without tearing down the video, camera health
 readable from a phone, a rotating log, times in Kona's timezone, and an
 outbound heartbeat so a dead PC still raises an alarm.
 
+## Every page, and what each one is for
+
+Run it with `uv run --no-sync kona serve` (or `--fake-camera` without
+hardware) and open `http://localhost:8000`.
+
+| Path | What it is |
+|---|---|
+| `/activity` | The home screen. Steps against a moving goal, naps today, last night's sleep, where she is, walks today. Re-fetches once a minute while visible; pull down to force it. |
+| `/steps` | Today's steps by the hour. `?hour=N` selects one. |
+| `/rest` | Today's sleep and naps by the hour, then one bar per day since the collar came online. |
+| `/walks/<id>` | One finished walk: distance, pace, the route on a map. Reached from "Walks today". |
+| `/map` | The live map, full screen. Route, her dot, how old the fix is. Reached by "Open full map". |
+| `/camera` | The picture. Pinch or double-tap to zoom. Night vision, privacy and status light when the camera answers. |
+| `/settings` | Kona's profile, collar battery, camera health, sign out. Reached from the avatar. |
+| `/login` | The passcode gate. |
+| `/activity?preview=1` | Sample-data mode, fictional readings, for judging layout without a collar. |
+
+## What the numbers mean, so nothing load-bearing gets designed away
+
+- **Steps against the goal.** Fi moves the goal with her fitness, so "of
+  28,000" changes between days. That is Fi working, not a bug.
+- **Asleep last night** is one overnight bout with the span that describes
+  it, e.g. 7h 44m, 00:20 - 08:04. It is deliberately *not* the calendar-day
+  total, which is what `/rest` charts per day.
+- **A dash is a real state.** It means Fi did not send that value. Never
+  replace one with a zero, an average, or a guess.
+- **Four honest failure modes** the page must keep distinguishing: not
+  configured, failing, **partial** (fresh but one query failed), and stale
+  (old numbers, refresh failed). They read differently on purpose.
+- **The fix age on `/map`** goes amber past two minutes and red past five,
+  because a confident dot in a place she left four minutes ago is worse than
+  no map.
+
 ## What is genuinely open, in the order that would help
 
 1. **Visual polish on what landed.** The new pieces were built for honesty
@@ -117,23 +151,8 @@ outbound heartbeat so a dead PC still raises an alarm.
 
 ## The paste-able block
 
-> I'm working on kona-tracker, a private iPhone-first web app that shows my
-> dog Kona's Fi collar data and a live camera from my house. Python, FastAPI,
-> Jinja templates, plain CSS, no build step, no JS framework.
->
-> The code is on GitHub at chris-suryo/kona-tracker, branch `main`.
-> Read `docs/chatgpt-handoff.md` first, then
-> `docs/handoff.md` and `CLAUDE.md`. The handoff doc lists constraints that
-> will silently break things if you miss them, especially: the page sends a
-> Content-Security-Policy so there can be no inline `<script>` and no `onclick`
-> attributes, Leaflet is vendored and byte-pinned so no CDN links, page zoom
-> is disabled deliberately, and no new dependencies without asking me.
->
-> What I'd like from you is a visual and copy pass on the parts that were
-> built for correctness and never got a design eye: the camera-health rows on
-> the settings page, the map's empty state, the "Resting at Home" location
-> card, and the pull-to-refresh indicator. Match the existing look rather than
-> introducing a new one.
->
-> Propose the changes before writing code, and keep `uv run pytest -q` and
-> `uv run ruff check .` green. Work on a branch of your own and open a PR.
+See the "visual audit" prompt Claude Code hands Chris; it is reproduced in
+the session notes rather than here, because it changes with what has just
+been built. The standing rules it must always carry are the ones above:
+no inline script, no CDN, vendored Leaflet, zoom off by request, both
+themes, no new dependencies, and a report rather than a branch.
