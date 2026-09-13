@@ -636,6 +636,55 @@ def speculative_queries(pet_id: str, on: date | None = None) -> list[tuple[str, 
             "activityFeed(limit: 3) { activities { __typename "
             "... on Travel { distance positions { __typename } } } } } }",
         ),
+        # Round 12, 2026-09-13. Two questions raised by the first real walk
+        # with the app open, both from what Chris saw on his phone.
+        #
+        # 1. The page said "On charger" while she was 878 m from the house,
+        #    on a walk. That line reads `lastConnectionState.__typename`,
+        #    which on 2026-09-10 was ConnectedToCellular during a walk. So
+        #    either Fi sent a stale state or there is a *current* one we are
+        #    not asking for. These ask for the second, one name per query.
+        # 2. Fi's own app has a GPS rate setting -- Smart GPS, or a custom
+        #    interval from instant to 8 minutes -- which is the real ceiling
+        #    on how fresh any position can be. If the API exposes it, the
+        #    page can say what it is instead of leaving Chris to remember.
+        (
+            "deviceConnectionState",
+            f'query KonaSpeculativeDeviceConnectionState {{ pet(id: "{pet_id}") {{ device {{ '
+            "__typename connectionState { __typename } } } }",
+        ),
+        (
+            "deviceCurrentConnectionState",
+            f'query KonaSpeculativeDeviceCurrentConnectionState {{ pet(id: "{pet_id}") {{ '
+            "device { __typename currentConnectionState { __typename } } } }",
+        ),
+        (
+            "lastConnectionStateDate",
+            f'query KonaSpeculativeLastConnectionStateDate {{ pet(id: "{pet_id}") {{ device {{ '
+            "lastConnectionState { __typename date "
+            "... on ConnectedToBase { chargingBase { __typename id } } "
+            "... on ConnectedToCellular { signalStrengthPercent } } } } }",
+        ),
+        (
+            "deviceGpsRate",
+            f'query KonaSpeculativeDeviceGpsRate {{ pet(id: "{pet_id}") {{ device {{ '
+            "__typename gpsRate } } }",
+        ),
+        (
+            "operationParamsGpsRate",
+            f'query KonaSpeculativeOperationParamsGpsRate {{ pet(id: "{pet_id}") {{ device {{ '
+            "operationParams { __typename mode ledEnabled gpsRate } } } }",
+        ),
+        (
+            "deviceLocationUpdateRate",
+            f'query KonaSpeculativeDeviceLocationUpdateRate {{ pet(id: "{pet_id}") {{ device {{ '
+            "__typename locationUpdateRate } } }",
+        ),
+        (
+            "deviceSmartGps",
+            f'query KonaSpeculativeDeviceSmartGps {{ pet(id: "{pet_id}") {{ device {{ '
+            "__typename smartGpsEnabled } } }",
+        ),
     ]
 
 
