@@ -9,6 +9,7 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI, Form, HTTPException, Query, Request, Response
 from fastapi.responses import (
@@ -124,6 +125,16 @@ def default_control(s: Settings) -> CameraControl:
     caps = s.capabilities()
     if s.camera_source == "fake":
         return FakeControl(caps)
+    if (
+        s.camera_source == "rtsp"
+        and s.tapo_password
+        and (caps.night_vision or caps.privacy or caps.led)
+    ):
+        host = urlsplit(s.rtsp_url).hostname
+        if host:
+            from kona_tracker.camera.tapo import TapoControl
+
+            return TapoControl(host, s.tapo_user, s.tapo_password, caps)
     return NoControl(caps)
 
 
@@ -529,6 +540,32 @@ def create_app(
             "capabilities": capabilities.as_dict(),
             "position": {"pan": round(pan, 3), "tilt": round(tilt, 3)},
         }
+
+    @app.get("/control/settings")
+    def control_settings():
+        """The camera's switches as they are now. 409 when there are none,
+        502 when the camera did not answer -- the page says which."""
+        try:
+            state = control.settings()
+        except ControlUnsupported as e:
+            return JSONResponse({"error": str(e)}, status_code=409)
+        except Exception as e:  # TapoError and anything the driver let through
+            return JSONResponse({"error": str(e)[:200]}, status_code=502)
+        if not state:
+            return JSONResponse(
+                {"error": "this camera has no settings that can be changed from here"},
+                status_code=409,
+            )
+        return {"settings": state}
+
+    @app.post("/control/setting")
+    def control_setting(name: str = Form(...), value: str = Form(...)):
+        try:
+            return {"settings": control.apply(name, value)}
+        except ControlUnsupported as e:
+            return JSONResponse({"error": str(e)}, status_code=409)
+        except Exception as e:
+            return JSONResponse({"error": str(e)[:200]}, status_code=502)
 
     @app.post("/control/move")
     def control_move(pan: float = Form(0.0), tilt: float = Form(0.0)):

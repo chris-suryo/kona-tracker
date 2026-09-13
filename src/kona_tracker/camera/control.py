@@ -13,7 +13,7 @@ Fi probe exists to prevent. It lands when the C225 does.
 from __future__ import annotations
 
 import threading
-from typing import Protocol
+from typing import Any, Protocol
 
 from kona_tracker.camera.capabilities import Capabilities
 
@@ -53,7 +53,37 @@ class CameraControl(Protocol):
 
     def goto_preset(self, number: int) -> tuple[float, float]: ...
 
+    def settings(self) -> dict[str, Any]:
+        """The switchable settings this driver can actually read and set:
+        `night` ("auto" | "on" | "off"), `privacy` (bool), `led` (bool).
+        Only keys the driver drives are present; absence is "not offered"."""
+        ...
+
+    def apply(self, name: str, value: str) -> dict[str, Any]:
+        """Set one of them from its form value and return the new state."""
+        ...
+
     def close(self) -> None: ...
+
+
+#: The settings a camera can offer, and how a form value becomes one. Kept
+#: as data so the route, the fake and the real driver agree on the words.
+SETTING_VALUES: dict[str, tuple[str, ...]] = {
+    "night": ("auto", "on", "off"),
+    "privacy": ("on", "off"),
+    "led": ("on", "off"),
+}
+
+
+def parse_setting(name: str, value: str) -> str | bool:
+    """A form value into the setting's own type, or ControlUnsupported."""
+    allowed = SETTING_VALUES.get(name)
+    if allowed is None:
+        raise ControlUnsupported(f"no setting named {name!r}")
+    value = (value or "").strip().lower()
+    if value not in allowed:
+        raise ControlUnsupported(f"{name} must be one of {', '.join(allowed)}")
+    return value if name == "night" else value == "on"
 
 
 class NoControl:
@@ -84,6 +114,12 @@ class NoControl:
     def goto_preset(self, number: int) -> tuple[float, float]:
         raise ControlUnsupported("this camera has no presets")
 
+    def settings(self) -> dict[str, Any]:
+        return {}
+
+    def apply(self, name: str, value: str) -> dict[str, Any]:
+        raise ControlUnsupported("this camera's settings cannot be changed from here")
+
     def close(self) -> None:
         return None
 
@@ -107,6 +143,9 @@ class FakeControl:
         self._pan = 0.0
         self._tilt = 0.0
         self.moves = 0  # how many nudges landed (tests)
+        # Switchable settings, held in memory so the page's controls can be
+        # built and judged against the simulated camera before hardware.
+        self._settings: dict[str, Any] = {"night": "auto", "privacy": False, "led": True}
 
     @property
     def capabilities(self) -> Capabilities:
@@ -139,6 +178,30 @@ class FakeControl:
             self._pan, self._tilt = pan, tilt
             self.moves += 1
             return (self._pan, self._tilt)
+
+    def _offered(self) -> list[str]:
+        caps = self._capabilities
+        return [
+            name
+            for name, on in (
+                ("night", caps.night_vision),
+                ("privacy", caps.privacy),
+                ("led", caps.led),
+            )
+            if on
+        ]
+
+    def settings(self) -> dict[str, Any]:
+        with self._lock:
+            return {k: self._settings[k] for k in self._offered()}
+
+    def apply(self, name: str, value: str) -> dict[str, Any]:
+        if name not in self._offered():
+            raise ControlUnsupported(f"this camera has no {name} setting")
+        parsed = parse_setting(name, value)
+        with self._lock:
+            self._settings[name] = parsed
+        return self.settings()
 
     def close(self) -> None:
         return None

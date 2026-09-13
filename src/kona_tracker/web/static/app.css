@@ -452,6 +452,26 @@ body.activity-page { overscroll-behavior-y: contain; }
 .kona-map-start { border: 0; background: none; }
 .kona-map-start span { width: 14px; height: 14px; display: block; border: 3px solid #fff; border-radius: 50%; background: var(--t2); box-shadow: 0 1px 4px rgba(0,0,0,.35); }
 
+/* Camera switches. A row is a label and one control; the whole section is
+   inert (dimmed, disabled) until the camera's real state has been read. */
+.cam-settings { margin: 22px 20px 0; border-top: 1px solid var(--line); }
+.cam-settings[data-pending] { opacity: .55; }
+.setting-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 64px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.setting-label { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.setting-label strong { font-size: 15px; letter-spacing: -.02em; }
+.setting-label span { font-size: 12px; color: var(--ink2); line-height: 1.35; }
+.seg.small { flex: none; padding: 3px; }
+.seg.small .opt { min-width: 52px; height: 34px; padding: 0 12px; border: 0; border-radius: 999px; background: none; color: var(--ink2); font: inherit; font-size: 13px; font-weight: 600; }
+.seg.small .opt[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+.seg.small .opt:disabled { opacity: .5; }
+.switch { flex: none; width: 52px; height: 32px; padding: 3px; border: 0; border-radius: 999px; background: var(--bg2); transition: background .18s ease; -webkit-tap-highlight-color: transparent; }
+.switch span { display: block; width: 26px; height: 26px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.3); transition: transform .18s ease; }
+.switch[aria-checked="true"] { background: var(--t4); }
+.switch[aria-checked="true"] span { transform: translateX(20px); }
+.switch:disabled { opacity: .5; }
+.setting-note { margin: 12px 0 0; font-size: 12px; color: var(--ink2); }
+.setting-note.warn { color: var(--warn); }
+
 @media (prefers-reduced-motion: reduce) {
   @view-transition { navigation: none; }
   .goal-ring .value, .collar-summary, .location-card, .steps-hero, .rest-grid, .week-row { animation: none; }
@@ -459,7 +479,7 @@ body.activity-page { overscroll-behavior-y: contain; }
   .dial .val, .stat { animation: none; }
   .dot.on { animation: none; opacity: 1; }
   .cam-connecting span::before { animation: none; opacity: 1; }
-  .nub, .shutter { transition: none; }
+  .nub, .shutter, .switch, .switch span { transition: none; }
   /* `.pull.busy span` outranks `.pull span`, so it is named here too. */
   .pull, .pull span, .pull.busy span { transition: none; animation: none; }
   .pull.busy span::before { animation: none; }

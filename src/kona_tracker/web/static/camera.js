@@ -317,4 +317,57 @@
     });
     window.addEventListener('blur', release);
   }
+
+  // Switches: night vision, privacy, the LED. The section exists only when
+  // the connected driver offers them (camera.html); the page then reads
+  // their real state before it lets anyone press anything, so a control is
+  // never shown in a state nobody has read. Every press posts one change
+  // and redraws from the camera's own answer, never from the press.
+  var settings = document.getElementById('cam-settings');
+  if (settings) {
+    var note = document.getElementById('setting-note');
+    var controls = settings.querySelectorAll('[data-setting]');
+    function draw(state) {
+      controls.forEach(function (el) {
+        var name = el.dataset.setting, value = state[name];
+        el.disabled = value === undefined || value === null;
+        if (el.classList.contains('opt')) {
+          el.setAttribute('aria-pressed', String(value === el.dataset.value));
+        } else {
+          el.setAttribute('aria-checked', String(value === true));
+        }
+      });
+      settings.removeAttribute('data-pending');
+    }
+    function fail(message) {
+      controls.forEach(function (el) { el.disabled = true; });
+      note.textContent = message;
+      note.classList.add('warn');
+    }
+    function settle(r) {
+      return r.json().then(function (data) {
+        if (!r.ok) { throw new Error(data.error || 'The camera did not answer'); }
+        draw(data.settings);
+        note.classList.remove('warn');
+        note.textContent = data.settings.privacy === true
+          ? 'Privacy mode is on: the lens is covered and the picture is black.'
+          : 'Changes go straight to the camera.';
+      });
+    }
+    fetch('/control/settings', { cache: 'no-store' }).then(settle).catch(function (e) { fail(e.message); });
+    controls.forEach(function (el) {
+      el.addEventListener('click', function () {
+        var name = el.dataset.setting;
+        var value = el.classList.contains('opt') ? el.dataset.value
+          : el.getAttribute('aria-checked') === 'true' ? 'off' : 'on';
+        controls.forEach(function (c) { c.disabled = true; });
+        note.textContent = 'Asking the camera…';
+        fetch('/control/setting', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: 'name=' + encodeURIComponent(name) + '&value=' + encodeURIComponent(value)
+        }).then(settle).catch(function (e) { fail(e.message); });
+      });
+    });
+  }
 })();

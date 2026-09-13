@@ -34,6 +34,11 @@ class Settings:
     rtsp_url: str = ""  # bare URL, no credentials
     rtsp_user: str = ""
     rtsp_password: str = ""
+    #: The camera's control API (night vision, privacy, LED). Recent Tapo
+    #: firmware wants your TP-Link cloud password as user `admin`; blank
+    #: means the settings section is simply not offered.
+    tapo_user: str = "admin"
+    tapo_password: str = ""
     rtsp_transport: str = "tcp"
     stale_seconds: float = 3.0
     hang_seconds: float = 10.0
@@ -125,6 +130,7 @@ class Settings:
         return (
             f"Settings(camera={self.camera_label()!r}, passcode='***', secret='***', "
             f"rtsp_user={self.rtsp_user!r}, rtsp_password='***', "
+            f"tapo_user={self.tapo_user!r}, tapo_password='***', "
             f"fi_email={'set' if self.fi_email else 'unset'}, fi_password='***', "
             f"heartbeat={'set' if self.heartbeat_url else 'unset'})"
         )
@@ -240,6 +246,8 @@ def load_settings(env_file: Path | None = Path(".env"), fake_camera: bool = Fals
         rtsp_user=rtsp_user,
         rtsp_password=rtsp_password,
         rtsp_transport=get("KONA_RTSP_TRANSPORT", "tcp").strip().lower() or "tcp",
+        tapo_user=get("KONA_TAPO_USER", "admin").strip() or "admin",
+        tapo_password=get("KONA_TAPO_PASSWORD"),
         stale_seconds=float(get("KONA_STALE_SECONDS", "3")),
         hang_seconds=float(get("KONA_HANG_SECONDS", "10")),
         camera_idle_seconds=float(get("KONA_CAMERA_IDLE_SECONDS", "120")),

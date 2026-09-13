@@ -44,5 +44,35 @@
   {% endif %}
 </section>
 {% endif %}
+{% if caps.night_vision or caps.privacy or caps.led %}
+{# Only the switches the connected driver can really flip. Each row is
+   filled in by camera.js from /control/settings; until then it is inert
+   and says so, rather than showing a state nobody has read. #}
+<section class="cam-settings" id="cam-settings" aria-label="Camera settings" data-pending="1">
+  {% if caps.night_vision %}
+  <div class="setting-row">
+    <div class="setting-label"><strong>Night vision</strong><span>Auto switches on infrared in the dark</span></div>
+    <div class="seg small" role="group" aria-label="Night vision">
+      <button type="button" class="opt" data-setting="night" data-value="auto">Auto</button>
+      <button type="button" class="opt" data-setting="night" data-value="on">On</button>
+      <button type="button" class="opt" data-setting="night" data-value="off">Off</button>
+    </div>
+  </div>
+  {% endif %}
+  {% if caps.privacy %}
+  <div class="setting-row">
+    <div class="setting-label"><strong>Privacy mode</strong><span>Covers the lens · the picture is black until it is off</span></div>
+    <button type="button" class="switch" data-setting="privacy" role="switch" aria-checked="false" aria-label="Privacy mode"><span></span></button>
+  </div>
+  {% endif %}
+  {% if caps.led %}
+  <div class="setting-row">
+    <div class="setting-label"><strong>Status light</strong><span>The LED on the camera itself</span></div>
+    <button type="button" class="switch" data-setting="led" role="switch" aria-checked="false" aria-label="Status light"><span></span></button>
+  </div>
+  {% endif %}
+  <p class="setting-note" id="setting-note">Reading the camera's settings…</p>
+</section>
+{% endif %}
 <script src="{{ asset('camera.js') }}" defer></script>
 {% endblock %}

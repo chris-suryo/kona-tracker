@@ -58,10 +58,10 @@ offering one that silently fails.
 | Still snapshot | **Built** | **Built** |
 | Pan / tilt | **Impossible** — no motors | **Available**, not yet driven |
 | Presets | **Impossible** | **Available**, not yet driven |
-| Night vision on / off / auto | Available | Available |
-| Privacy mode (lens blind) | Available | Available |
+| Night vision on / off / auto | **Built** (2026-09-13) | **Built** |
+| Privacy mode (lens blind) | **Built** (2026-09-13) | **Built** |
 | Alarm / siren | Available | Available |
-| LED indicator | Available | Available |
+| LED indicator | **Built** (2026-09-13) | **Built** |
 | Motion detection + sensitivity | Available | Available |
 | Mic mute, speaker volume | Available | Available |
 | SD recording, file download | Available | Available |
@@ -69,7 +69,11 @@ offering one that silently fails.
 | **Live two-way talk** | **No** | **No** |
 
 "Available" means the local API exposes it and we have not written the
-driver yet. "Built" means it works today.
+driver yet. "Built" means it works today. The three switches went in on
+2026-09-13 through `pytapo` (`camera/tapo.py`); they need
+`KONA_TAPO_PASSWORD`, the TP-Link cloud password, because recent firmware
+authenticates the control API that way. Verified against the fake driver
+and the route tests; first run against the C120 itself is Chris's.
 
 ### Why two-way talk is off on every Tapo
 
