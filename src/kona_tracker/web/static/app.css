@@ -541,3 +541,21 @@ body.activity-page { overscroll-behavior-y: contain; }
 .map-expand { display: inline-block; margin-top: 10px; font-size: 14px; font-weight: 600;
               color: var(--t4); text-decoration: none; }
 .map-expand:focus-visible { outline: 2px solid var(--t4); outline-offset: 3px; border-radius: 4px; }
+
+/* The "Start walk" control. Present on the Activity card and the full map,
+   because both are places you stand holding a lead. */
+.location-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 10px; }
+.location-actions .map-expand { margin-top: 0; }
+.walk-toggle { font: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
+               color: var(--t5); background: var(--t1); border: 1px solid var(--t3);
+               border-radius: 999px; padding: 7px 16px; margin-left: auto; }
+.walk-toggle.on { color: var(--on); background: var(--t4); border-color: var(--t4); }
+.walk-toggle[disabled] { opacity: .55; cursor: default; }
+.walk-toggle:focus-visible { outline: 2px solid var(--t4); outline-offset: 3px; }
+.walk-note { margin-top: 6px; }
+
+.live-walk { position: absolute; z-index: 500; left: 12px; right: 12px;
+             bottom: calc(env(safe-area-inset-bottom, 0px) + 76px);
+             display: flex; align-items: center; gap: 10px; }
+.live-walk .walk-toggle { margin-left: 0; flex: none; }
+.live-walk .walk-note { margin: 0; font-size: 12px; color: var(--ink2); min-width: 0; }

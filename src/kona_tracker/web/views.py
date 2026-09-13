@@ -1072,6 +1072,32 @@ def live_map_context(snapshot: FiSnapshot | None, configured: bool) -> dict[str,
     return context
 
 
+def live_button(state: dict[str, Any] | None) -> dict[str, Any]:
+    """What the "Start walk" control should say right now.
+
+    `state` is `FiService.live_state()`, or None when no collar is
+    configured, in which case there is nothing to start and the button is
+    not offered at all rather than offered and dead.
+    """
+    if not state:
+        return {"offered": False, "on": False, "label": None, "note": None}
+    on = bool(state.get("live"))
+    every = int(state.get("every_seconds") or 0)
+    left = int(state.get("seconds_left") or 0)
+    return {
+        "offered": True,
+        "on": on,
+        "label": "Stop walk" if on else "Start walk",
+        # Say what pressing it actually does. "Live" on its own is a claim
+        # about the data; "every 20 s" is a fact about this server.
+        "note": (
+            f"Asking Fi every {every} s · stops in {max(1, round(left / 60))} min"
+            if on
+            else f"Ask Fi every {every} s while you are out"
+        ),
+    }
+
+
 def live_map_json(snapshot: FiSnapshot | None, configured: bool) -> dict[str, Any]:
     """The same, small enough to poll every few seconds while walking.
 

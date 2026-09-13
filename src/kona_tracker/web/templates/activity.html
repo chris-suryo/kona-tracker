@@ -113,7 +113,6 @@
   <div id="kona-map" class="map" aria-label="Map showing Kona's {% if map_kind == 'current' %}current walk route{% elif map_kind == 'rest' %}resting place{% elif map_kind == 'home' %}Home location{% else %}last reported location{% endif %}"></div>
   {# The tile cannot be pinched -- page zoom is off and Leaflet is boxed into
      a small element -- so the way to see more is a page that is all map. #}
-  <a class="map-expand" href="/map">Open full map<span aria-hidden="true"> ›</span></a>
   <p id="map-unavailable" class="map-empty" hidden>Map unavailable. The map provider did not supply the background. Collar report details are shown above.</p>
   {% else %}
   <div class="map-empty">
@@ -121,6 +120,23 @@
     <span>{% if area_name %}Fi reported {{ area_name }} without a map position.{% else %}Fi hasn't sent a map position.{% endif %}</span>
   </div>
   {% endif %}
+  {# Outside the map branch on purpose. The moment you most want to press
+     "Start walk" is standing at the door before Fi has sent any route at
+     all, which is exactly when there are no map points to draw. #}
+  <div class="location-actions">
+    {% if map_points %}
+    {# The tile cannot be pinched -- page zoom is off and Leaflet is boxed
+       into a small element -- so the way to see more is a page of map. #}
+    <a class="map-expand" href="/map">Open full map<span aria-hidden="true"> ›</span></a>
+    {% endif %}
+    {% if live.offered %}
+    {# Fi takes two to three minutes to decide a walk has started. This says
+       so now, so the fast cadence covers the walk from the front door. #}
+    <button type="button" class="walk-toggle{{ ' on' if live.on else '' }}" id="walk-toggle"
+            data-on="{{ 'true' if live.on else 'false' }}">{{ live.label }}</button>
+    {% endif %}
+  </div>
+  {% if live.offered %}<p class="location-note walk-note" id="walk-note">{{ live.note }}</p>{% endif %}
 </section>
 {% endif %}
 
@@ -186,4 +202,5 @@ full day on Kona's collar, midnight to midnight, and her first full night is sti
 </div>
 <script src="/static/leaflet/leaflet.js" defer></script>
 <script src="{{ asset('map.js') }}" defer></script>
+<script src="{{ asset('walk_mode.js') }}" defer></script>
 {% endblock %}

@@ -42,6 +42,10 @@ class StubFi:
     def peek(self) -> FiSnapshot:
         return self._snapshot
 
+    def live_state(self) -> dict:
+        """The "Start walk" cadence. Off, so the page draws the resting copy."""
+        return {"live": False, "seconds_left": 0, "every_seconds": 20}
+
 
 def _walking(minutes_ago: int = 2, points: int = 3) -> FiSnapshot:
     positions = tuple(

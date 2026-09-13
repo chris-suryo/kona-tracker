@@ -36,6 +36,7 @@ from kona_tracker.web.views import (
     activity_context,
     activity_json,
     camera_health,
+    live_button,
     live_map_context,
     live_map_json,
     map_tile_config,
@@ -153,6 +154,8 @@ def default_fi_service(s: Settings) -> FiService | None:
         s.fi_email,
         s.fi_password,
         s.fi_refresh_seconds,
+        live_seconds=s.fi_live_seconds,
+        live_max_seconds=s.fi_live_max_seconds,
         data_start=s.fi_data_start,
     )
 
@@ -381,7 +384,29 @@ def create_app(
             else activity_context(snapshot, configured=fi is not None)
         )
         context["map_tiles"] = tile_config
+        context["live"] = live_button(fi.live_state() if fi and not preview else None)
         return templates.TemplateResponse(request, "activity.html", context)
+
+    @app.post("/live")
+    def live_mode(on: str = Form("")):
+        """Start or stop the fast cadence: the "Start walk" button.
+
+        Fi decides a walk has begun two to three minutes after it has, which
+        on a twenty-minute walk is most of the first mile spent at the
+        resting cadence. The person holding the lead already knows, so let
+        them say so. Auto-detect stays underneath for the walks nobody
+        pressed a button for.
+        """
+        if fi is None:
+            raise HTTPException(status_code=409, detail="No collar is configured.")
+        wanted = on.strip().lower() in {"1", "true", "on", "yes", "start"}
+        return fi.start_live() if wanted else fi.stop_live()
+
+    @app.get("/live")
+    def live_status():
+        if fi is None:
+            raise HTTPException(status_code=409, detail="No collar is configured.")
+        return fi.live_state()
 
     @app.get("/map", response_class=HTMLResponse)
     def live_map(request: Request, fresh: bool = False):
@@ -395,13 +420,16 @@ def create_app(
         snapshot = fi.snapshot(force=fresh) if fi else None
         context = live_map_context(snapshot, configured=fi is not None)
         context["map_tiles"] = tile_config
+        context["live"] = live_button(fi.live_state() if fi else None)
         return templates.TemplateResponse(request, "map_live.html", context)
 
     @app.get("/map.json")
     def live_map_feed():
         """Just the map's own facts, small enough to ask for every 10 s."""
         snapshot = fi.snapshot() if fi else None
-        return live_map_json(snapshot, configured=fi is not None)
+        payload = live_map_json(snapshot, configured=fi is not None)
+        payload["button"] = live_button(fi.live_state() if fi else None)
+        return payload
 
     @app.get("/rest", response_class=HTMLResponse)
     def rest_history(
