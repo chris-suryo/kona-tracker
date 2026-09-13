@@ -555,6 +555,87 @@ def speculative_queries(pet_id: str, on: date | None = None) -> list[tuple[str, 
             "... on Walk { path positions place restSeconds activeSeconds } "
             "... on Travel { distance positions } } } } }",
         ),
+        # Round 11, 2026-09-13. Round 10 turned three sketches into facts:
+        #
+        #   activityFeed is a real walk log. Three items came back with id,
+        #   start, end, totalSteps and, on Walk, distance -- two walks and a
+        #   car ride from the afternoon of 2026-09-12 -- plus pageInfo with
+        #   hasNextPage and an endCursor. Walk also has `path: [Position!]!`
+        #   and `positions: [Location!]!`: the route.
+        #   overnightRestSummary gave sleepStart 04:20Z, sleepEnd 12:04Z,
+        #   27832 s, and named `interruptions: [SleepInterruptionSpan!]!`.
+        #   restFeed's summary is a `RestFeedSummary` with `start` and --
+        #   from a did-you-mean on restEvents -- `restData`. stepFeed's is a
+        #   `StepSummary` with `start`, `totalSteps` and `stepData`.
+        #
+        # `restData` and `stepData` are the hourly question in one word each.
+        # Everything else here reads a shape Fi has already named.
+        (
+            "restDataType",
+            f'query KonaSpeculativeRestDataType {{ pet(id: "{pet_id}") {{ '
+            "restFeed(period: DAY) { restSummary { start restData { __typename } } } } }",
+        ),
+        (
+            "restDataFields",
+            f'query KonaSpeculativeRestDataFields {{ pet(id: "{pet_id}") {{ '
+            "restFeed(period: DAY) { restSummary { restData { start end type duration "
+            "seconds value hour sleepAmounts sleepSeconds napSeconds } } } } }",
+        ),
+        (
+            "stepDataType",
+            f'query KonaSpeculativeStepDataType {{ pet(id: "{pet_id}") {{ '
+            "stepFeed(period: DAY) { stepSummary { start totalSteps "
+            "stepData { __typename } } } } }",
+        ),
+        (
+            "stepDataFields",
+            f'query KonaSpeculativeStepDataFields {{ pet(id: "{pet_id}") {{ '
+            "stepFeed(period: DAY) { stepSummary { stepData { start end steps stepCount "
+            "value hour totalSteps } } } } }",
+        ),
+        (
+            "restFeedBackDay",
+            f'query KonaSpeculativeRestFeedBackDay {{ pet(id: "{pet_id}") {{ '
+            f'restFeed(period: DAY, cursor: "{yesterday_cursor}") {{ cursor '
+            "restSummary { start } } } }",
+        ),
+        (
+            "restFeedWeekSummary",
+            f'query KonaSpeculativeRestFeedWeekSummary {{ pet(id: "{pet_id}") {{ '
+            "restFeed(period: WEEK) { restSummary { start restData { __typename } } } } }",
+        ),
+        (
+            "overnightInterruptions",
+            f'query KonaSpeculativeOvernightInterruptions {{ pet(id: "{pet_id}") {{ '
+            f'overnightRestSummary(date: "{yesterday}T00:00:00Z") {{ '
+            "... on ConcreteOvernightRestSummary { interruptions { __typename start end "
+            "duration seconds } } } } }",
+        ),
+        (
+            "walkPathShape",
+            f'query KonaSpeculativeWalkPathShape {{ pet(id: "{pet_id}") {{ '
+            "activityFeed(limit: 1) { activities { __typename ... on Walk { "
+            "path { __typename latitude longitude } } } } } }",
+        ),
+        (
+            "walkPositionsShape",
+            f'query KonaSpeculativeWalkPositionsShape {{ pet(id: "{pet_id}") {{ '
+            "activityFeed(limit: 1) { activities { __typename ... on Walk { "
+            "positions { __typename date errorRadius position { latitude longitude } } } } } } }",
+        ),
+        (
+            "activityFeedNext",
+            f'query KonaSpeculativeActivityFeedNext {{ pet(id: "{pet_id}") {{ '
+            f'activityFeed(limit: 3, cursor: "{yesterday_cursor}") {{ '
+            "activities { __typename start end totalSteps } "
+            "pageInfo { hasNextPage endCursor } } } }",
+        ),
+        (
+            "travelFields",
+            f'query KonaSpeculativeTravelFields {{ pet(id: "{pet_id}") {{ '
+            "activityFeed(limit: 3) { activities { __typename "
+            "... on Travel { distance positions { __typename } } } } } }",
+        ),
     ]
 
 
