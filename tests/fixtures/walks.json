@@ -1,0 +1,124 @@
+{
+ "data": {
+  "pet": {
+   "__typename": "Pet",
+   "activityFeed": {
+    "__typename": "ActivityFeed",
+    "activities": [
+     {
+      "__typename": "Walk",
+      "id": "walk-late",
+      "start": "2026-09-10T13:14:14Z",
+      "end": "2026-09-10T14:24:36Z",
+      "totalSteps": 11353,
+      "areaName": null,
+      "distance": 6449,
+      "path": [
+       {
+        "__typename": "Position",
+        "latitude": 30.2672,
+        "longitude": -97.7431
+       },
+       {
+        "__typename": "Position",
+        "latitude": 30.267599999999998,
+        "longitude": -97.7434
+       },
+       {
+        "__typename": "Position",
+        "latitude": 30.268,
+        "longitude": -97.7437
+       },
+       {
+        "__typename": "Position",
+        "latitude": 30.2684,
+        "longitude": -97.744
+       },
+       {
+        "__typename": "Position",
+        "latitude": 30.2688,
+        "longitude": -97.7443
+       },
+       {
+        "__typename": "Position",
+        "latitude": 30.269199999999998,
+        "longitude": -97.74459999999999
+       },
+       {
+        "__typename": "Position",
+        "latitude": 30.2696,
+        "longitude": -97.7449
+       },
+       {
+        "__typename": "Position",
+        "latitude": 30.27,
+        "longitude": -97.7452
+       }
+      ]
+     },
+     {
+      "__typename": "Walk",
+      "id": "walk-early",
+      "start": "2026-09-10T12:23:34Z",
+      "end": "2026-09-10T13:06:32Z",
+      "totalSteps": 8426,
+      "areaName": "Home",
+      "distance": 2021,
+      "path": [
+       {
+        "__typename": "Position",
+        "latitude": 30.2672,
+        "longitude": -97.7431
+       },
+       {
+        "__typename": "Position",
+        "latitude": 30.267599999999998,
+        "longitude": -97.7434
+       },
+       {
+        "__typename": "Position",
+        "latitude": 30.268,
+        "longitude": -97.7437
+       }
+      ]
+     },
+     {
+      "__typename": "Travel",
+      "id": "ride",
+      "start": "2026-09-10T12:18:52Z",
+      "end": "2026-09-10T12:23:34Z",
+      "totalSteps": 0,
+      "areaName": null,
+      "distance": 1378.5682569514483
+     },
+     {
+      "__typename": "Walk",
+      "id": "walk-yesterday",
+      "start": "2026-09-09T21:00:00Z",
+      "end": "2026-09-09T21:30:00Z",
+      "totalSteps": 3000,
+      "areaName": null,
+      "distance": 1500,
+      "path": [
+       {
+        "__typename": "Position",
+        "latitude": 30.2672,
+        "longitude": -97.7431
+       },
+       {
+        "__typename": "Position",
+        "latitude": 30.267599999999998,
+        "longitude": -97.7434
+       }
+      ]
+     }
+    ],
+    "pageInfo": {
+     "__typename": "PageInfo",
+     "hasNextPage": true,
+     "endCursor": "MjAyNi0wOS0wOVQyMTowMDowMC4wMDBa"
+    }
+   }
+  }
+ }
+}

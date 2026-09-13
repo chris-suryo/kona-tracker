@@ -23,11 +23,14 @@ from kona_tracker.fi.client import FiClient, FiError, FiGraphQLError
 from kona_tracker.fi.parse import (
     ActivityStats,
     CollarStatus,
+    Overnight,
     PetProfile,
     RestDay,
     RestWindow,
+    Walk,
     activity_from,
     hours_from_duration,
+    overnight_from,
     pets_from,
     profile_from,
     rest_from,
@@ -35,12 +38,15 @@ from kona_tracker.fi.parse import (
     rest_position_from,
     split_windows,
     status_from,
+    walks_from,
 )
 from kona_tracker.fi.queries import (
     CURRENT_USER_PETS,
     pet_activity,
+    pet_overnight,
     pet_rest,
     pet_status,
+    pet_walks,
     pet_whereabouts,
 )
 
@@ -93,6 +99,11 @@ class FiSnapshot:
     #: Empty when the history query failed -- never a silent short list, which
     #: a chart would draw as "she slept less" rather than "we do not know".
     rest_days: list[RestDay] = field(default_factory=list)
+    #: Finished activities, newest first as Fi sends them: walks and car
+    #: rides, each with its own steps, distance and -- for walks -- route.
+    walks: tuple[Walk, ...] = ()
+    #: Last night as an interval, for the same night `window` totals.
+    overnight: Overnight | None = None
 
     @property
     def sleep_hours(self) -> float | None:
@@ -241,6 +252,20 @@ def fetch_snapshot(
             status = CollarStatus(rest_position=rest_position)
     except FiError as e:
         problems.append(f"Location: {_explain(e)}")
+    walks: tuple[Walk, ...] = ()
+    try:
+        walks = tuple(walks_from(client.graphql(pet_walks(pet.id))))
+    except FiError as e:
+        problems.append(f"Walks: {_explain(e)}")
+    overnight: Overnight | None = None
+    if window is not None and window.start is not None:
+        # The night that `window` totals: Fi keys the overnight summary by
+        # the day the night starts in, which is the daily window's start
+        # date. Without a completed window there is no night to ask about.
+        try:
+            overnight = overnight_from(client.graphql(pet_overnight(pet.id, window.start.date())))
+        except FiError as e:
+            problems.append(f"Sleep detail: {_explain(e)}")
 
     return FiSnapshot(
         fetched_at=now,
@@ -256,6 +281,8 @@ def fetch_snapshot(
         data_start=data_start,
         historical_totals_hidden=bool(data_start and now.date() < data_start + timedelta(days=7)),
         rest_days=rest_days,
+        walks=walks,
+        overnight=overnight,
     )
 
 

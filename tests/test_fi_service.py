@@ -1061,3 +1061,64 @@ def test_a_failed_rest_query_leaves_an_empty_history_not_a_short_one():
     from kona_tracker.fi.service import FiSnapshot
 
     assert FiSnapshot(fetched_at=NOW, pet_name="Kona").rest_days == []
+
+
+def test_snapshot_carries_the_walk_log_and_last_night_as_an_interval():
+    """Rounds 10-11 (2026-09-13) proved both shapes on Kona's collar; the
+    fixtures are those responses with the coordinates replaced."""
+    from kona_tracker.fi.parse import overnight_from, walks_from
+
+    with make_client() as client:
+        snap = fetch_snapshot(client, EMAIL, PASSWORD, now=NOW)
+
+    assert [w.kind for w in snap.walks] == ["walk", "walk", "travel", "walk"], "Fi's order kept"
+    late = snap.walks[0]
+    assert late.id == "walk-late" and late.steps == 11353 and late.distance_m == 6449
+    assert late.seconds == pytest.approx(70 * 60 + 22)
+    assert len(late.path) == 8 and late.path[0].latitude == pytest.approx(30.2672)
+    ride = snap.walks[2]
+    assert ride.kind == "travel" and ride.steps == 0 and ride.path == ()
+    assert ride.distance_m == pytest.approx(1378.568, abs=1e-3)
+
+    night = snap.overnight
+    assert night is not None
+    assert night.sleep_seconds == 30600, "the same night the hero totals"
+    assert (night.sleep_end - night.sleep_start).total_seconds() == pytest.approx(27832.452, abs=1)
+    # Interruptions come back sorted, whatever order Fi sent them in.
+    assert [s.hour for s, _ in night.interruptions] == [5, 7]
+
+    assert walks_from({"data": {}}) == [] and walks_from(None) == []
+    assert overnight_from({"pet": {"overnightRestSummary": {"__typename": "Other"}}}) is None
+
+
+def test_a_walk_route_is_thinned_evenly_over_the_cap_and_keeps_both_ends():
+    from kona_tracker.fi.parse import MAX_PATH_POINTS, walks_from
+
+    fixes = [
+        {"__typename": "Position", "latitude": 30.0 + i * 1e-5, "longitude": -97.0}
+        for i in range(MAX_PATH_POINTS * 3)
+    ]
+    data = {
+        "pet": {
+            "activityFeed": {
+                "activities": [
+                    {"__typename": "Walk", "id": "w", "start": None, "end": None, "path": fixes}
+                ]
+            }
+        }
+    }
+    (walk,) = walks_from(data)
+    assert len(walk.path) == MAX_PATH_POINTS
+    assert walk.path[0].latitude == pytest.approx(30.0)
+    assert walk.path[-1].latitude == pytest.approx(30.0 + (len(fixes) - 1) * 1e-5)
+    assert walk.seconds is None, "no start or end is not a zero-length walk"
+
+
+def test_overnight_is_only_asked_for_when_a_completed_night_exists():
+    """A collar paired today has no completed daily window, so there is no
+    night to key the overnight query by; the snapshot must say None rather
+    than ask Fi about a night that has not happened."""
+    with make_client() as client:
+        snap = fetch_snapshot(client, EMAIL, PASSWORD, now=NOW, data_start=date(2026, 9, 10))
+    assert snap.window is None and snap.overnight is None
+    assert snap.walks, "the walk log does not depend on the night"

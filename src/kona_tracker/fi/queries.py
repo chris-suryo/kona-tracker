@@ -736,3 +736,46 @@ def pet_location(pet_id: str) -> str:
         "position { __typename latitude longitude } } } "
         "} } }"
     )
+
+
+#: How many finished activities to read. Fi orders the feed newest first
+#: and a day rarely holds more than a handful of walks; a dozen covers
+#: today with room for yesterday's tail, and the feed does not page by
+#: cursor (round 11: "Unknown argument cursor"), so this is also the ceiling.
+WALK_FEED_LIMIT = 12
+
+
+def pet_walks(pet_id: str, limit: int = WALK_FEED_LIMIT) -> str:
+    """The walk log: every field here was returned by Kona's collar.
+
+    Rounds 10-11 (2026-09-13): `activityFeed(limit:)` returns Walk and
+    Travel items with id, start, end, totalSteps and areaName on the
+    interface; Walk adds `distance` and `path { latitude longitude }`,
+    Travel adds `distance`. `pageInfo` is read so a future page can say
+    whether more exist, even though nothing pages yet.
+    """
+    return (
+        f'query KonaWalks {{ pet(id: "{pet_id}") {{ __typename '
+        f"activityFeed(limit: {int(limit)}) {{ __typename "
+        "activities { __typename id start end totalSteps areaName "
+        "... on Walk { distance path { __typename latitude longitude } } "
+        "... on Travel { distance } } "
+        "pageInfo { __typename hasNextPage endCursor } } } }"
+    )
+
+
+def pet_overnight(pet_id: str, on: date) -> str:
+    """Last night as an interval, for the Fi day that starts on `on`.
+
+    Round 10 (2026-09-13): `overnightRestSummary(date: "<day>T00:00:00Z")`
+    returned `ConcreteOvernightRestSummary` with sleepSeconds, sleepStart and
+    sleepEnd; round 11 accepted `interruptions { start end }`. The date
+    names the day the night *starts* in: 2026-09-11 gave the sleep that
+    began 04:20Z on the 12th -- 00:20 local -- and ended that morning.
+    """
+    return (
+        f'query KonaOvernight {{ pet(id: "{pet_id}") {{ __typename '
+        f'overnightRestSummary(date: "{on.isoformat()}T00:00:00Z") {{ __typename date '
+        "... on ConcreteOvernightRestSummary { sleepSeconds sleepStart sleepEnd "
+        "interruptions { __typename start end } } } } }"
+    )

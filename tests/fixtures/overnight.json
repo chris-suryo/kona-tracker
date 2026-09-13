@@ -1,0 +1,26 @@
+{
+ "data": {
+  "pet": {
+   "__typename": "Pet",
+   "overnightRestSummary": {
+    "__typename": "ConcreteOvernightRestSummary",
+    "date": "2026-09-09T12:00:00.000Z",
+    "sleepSeconds": 30600,
+    "sleepStart": "2026-09-10T04:20:24.613Z",
+    "sleepEnd": "2026-09-10T12:04:17.065Z",
+    "interruptions": [
+     {
+      "__typename": "SleepInterruptionSpan",
+      "start": "2026-09-10T07:10:00Z",
+      "end": "2026-09-10T07:25:00Z"
+     },
+     {
+      "__typename": "SleepInterruptionSpan",
+      "start": "2026-09-10T05:00:00Z",
+      "end": "2026-09-10T05:04:00Z"
+     }
+    ]
+   }
+  }
+ }
+}
