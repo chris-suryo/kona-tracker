@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import sys
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
@@ -37,6 +38,7 @@ from kona_tracker.web.views import (
     map_tile_config,
     preview_activity_context,
     rest_history_context,
+    walk_context,
 )
 
 HERE = Path(__file__).parent
@@ -150,6 +152,11 @@ def default_source_factory(s: Settings, control: CameraControl | None = None):
             s.rtsp_url, s.rtsp_user, s.rtsp_password, s.rtsp_transport, max_width=s.camera_width
         )
     return lambda: OpenCVSource(s.camera_index, s.camera_width, s.camera_height, s.camera_fps)
+
+
+#: Fi ids as seen on Kona's account: 22 URL-safe characters. Generous on
+#: length, strict on alphabet, because the value lands in a path.
+WALK_ID = re.compile(r"[A-Za-z0-9_-]{1,64}")
 
 
 def create_app(
@@ -374,6 +381,24 @@ def create_app(
         snapshot = fi.snapshot() if fi else None
         context = rest_history_context(snapshot, configured=fi is not None, selected=selected)
         return templates.TemplateResponse(request, "rest_history.html", context)
+
+    @app.get("/walks/{walk_id}", response_class=HTMLResponse)
+    def walk(request: Request, walk_id: str):
+        """One walk from Fi's activity feed, with its route on the map.
+
+        The id is one this app rendered into a link, so an id the current
+        snapshot no longer holds is a plain 404: the feed keeps the newest
+        dozen, and older walks fall off it. Anything that does not look like
+        a Fi id is the same 404 before it reaches the snapshot.
+        """
+        if not WALK_ID.fullmatch(walk_id):
+            raise HTTPException(status_code=404, detail="That walk is no longer in Fi's feed.")
+        snapshot = fi.snapshot() if fi else None
+        context = walk_context(snapshot, walk_id, configured=fi is not None)
+        if context is None:
+            raise HTTPException(status_code=404, detail="That walk is no longer in Fi's feed.")
+        context["map_tiles"] = tile_config
+        return templates.TemplateResponse(request, "walk.html", context)
 
     @app.get("/preview/{metric}", response_class=HTMLResponse)
     def preview_history(

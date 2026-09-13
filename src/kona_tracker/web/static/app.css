@@ -418,6 +418,34 @@ body.activity-page { overscroll-behavior-y: contain; }
 .activity-page .metric-open, .rest-open { align-items: flex-end; justify-content: flex-start;
   padding-bottom: 20px; color: var(--t4); font-size: 12px; font-weight: 600; }
 
+/* The walk log: one row per finished activity today, the whole row a tap
+   target when Fi kept a route. Car rides stay in the list, quieter, because
+   a day that went walk-car-walk reads wrong with the car removed. */
+.walk-log { padding: 22px 0 8px; border-bottom: 1px solid var(--line); }
+.walk-list { list-style: none; margin: 8px 0 0; padding: 0; }
+.walk-row { position: relative; display: flex; align-items: center; gap: 12px; min-height: 60px; padding: 10px 0; border-top: 1px solid var(--line); }
+.walk-row:first-child { border-top: 0; }
+.walk-open { position: absolute; inset: 0; z-index: 1; border-radius: 10px; }
+.walk-row:has(.walk-open:focus-visible) { outline: 2px solid var(--t4); outline-offset: 4px; }
+.walk-when { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.walk-when strong { font-size: 15px; letter-spacing: -.02em; }
+.walk-when span, .walk-stats { color: var(--ink2); font-size: 12px; }
+.walk-when span small, .walk-stats small { font-size: 10px; }
+.walk-stats { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.walk-stats strong { color: var(--ink); font-weight: 600; }
+.walk-chevron { color: var(--t4); font-size: 22px; line-height: 1; }
+.walk-row.travel .walk-when strong { color: var(--ink2); font-weight: 500; }
+.walk-empty { margin: 14px 0 6px; font-size: 13px; color: var(--ink2); }
+/* The walk page: totals in the history layout, the route in the location
+   card, taller than the home map because the route is the point here. */
+.walk-page .history-heading h1 .walk-area { font-size: 18px; font-weight: 500; letter-spacing: -.02em; color: var(--ink2); }
+.walk-facts { display: flex; flex-wrap: wrap; gap: 8px 22px; margin-top: 4px; font-size: 12px; color: var(--ink2); }
+.walk-facts strong { display: block; margin-bottom: 2px; font-size: 16px; color: var(--ink); letter-spacing: -.02em; }
+.walk-facts .walk-duration small { font-size: 11px; color: var(--ink2); }
+.map-tall { height: 320px; }
+.kona-map-start { border: 0; background: none; }
+.kona-map-start span { width: 14px; height: 14px; display: block; border: 3px solid #fff; border-radius: 50%; background: var(--t2); box-shadow: 0 1px 4px rgba(0,0,0,.35); }
+
 @media (prefers-reduced-motion: reduce) {
   @view-transition { navigation: none; }
   .goal-ring .value, .collar-summary, .location-card, .steps-hero, .rest-grid, .week-row { animation: none; }

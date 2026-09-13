@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Kona · {{ title }}{% endblock %}
+{% block pageclass %}history-page walk-page{% endblock %}
+{% block head %}
+<link rel="stylesheet" href="/static/leaflet/leaflet.css">
+{% endblock %}
+{% block body %}
+{% from "_duration.html" import duration %}
+<nav class="subnav" aria-label="Back"><a class="back" href="/activity">{% include "_chevron.svg" %}<span>Activity</span></a></nav>
+<header class="history-heading">
+  <span class="eyebrow">{{ day or 'Walk' }}{% if span %} · {{ span }}{% endif %}</span>
+  <h1>{{ title }}{% if area %} <span class="walk-area">at {{ area }}</span>{% endif %}</h1>
+</header>
+
+<section class="history-total {{ 'dimmed' if stale else '' }}" aria-label="{{ title }} totals">
+  <span class="eyebrow">Steps</span>
+  <strong class="d">{% if steps %}{{ steps }}{% else %}&ndash;{% endif %}</strong>
+  <div class="walk-facts">
+    {% if distance %}<span><strong>{{ distance }}</strong> distance</span>{% endif %}
+    {% if elapsed %}<span><strong class="walk-duration">{{ duration(elapsed) }}</strong> duration</span>{% endif %}
+    {% if pace %}<span><strong>{{ pace }}</strong> pace</span>{% endif %}
+  </div>
+</section>
+
+<section class="location-card" aria-label="Route">
+  {% if map_points|length > 1 %}
+  <div id="kona-map" class="map map-tall" aria-label="Map of this walk's route, {{ points }} GPS fixes"></div>
+  <p id="map-unavailable" class="map-empty" hidden>Map unavailable. The map provider did not supply the background.</p>
+  <p class="location-note">Route as the collar recorded it · {{ points }} GPS fixes · start marked with a dot, end with K</p>
+  {% else %}
+  <div class="map-empty"><span>Fi kept no route for this {{ title|lower }}.</span></div>
+  {% endif %}
+</section>
+
+<p class="chart-footnote">Steps and distance are Fi's own figures for this {{ title|lower }}. Pace is distance over duration, not a measurement. Checked Fi {{ as_of }}{% if clock_zone %} {{ clock_zone }}{% endif %}.</p>
+
+{% if map_points|length > 1 %}
+<script type="application/json" id="map-points">{{ map_points|tojson }}</script>
+{% if map_tiles %}<script type="application/json" id="map-config">{{ map_tiles|tojson }}</script>{% endif %}
+{% endif %}
+<script src="/static/leaflet/leaflet.js" defer></script>
+<script src="{{ asset('map.js') }}" defer></script>
+{% endblock %}

@@ -17,8 +17,10 @@ from kona_tracker.fi.parse import (
     ActivityStats,
     CollarStatus,
     LocationPoint,
+    Overnight,
     PetProfile,
     RestWindow,
+    Walk,
     hours_from_duration,
 )
 from kona_tracker.fi.service import FiSnapshot
@@ -134,6 +136,78 @@ def _day(moment: Any) -> str | None:
     if moment is None:
         return None
     return f"{moment.day} {moment:%b}"
+
+
+def distance_label(metres: int | float | None) -> str | None:
+    """`6449` -> `4.0 mi`; short hops in feet. Chris's phone is set to miles.
+
+    Fi's distance is metres (verified 2026-09-10 and again on the walk log
+    2026-09-13). Under about a tenth of a mile, tenths of a mile round to
+    nothing useful, so feet it is, to the nearest ten.
+    """
+    if metres is None or metres < 0:
+        return None
+    feet = metres * 3.28084
+    if feet < 528:  # a tenth of a mile
+        return f"{int(round(feet / 10.0) * 10)} ft"
+    return f"{metres / 1609.344:.1f} mi"
+
+
+def _span(start: datetime | None, end: datetime | None, zone: tzinfo | None) -> str | None:
+    """`14:23 – 15:06` on Kona's clock; None unless both ends are known."""
+    if start is None or end is None:
+        return None
+    return f"{_clock(start, zone):%H:%M} \u2013 {_clock(end, zone):%H:%M}"
+
+
+def walk_rows(walks: tuple[Walk, ...], on: datetime, zone: tzinfo | None) -> list[dict[str, Any]]:
+    """The day's activities as rows for the page, newest first as Fi sends them.
+
+    "Today" is Kona's calendar day, the same day the steps total belongs
+    to; a walk that started before midnight her time is yesterday's even
+    if it is today's in UTC. Car rides are kept as quieter rows with no
+    page of their own: they have no route, and a day that went "walk, car,
+    walk" reads wrong with the car removed.
+    """
+    rows: list[dict[str, Any]] = []
+    for walk in walks:
+        if walk.start is None or _clock(walk.start, zone).date() != on.date():
+            continue
+        rows.append(
+            {
+                "id": walk.id,
+                "kind": walk.kind,
+                "label": "Walk" if walk.kind == "walk" else "Car ride",
+                "span": _span(walk.start, walk.end, zone),
+                "duration": duration_parts(walk.seconds),
+                "steps": _count(walk.steps) if walk.kind == "walk" else None,
+                "distance": distance_label(walk.distance_m),
+                "area": walk.area_name,
+                "href": f"/walks/{walk.id}" if walk.kind == "walk" and walk.path else None,
+            }
+        )
+    return rows
+
+
+def overnight_labels(night: Overnight | None, zone: tzinfo | None) -> dict[str, Any] | None:
+    """`00:20 – 08:04` and how often she woke, or None when Fi has no night."""
+    if night is None or night.sleep_start is None or night.sleep_end is None:
+        return None
+    count = len(night.interruptions)
+    if count == 0:
+        wake = "slept through"
+    elif count == 1:
+        wake = "woke once"
+    elif count == 2:
+        wake = "woke twice"
+    else:
+        wake = f"woke {count} times"
+    return {
+        "span": _span(night.sleep_start, night.sleep_end, zone),
+        "wake_count": count,
+        "wake_label": wake,
+        "interruptions": [_span(a, b, zone) for a, b in night.interruptions],
+    }
 
 
 def age_label(birthday: date | None, on: datetime) -> str | None:
@@ -325,6 +399,12 @@ def activity_context(snapshot: FiSnapshot | None, configured: bool) -> dict[str,
         "partial": bool(snapshot and snapshot.partial),
         "window_from": _day(window.start if window else None),
         "window_to": _day(window.end if window else None),
+        # Last night as a time span, and the day's walks. Both are Fi's
+        # own records (rounds 10-11), not inferred from anything.
+        "overnight": overnight_labels(snapshot.overnight if snapshot else None, zone),
+        "walks_today": (
+            walk_rows(snapshot.walks, fetched_local, zone) if snapshot and fetched_local else []
+        ),
         "steps": _count(activity.steps if activity else None),
         "step_goal": _count(activity.step_goal if activity else None),
         # Distance is deliberately not here: it came back 0 for a day with
@@ -548,6 +628,8 @@ def activity_json(snapshot: FiSnapshot | None, configured: bool) -> dict[str, An
         ]
         if snapshot
         else None,
+        "walks": walks_json(snapshot),
+        "overnight": overnight_json(snapshot),
         "breed": profile.breed if profile else None,
         "birthday": profile.birthday.isoformat() if profile and profile.birthday else None,
         # The photo URL itself stays server-side; the page uses /avatar.jpg.
@@ -666,4 +748,91 @@ def camera_health(status: dict[str, Any]) -> dict[str, Any]:
         "last_frame": None if age is None else f"{age:.0f} s ago",
         "problem": _CAMERA_PROBLEMS.get(kind, kind) if kind else None,
         "reconnects": status.get("reconnects") or 0,
+    }
+
+
+def walk_context(
+    snapshot: FiSnapshot | None, walk_id: str, configured: bool
+) -> dict[str, Any] | None:
+    """Everything `walk.html` needs for one walk, or None when it is not in
+    the snapshot -- which is a 404, not an empty page: the id came from a
+    link this app rendered, so its absence means the feed has moved on."""
+    if snapshot is None:
+        return None
+    walk = next((w for w in snapshot.walks if w.id == walk_id), None)
+    if walk is None:
+        return None
+    profile = snapshot.profile
+    zone = kona_zone(profile.timezone if profile else None)
+    fetched_local = _clock(snapshot.fetched_at, zone)
+    start_local = _clock(walk.start, zone) if walk.start else None
+    if start_local is None:
+        day = None
+    elif start_local.date() == fetched_local.date():
+        day = "Today"
+    elif start_local.date() == fetched_local.date() - timedelta(days=1):
+        day = "Yesterday"
+    else:
+        day = f"{start_local:%a} {_day(start_local)}"
+    seconds = walk.seconds
+    pace = None
+    if seconds and walk.distance_m and walk.distance_m > 0:
+        minutes_per_mile = (seconds / 60.0) / (walk.distance_m / 1609.344)
+        if 3 <= minutes_per_mile <= 120:
+            pace = f"{int(minutes_per_mile)}:{int(round((minutes_per_mile % 1) * 60)):02d} /mi"
+    return {
+        "tab": None,
+        "configured": configured,
+        "walk_id": walk.id,
+        "kind": walk.kind,
+        "title": "Walk" if walk.kind == "walk" else "Car ride",
+        "day": day,
+        "span": _span(walk.start, walk.end, zone),
+        "elapsed": duration_parts(seconds),
+        "steps": _count(walk.steps),
+        "distance": distance_label(walk.distance_m),
+        "pace": pace,
+        "area": walk.area_name,
+        "points": len(walk.path),
+        "map_points": [
+            {"lat": p.latitude, "lon": p.longitude, "accuracy": None} for p in walk.path
+        ],
+        "map_kind": "walk",
+        "stale": bool(snapshot.stale),
+        "as_of": fetched_local.strftime("%H:%M"),
+        "clock_zone": fetched_local.tzname() or "",
+    }
+
+
+def walks_json(snapshot: FiSnapshot | None) -> list[dict[str, Any]] | None:
+    if snapshot is None:
+        return None
+    return [
+        {
+            "id": w.id,
+            "kind": w.kind,
+            "start": w.start.isoformat() if w.start else None,
+            "end": w.end.isoformat() if w.end else None,
+            "seconds": w.seconds,
+            "steps": w.steps,
+            "distance_m": w.distance_m,
+            "area_name": w.area_name,
+            "path_points": len(w.path),
+        }
+        for w in snapshot.walks
+    ]
+
+
+def overnight_json(snapshot: FiSnapshot | None) -> dict[str, Any] | None:
+    night = snapshot.overnight if snapshot else None
+    if night is None:
+        return None
+    return {
+        "date": night.date.isoformat() if night.date else None,
+        "sleep_s": night.sleep_seconds,
+        "sleep_start": night.sleep_start.isoformat() if night.sleep_start else None,
+        "sleep_end": night.sleep_end.isoformat() if night.sleep_end else None,
+        "interruptions": [
+            {"start": a.isoformat(), "end": b.isoformat()} for a, b in night.interruptions
+        ],
     }
