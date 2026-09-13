@@ -148,7 +148,11 @@ def test_map_page_renders_and_activity_links_to_it():
     with TestClient(app) as client:
         # Every route is behind the passcode, this one included.
         assert client.get("/map", follow_redirects=False).status_code == 303
-        assert client.get("/map.json", follow_redirects=False).status_code in (303, 401)
+        # The JSON feed is gated the same way the page is: a stranger gets
+        # the login redirect, not the dog's coordinates.
+        feed = client.get("/map.json", follow_redirects=False)
+        assert feed.status_code == 303
+        assert feed.headers["location"] == "/login"
         client.post("/login", data={"passcode": "4242"}, follow_redirects=False)
         body = client.get("/map").text
         assert 'id="kona-map"' in body

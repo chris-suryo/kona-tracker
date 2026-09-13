@@ -178,10 +178,12 @@ def test_the_route_starts_and_stops_and_needs_the_passcode():
         fi_service=fi,
     )
     with TestClient(app) as client:
-        assert client.post("/live", data={"on": "true"}, follow_redirects=False).status_code in (
-            303,
-            401,
-        )
+        # Pinned to the exact redirect, not "303 or 401": a looser assertion
+        # would still pass if the gate degraded, which is the whole property
+        # this test is named for.
+        blocked = client.post("/live", data={"on": "true"}, follow_redirects=False)
+        assert blocked.status_code == 303
+        assert blocked.headers["location"] == "/login"
         assert fi.calls == []  # a stranger cannot start it
 
         client.post("/login", data={"passcode": "4242"}, follow_redirects=False)
