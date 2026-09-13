@@ -19,8 +19,10 @@ from kona_tracker.web.settings import Settings
 class FakePytapo:
     """Answers like pytapo 3.4: switches come back as {"enabled": "on"}."""
 
-    def __init__(self, host, user, password):
+    def __init__(self, host, user, password, cloud_password=""):
         self.host, self.user, self.password = host, user, password
+        #: Recent firmware wants both; pytapo takes them separately.
+        self.cloud_password = cloud_password
         self.calls: list[tuple] = []
         self.night = "auto"
         self.privacy = False
@@ -61,12 +63,22 @@ class FakePytapo:
 def _tapo(model=TAPO_FIXED):
     made = []
 
-    def factory(host, user, password):
-        client = FakePytapo(host, user, password)
+    def factory(host, user, password, cloud_password=""):
+        client = FakePytapo(host, user, password, cloud_password)
         made.append(client)
         return client
 
-    return TapoControl("10.0.0.111", "admin", "cloud-secret", model, client_factory=factory), made
+    return (
+        TapoControl(
+            "10.0.0.111",
+            "admin",
+            "cloud-secret",
+            model,
+            client_factory=factory,
+            cloud_password="tp-link-secret",
+        ),
+        made,
+    )
 
 
 def test_form_values_become_typed_settings_or_a_clear_refusal():
@@ -204,3 +216,19 @@ def test_settings_routes_are_behind_the_passcode():
             == 303
         )
     app.state.hub.stop()
+
+
+def test_both_credentials_reach_the_camera_and_neither_ever_leaks():
+    """Recent Tapo firmware authenticates with the camera account *and* the
+    TP-Link cloud password. Passing only the first is what "Invalid
+    authentication data" meant on Chris's C120 on 2026-09-13, and no amount
+    of trying the other password in the one slot could have fixed it."""
+    control, made = _tapo()
+    control.settings()
+    assert made[0].password == "cloud-secret"
+    assert made[0].cloud_password == "tp-link-secret"
+    # Either one appearing in an error string would outlive the error.
+    scrubbed = control._scrub("login failed for cloud-secret / tp-link-secret")
+    assert "cloud-secret" not in scrubbed
+    assert "tp-link-secret" not in scrubbed
+    assert scrubbed.count("***") == 2

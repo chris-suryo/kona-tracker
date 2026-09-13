@@ -175,7 +175,9 @@ running the app must be on the same network.
    status light -- add your TP-Link cloud password too:
 
    ```
-   KONA_TAPO_PASSWORD=<the password you sign in to the Tapo app with>
+   KONA_TAPO_USER=<the camera account username from step 3>
+   KONA_TAPO_PASSWORD=<that camera account's password>
+   KONA_TAPO_CLOUD_PASSWORD=<the password you sign in to the Tapo app with>
    ```
 
    That is a different password from the camera account, and it is the one
