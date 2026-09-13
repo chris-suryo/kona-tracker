@@ -321,3 +321,40 @@ def test_round_ten_reads_what_round_nine_named():
     assert "position { __typename latitude longitude }" in labelled["heatmapPosition"]
     assert "... on Walk { distance }" in labelled["walkFields"]
     assert "pageInfo { __typename hasNextPage endCursor }" in labelled["walkFields"]
+
+
+def test_round_eleven_opens_rest_data_and_reads_the_walk_log():
+    """Round 10 named `restData` and `stepData` inside the feed summaries,
+    `interruptions` on the overnight summary, and `path`/`positions` on
+    Walk. Round 11 asks for each, and pages both feeds with a built cursor."""
+    from datetime import date
+
+    from kona_tracker.fi.queries import speculative_queries
+
+    labelled = dict(speculative_queries("pet-1", on=date(2026, 9, 13)))
+    for label in (
+        "restDataType",
+        "restDataFields",
+        "stepDataType",
+        "stepDataFields",
+        "restFeedBackDay",
+        "restFeedWeekSummary",
+        "overnightInterruptions",
+        "walkPathShape",
+        "walkPositionsShape",
+        "activityFeedNext",
+        "travelFields",
+    ):
+        assert label in labelled, label
+        assert "KonaRest" not in labelled[label], "that substring routes to the sleep refusal"
+        assert labelled[label].lstrip().startswith("query KonaSpeculative"), label
+
+    assert "restSummary { start restData { __typename } }" in labelled["restDataType"]
+    assert "stepSummary { start totalSteps stepData { __typename } }" in labelled["stepDataType"]
+    # Paging back must also read the day it lands on, or the cursor alone
+    # says nothing (round 10 got the same cursor back and learned nothing).
+    assert "restSummary { start }" in labelled["restFeedBackDay"]
+    assert 'cursor: "' in labelled["restFeedBackDay"]
+    assert "interruptions { __typename start end" in labelled["overnightInterruptions"]
+    assert "path { __typename latitude longitude }" in labelled["walkPathShape"]
+    assert 'activityFeed(limit: 3, cursor: "' in labelled["activityFeedNext"]
