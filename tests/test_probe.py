@@ -275,3 +275,49 @@ def test_round_nine_follows_the_three_things_round_eight_did_not_say():
     for label in ("restFeedNames", "stepFeedNames"):
         for refused in ("items", "first", "entries", "buckets", "pageInfo"):
             assert f" {refused} " not in labelled[label], f"{refused} was already refused"
+
+
+def test_round_ten_reads_what_round_nine_named():
+    """Round 9's did-you-means named `restSummary`, `stepSummary`,
+    `sleepSeconds`/`sleepStart`/`sleepEnd`, `position` and the Walk type;
+    round 10 asks for each by name and pages the feed back one day with a
+    cursor built the way Fi builds its own."""
+    import base64
+    from datetime import date
+
+    from kona_tracker.fi.queries import speculative_queries
+
+    labelled = dict(speculative_queries("pet-1", on=date(2026, 9, 13)))
+    for label in (
+        "restFeedSummary",
+        "stepFeedSummary",
+        "restFeedBack",
+        "restSummaryGrain",
+        "stepSummaryGrain",
+        "overnightSleep",
+        "overnightMore",
+        "heatmapPosition",
+        "heatmapPointMore",
+        "walkFields",
+        "walkMore",
+    ):
+        assert label in labelled, label
+        assert "KonaRest" not in labelled[label], "that substring routes to the sleep refusal"
+        assert labelled[label].lstrip().startswith("query KonaSpeculative"), label
+
+    assert (
+        "restFeed(period: DAY) { period restSummary { __typename } }" in labelled["restFeedSummary"]
+    )
+    assert (
+        "stepFeed(period: DAY) { period stepSummary { __typename } }" in labelled["stepFeedSummary"]
+    )
+
+    # The cursor Fi returned was base64 of the Fi-day start; yesterday's is
+    # the same shape one day back, so the feed can be asked to page.
+    expected = base64.b64encode(b"2026-09-12T04:00:00.000Z").decode()
+    assert f'cursor: "{expected}"' in labelled["restFeedBack"]
+
+    assert "sleepSeconds sleepStart sleepEnd" in labelled["overnightSleep"]
+    assert "position { __typename latitude longitude }" in labelled["heatmapPosition"]
+    assert "... on Walk { distance }" in labelled["walkFields"]
+    assert "pageInfo { __typename hasNextPage endCursor }" in labelled["walkFields"]
