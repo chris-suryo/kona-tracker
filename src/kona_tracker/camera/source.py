@@ -12,6 +12,7 @@ from __future__ import annotations
 import os
 import struct
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -209,7 +210,14 @@ def _import_cv2():
     socket error out instead of blocking forever, and the log level keeps
     FFmpeg from printing connection strings (which carry credentials).
     """
-    os.environ.setdefault("OPENCV_FFMPEG_CAPTURE_OPTIONS", "rtsp_transport;tcp|timeout;5000000")
+    # `fflags;nobuffer` and `flags;low_delay` tell FFmpeg to hand frames over
+    # as they arrive instead of filling its probe/reorder buffers first; on
+    # a live camera those buffers are pure latency. `max_delay` caps the
+    # reorder queue at half a second for the same reason.
+    os.environ.setdefault(
+        "OPENCV_FFMPEG_CAPTURE_OPTIONS",
+        "rtsp_transport;tcp|timeout;5000000|fflags;nobuffer|flags;low_delay|max_delay;500000",
+    )
     os.environ.setdefault("OPENCV_FFMPEG_LOGLEVEL", "-8")
     os.environ.setdefault("OPENCV_LOG_LEVEL", "ERROR")
     import cv2
@@ -271,6 +279,45 @@ class OpenCVSource:
         self._cap.release()
 
 
+#: A grab that returns faster than this came out of a queue, not off the
+#: wire: demuxing a packet that has already arrived is sub-millisecond, and
+#: a live frame cannot arrive faster than the camera's own frame interval,
+#: which is 33 ms at 30 fps. Anything between is a comfortable line.
+GRAB_FROM_QUEUE_SECONDS = 0.005
+#: Never drain more than this many frames in one read, whatever the timing
+#: says. A pathological source must not turn a read into a busy loop.
+MAX_DRAIN = 120
+
+
+def drain_to_live(cap: Any, clock: Callable[[], float] = time.monotonic) -> bool:
+    """Skip queued frames so the next `retrieve()` is the newest one.
+
+    This is the fix for the eight-second lag. The camera produces frames at
+    its own rate; the hub reads at KONA_CAMERA_FPS; whenever the camera is
+    faster, the difference queues up inside FFmpeg and the viewer watches
+    the queue. `camera-test` showed the signature -- "10 frames in 0.1 s" --
+    frames that had plainly not just arrived.
+
+    A read now grabs until a grab has to *wait*. Grabs that return at once
+    were queued and are thrown away undecoded, which is cheap; the first
+    grab that blocks was waiting on the network, so the frame it returns is
+    live, and that is the one decoded. Nothing about the camera's rate has
+    to be known or configured, and a source that is not ahead costs one
+    extra grab per read. Returns False when the source produced nothing.
+    """
+    if not cap.grab():
+        return False
+    for _ in range(MAX_DRAIN):
+        started = clock()
+        if not cap.grab():
+            # The previous grab is still valid for retrieve(); a dropped
+            # packet mid-drain is not a reason to return nothing.
+            break
+        if clock() - started > GRAB_FROM_QUEUE_SECONDS:
+            break
+    return True
+
+
 class RtspSource:
     """Network camera (RTSP, or any URL FFmpeg can open, e.g. an HTTP MJPEG
     stream). Credentials go into the URL because that is the only form
@@ -300,7 +347,9 @@ class RtspSource:
         if transport and transport != "tcp":
             # Honour an explicit UDP request; default stays TCP (set in _import_cv2).
             os.environ.setdefault(
-                "OPENCV_FFMPEG_CAPTURE_OPTIONS", f"rtsp_transport;{transport}|timeout;5000000"
+                "OPENCV_FFMPEG_CAPTURE_OPTIONS",
+                f"rtsp_transport;{transport}|timeout;5000000"
+                "|fflags;nobuffer|flags;low_delay|max_delay;500000",
             )
         cv2 = _import_cv2()
         self._cv2 = cv2
@@ -332,7 +381,9 @@ class RtspSource:
         return f"RtspSource({self.display_url})"
 
     def read_jpeg(self) -> bytes | None:
-        ok, frame = self._cap.read()
+        if not drain_to_live(self._cap):
+            return None
+        ok, frame = self._cap.retrieve()
         if not ok or frame is None:
             return None
         height, width = frame.shape[:2]
