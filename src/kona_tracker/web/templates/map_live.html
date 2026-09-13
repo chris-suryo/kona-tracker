@@ -47,6 +47,8 @@
     </div>
   </div>
 
+  {# One column above the stats, so these three never land on each other. #}
+  <div class="live-controls">
   <button type="button" class="live-recentre" id="live-recentre" hidden>Recentre</button>
 
   {% if live.offered %}
@@ -60,6 +62,7 @@
   <p class="live-note" id="live-note" {% if not stale %}hidden{% endif %}>
     {%- if stale %}Fi stopped answering — this is the last fix we have.{% endif -%}
   </p>
+  </div>
 </div>
 
 {% if map_points %}<script type="application/json" id="map-points">{{ map_points|tojson }}</script>{% endif %}

@@ -2,10 +2,26 @@
    Grotesque, top pill toggle, dial hero, hairlines not cards. Dark "Depth"
    variant follows the phone. Tokens are the design file's v2 / v2d sets. */
 :root {
-  --bg:#F3F1EA; --bg2:#E7E4D8; --ink:#171A15; --ink2:#5C6356; --ink3:#9AA094;
+  /* The light ramp was darkened on 2026-09-13 after the first audit anyone
+     had ever run against it. Every value below carries its measured
+     contrast against --bg; the originals are in the comment beside them.
+     The dark theme was already comfortably above AA and is unchanged. */
+  --bg:#F3F1EA; --bg2:#E7E4D8; --ink:#171A15; --ink2:#5C6356;
+  --ink3:#6E7568;   /* was #9AA094, 2.37:1 -- every small label in the app */
   --line:rgba(23,26,21,.13);
-  --t1:#DCE5D0; --t2:#B4C79B; --t3:#7C9E5E; --t4:#4B7A3A; --t5:#27512A; --on:#F3F1EA;
-  --warn:#C9862B; --bad:#B8472E;
+  --t1:#C9D7B7;     /* was #DCE5D0, 1.15:1 -- the goal ring had no track */
+  --t2:#A3BA86;     /* was #B4C79B, 1.60:1 -- nap bars vanished */
+  --t3:#688C4C;     /* was #7C9E5E, 2.69:1 -- under the 3:1 non-text floor */
+  --t4:#446E35;     /* was #4B7A3A, 4.48:1 -- every link, just under AA */
+  --t5:#27512A; --on:#F3F1EA;
+  --warn:#8A5510;   /* was #C9862B, 2.68:1 -- the colour that carries bad news */
+  --bad:#B8472E;
+  /* Three values that are not colours but still differ by theme. Kept as
+     tokens so the component rules below stay theme-agnostic, which is the
+     discipline the rest of this file already follows. */
+  --dim:.7;                                  /* stale sections; .55 in dark */
+  --switch-track:#CFCCC0;                    /* an off switch must look off */
+  --nap-edge:var(--t4);                      /* nap bars need an edge in light */
   --body:"Bricolage Grotesque",system-ui,-apple-system,sans-serif;
   --disp:"Bricolage Grotesque",system-ui,-apple-system,sans-serif;
   color-scheme: light;
@@ -16,6 +32,9 @@
     --line:rgba(238,240,230,.12);
     --t1:#1F3320; --t2:#35562E; --t3:#5F8A48; --t4:#8FBF6A; --t5:#CDE9B4; --on:#0B1208;
     --warn:#E0A33A; --bad:#FF6B57;
+    --dim:.55;
+    --switch-track:var(--bg2);
+    --nap-edge:transparent;
     color-scheme: dark;
   }
 }
@@ -78,7 +97,7 @@ body.activity-page { overscroll-behavior-y: contain; }
                 background: color-mix(in srgb, var(--warn) 14%, var(--bg)); color: var(--ink); }
 .safety-alert.danger { border-color: color-mix(in srgb, var(--bad) 52%, transparent); background: color-mix(in srgb, var(--bad) 15%, var(--bg)); }
 .alert-mark { width: 34px; height: 34px; border-radius: 50%; flex: none; display: grid; place-items: center;
-              background: var(--warn); color: var(--bg); font-size: 20px; font-weight: 800; }
+              background: var(--warn); color: #fff; font-size: 20px; font-weight: 800; }
 .danger .alert-mark { background: var(--bad); }
 .safety-alert div { display: flex; flex-direction: column; line-height: 1.3; }
 .safety-alert strong { font-size: 15px; }
@@ -148,7 +167,9 @@ body.activity-page { overscroll-behavior-y: contain; }
 .week-row strong { color: var(--ink); font-size: 30px; }
 .week-row strong.phrase { font-size: 17px; letter-spacing: -.02em; }
 .freshness { padding-top: 16px; }
-.dimmed { opacity: .55; }
+/* Stale sections. .55 bites harder on a light ground than a dark one:
+   it drops link text to 2.09:1 in light and 3.43:1 in dark. */
+.dimmed { opacity: var(--dim); }
 .note { font-size: 13px; color: var(--ink2); line-height: 1.45; margin-top: 18px; }
 .note.warn { color: var(--warn); }
 .note code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;
@@ -335,8 +356,13 @@ body.activity-page { overscroll-behavior-y: contain; }
 .chart-rule { stroke: var(--line); fill: none; stroke-width: .6; }
 .step-bar { fill: var(--t4); }
 .sleep-bar, .sleep-key { fill: var(--t4); background: var(--t4); }
+/* A nap bar sitting on the page ground, rather than on a sleep bar, was
+   1.60:1 in light -- invisible. The token change helps; the edge is what
+   makes it a shape. Dark needs neither, so --nap-edge is transparent. */
 .nap-bar, .nap-key { fill: var(--t2); background: var(--t2); }
-.partial-bar { opacity: .65; }
+.nap-bar { stroke: var(--nap-edge); stroke-width: .6; }
+.nap-key { box-shadow: inset 0 0 0 1px var(--nap-edge); }
+.partial-bar { opacity: .85; }  /* .65 took a nap-only day below visible */
 .bar-hit { fill: transparent; }
 .bar-chart a:hover .bar-hit, .bar-chart a[aria-current] .bar-hit { fill: var(--bg2); }
 .bar-chart a:focus-visible { outline: 2px solid var(--t4); }
@@ -464,7 +490,7 @@ body.activity-page { overscroll-behavior-y: contain; }
 .seg.small .opt { min-width: 52px; height: 34px; padding: 0 12px; border: 0; border-radius: 999px; background: none; color: var(--ink2); font: inherit; font-size: 13px; font-weight: 600; }
 .seg.small .opt[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
 .seg.small .opt:disabled { opacity: .5; }
-.switch { flex: none; width: 52px; height: 32px; padding: 3px; border: 0; border-radius: 999px; background: var(--bg2); transition: background .18s ease; -webkit-tap-highlight-color: transparent; }
+.switch { flex: none; width: 52px; height: 32px; padding: 3px; border: 0; border-radius: 999px; background: var(--switch-track); transition: background .18s ease; -webkit-tap-highlight-color: transparent; }
 .switch span { display: block; width: 26px; height: 26px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.3); transition: transform .18s ease; }
 .switch[aria-checked="true"] { background: var(--t4); }
 .switch[aria-checked="true"] span { transform: translateX(20px); }
@@ -520,13 +546,19 @@ body.activity-page { overscroll-behavior-y: contain; }
 .live-stat strong.warn { color: var(--warn); }
 .live-stat strong.bad { color: var(--bad); }
 
-.live-recentre { position: absolute; z-index: 500; left: 50%; transform: translateX(-50%);
+/* One column, not three things pinned to the same offset. The recentre
+   button, the stale note and the walk control all sat at +76px, so a stale
+   snapshot during a walk drew the note on top of the button (found in the
+   light-theme audit, 2026-09-13, but wrong in both themes). Hidden children
+   collapse out of a flex column on their own. */
+.live-controls { position: absolute; z-index: 500; left: 12px; right: 12px;
                  bottom: calc(env(safe-area-inset-bottom, 0px) + 76px);
-                 font: inherit; font-size: 13px; font-weight: 600; color: var(--t5);
+                 display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.live-controls:empty { display: none; }
+.live-recentre { font: inherit; font-size: 13px; font-weight: 600; color: var(--t5);
                  background: var(--t1); border: 1px solid var(--t3); border-radius: 999px;
                  padding: 7px 16px; cursor: pointer; }
-.live-note { position: absolute; z-index: 500; left: 12px; right: 12px;
-             bottom: calc(env(safe-area-inset-bottom, 0px) + 76px);
+.live-note { width: 100%;
              margin: 0; font-size: 12px; color: var(--warn); text-align: center;
              background: var(--bg2); border: 1px solid var(--line); border-radius: 10px; padding: 7px 12px; }
 
@@ -547,9 +579,7 @@ body.activity-page { overscroll-behavior-y: contain; }
 .walk-toggle:focus-visible { outline: 2px solid var(--t4); outline-offset: 3px; }
 .walk-note { margin-top: 6px; }
 
-.live-walk { position: absolute; z-index: 500; left: 12px; right: 12px;
-             bottom: calc(env(safe-area-inset-bottom, 0px) + 76px);
-             display: flex; align-items: center; gap: 10px; }
+.live-walk { width: 100%; display: flex; align-items: center; gap: 10px; }
 .live-walk .walk-toggle { margin-left: 0; flex: none; }
 .live-walk .walk-note { margin: 0; font-size: 12px; color: var(--ink2); min-width: 0; }
 

@@ -4,6 +4,17 @@
 // again after its markup has been swapped.
 (function () {
   var activeMap = null;
+  // The route green used to be the literal #5F8A48 -- which is the *dark*
+  // theme's --t3, hardcoded, the one place in the app that bypassed the
+  // token system. It never changed with the theme, so a light-theme viewer
+  // got a dark-theme green on unfiltered tiles. Read the token instead.
+  function ink(name, fallback) {
+    try {
+      var value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+      return value || fallback;
+    } catch (e) { return fallback; }
+  }
+
   function destroy() {
     if (activeMap) { activeMap.remove(); activeMap = null; }
   }
@@ -73,7 +84,7 @@
     });
     tiles.addTo(map);
     if (latlngs.length > 1) {
-      L.polyline(latlngs, { color: '#5F8A48', weight: 5, opacity: .9 }).addTo(map);
+      L.polyline(latlngs, { color: ink('--t4', '#5F8A48'), weight: 5, opacity: .9 }).addTo(map);
       map.fitBounds(latlngs, { padding: [28, 28], maxZoom: 17 });
     } else {
       map.setView(latlngs[0], 16);
@@ -89,7 +100,7 @@
     var last = points[points.length - 1];
     if (last.accuracy) {
       L.circle([last.lat, last.lon], {
-        radius: last.accuracy, color: '#5F8A48', weight: 1, fillOpacity: .12
+        radius: last.accuracy, color: ink('--t4', '#5F8A48'), weight: 1, fillOpacity: .12
       }).addTo(map);
     }
     L.marker([last.lat, last.lon], {
