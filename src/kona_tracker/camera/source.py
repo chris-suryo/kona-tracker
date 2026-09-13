@@ -284,7 +284,19 @@ class RtspSource:
         password: str = "",
         transport: str = "tcp",
         quality: int = 80,
+        max_width: int = 0,
     ):
+        # A network camera sends whatever size it likes -- the Tapo C120's
+        # main stream is 2560x1440, about 430 KB a frame at this quality --
+        # and unlike the USB path there is no CAP_PROP to ask it for less.
+        # So the cap is applied here, after decode: frames wider than
+        # `max_width` are shrunk to it, height following the aspect ratio,
+        # before they are encoded. Shrinking a sharp 1440p frame to 1280
+        # wide gives a better picture than the camera's own low-res stream
+        # at the same size, because the camera downscales before it
+        # compresses and we downscale after we decode. Nothing is ever
+        # scaled up; 0 means deliver the source size.
+        self._max_width = max(int(max_width), 0)
         if transport and transport != "tcp":
             # Honour an explicit UDP request; default stays TCP (set in _import_cv2).
             os.environ.setdefault(
@@ -304,8 +316,17 @@ class RtspSource:
             cap.release()
             raise CameraOpenError(f"could not open {self.display_url}")
         self._cap = cap
-        self.width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
-        self.height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
+        self.source_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
+        self.source_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
+        # `width`/`height` are what a viewer receives, which is what
+        # camera-test and status report; the source size is kept alongside
+        # so the two can be told apart.
+        self.width, self.height = self._delivered_size(self.source_width, self.source_height)
+
+    def _delivered_size(self, width: int, height: int) -> tuple[int, int]:
+        if self._max_width and width > self._max_width:
+            return self._max_width, max(1, round(height * self._max_width / width))
+        return width, height
 
     def __repr__(self) -> str:
         return f"RtspSource({self.display_url})"
@@ -314,6 +335,13 @@ class RtspSource:
         ok, frame = self._cap.read()
         if not ok or frame is None:
             return None
+        height, width = frame.shape[:2]
+        target = self._delivered_size(width, height)
+        if target != (width, height):
+            # INTER_AREA is the resampler meant for shrinking: it averages
+            # the source pixels each output pixel covers, so fine detail
+            # blurs instead of aliasing into moire on fur and blinds.
+            frame = self._cv2.resize(frame, target, interpolation=self._cv2.INTER_AREA)
         ok, buf = self._cv2.imencode(
             ".jpg", frame, [int(self._cv2.IMWRITE_JPEG_QUALITY), self._quality]
         )

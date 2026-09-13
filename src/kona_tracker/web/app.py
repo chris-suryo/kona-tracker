@@ -146,7 +146,9 @@ def default_source_factory(s: Settings, control: CameraControl | None = None):
         steerable = control if (control and control.capabilities.ptz) else None
         return lambda: FakeSource(fps=s.camera_fps, control=steerable)
     if s.camera_source == "rtsp":
-        return lambda: RtspSource(s.rtsp_url, s.rtsp_user, s.rtsp_password, s.rtsp_transport)
+        return lambda: RtspSource(
+            s.rtsp_url, s.rtsp_user, s.rtsp_password, s.rtsp_transport, max_width=s.camera_width
+        )
     return lambda: OpenCVSource(s.camera_index, s.camera_width, s.camera_height, s.camera_fps)
 
 
