@@ -228,3 +228,50 @@ def test_round_eight_sends_the_enum_value_fi_suggested_and_guesses_subfields():
     assert "activityFeed(limit: 3) { items" in labelled["activityFeedItems"]
     # Round 7 stays as the record of how DAY was learned.
     assert "stepFeed(period: DAILY)" in labelled["stepFeedPeriod"]
+
+
+def test_round_nine_follows_the_three_things_round_eight_did_not_say():
+    """Round 8's silences are its findings: `cursor` drew no error where
+    every sibling guess did, the overnight type's fields were checked
+    against a different type name than the one it returned, and two list
+    fields were named after their element type. Round 9 acts on each."""
+    from datetime import date
+
+    from kona_tracker.fi.queries import speculative_queries
+
+    labelled = dict(speculative_queries("pet-1", on=date(2026, 9, 12)))
+    for label in (
+        "restFeedCursor",
+        "stepFeedCursor",
+        "restFeedNames",
+        "stepFeedNames",
+        "overnightConcrete",
+        "overnightConcreteFields",
+        "heatmapPoints",
+        "heatmapPointFields",
+        "activityFeedShape",
+        "activityItemFields",
+    ):
+        assert label in labelled, label
+        assert "KonaRest" not in labelled[label], "that substring routes to the sleep refusal"
+        assert labelled[label].lstrip().startswith("query KonaSpeculative"), label
+
+    # The one field round 8 proved exists, asked for on its own so its value
+    # comes back instead of being lost to a sibling's validation error.
+    assert "restFeed(period: DAY) { __typename cursor }" in labelled["restFeedCursor"]
+    assert "stepFeed(period: DAY) { __typename cursor }" in labelled["stepFeedCursor"]
+
+    # Fields on an interface need an inline fragment on the concrete type Fi
+    # actually returned; asking the interface is what failed last round.
+    assert "... on ConcreteOvernightRestSummary" in labelled["overnightConcrete"]
+    assert "... on ConcreteOvernightRestSummary" in labelled["overnightConcreteFields"]
+
+    # Descend into the two list fields Fi named itself, rather than guessing
+    # container names again.
+    assert "points { __typename }" in labelled["heatmapPoints"]
+    assert "activities { __typename }" in labelled["activityFeedShape"]
+
+    # Names already refused must not be re-sent; that answer is recorded.
+    for label in ("restFeedNames", "stepFeedNames"):
+        for refused in ("items", "first", "entries", "buckets", "pageInfo"):
+            assert f" {refused} " not in labelled[label], f"{refused} was already refused"

@@ -384,6 +384,89 @@ def speculative_queries(pet_id: str, on: date | None = None) -> list[tuple[str, 
             f'query KonaSpeculativeActivityFeedItems {{ pet(id: "{pet_id}") {{ '
             "activityFeed(limit: 3) { items first activities entries pageInfo } } }",
         ),
+        # Round 9, 2026-09-12. Round 8 accepted `period: DAY` on both feeds,
+        # so StepFeed and RestFeed are real types we can reach. Three things
+        # it established that are easy to miss, because they are things Fi
+        # did *not* say:
+        #
+        #   - `cursor` drew no error on either feed, while all eight other
+        #     guesses did. A field that validates silently exists; an object
+        #     would have been told to select subfields. So both feeds are
+        #     cursor-paginated scalars-and-all, like restSummaryFeed(cursor:).
+        #   - The overnight guesses were all refused "on type
+        #     OvernightRestSummary", yet the accepted query's __typename came
+        #     back `ConcreteOvernightRestSummary`. A type whose name differs
+        #     from the type its fields are checked against is an interface or
+        #     union, so its fields need an inline fragment. That, not bad
+        #     guesses, is why all ten missed.
+        #   - `HeatmapData.points` is `[HeatmapPoint!]!` and
+        #     `ActivityFeed.activities` is `[Activity!]!`. Fi names a feed's
+        #     payload after its element type, not `items`.
+        #
+        # So: read the cursor, fragment into the concrete overnight type, and
+        # descend into the two list fields already named. The remaining name
+        # guesses follow Fi's own convention rather than generic GraphQL
+        # vocabulary, since round 8 proved the generic vocabulary is wrong
+        # here.
+        (
+            "restFeedCursor",
+            f'query KonaSpeculativeRestFeedCursor {{ pet(id: "{pet_id}") {{ '
+            "restFeed(period: DAY) { __typename cursor } } }",
+        ),
+        (
+            "stepFeedCursor",
+            f'query KonaSpeculativeStepFeedCursor {{ pet(id: "{pet_id}") {{ '
+            "stepFeed(period: DAY) { __typename cursor } } }",
+        ),
+        (
+            "restFeedNames",
+            f'query KonaSpeculativeRestFeedNames {{ pet(id: "{pet_id}") {{ '
+            "restFeed(period: DAY) { restSummaries rests restData records nodes "
+            "results summaries stats totals days hours periods series } } }",
+        ),
+        (
+            "stepFeedNames",
+            f'query KonaSpeculativeStepFeedNames {{ pet(id: "{pet_id}") {{ '
+            "stepFeed(period: DAY) { stepSummaries stepData records nodes "
+            "results summaries stats totals days hours periods series } } }",
+        ),
+        (
+            "overnightConcrete",
+            f'query KonaSpeculativeOvernightConcrete {{ pet(id: "{pet_id}") {{ '
+            f'overnightRestSummary(date: "{yesterday}T00:00:00Z") {{ __typename '
+            "... on ConcreteOvernightRestSummary { __typename } } } }",
+        ),
+        (
+            "overnightConcreteFields",
+            f'query KonaSpeculativeOvernightConcreteFields {{ pet(id: "{pet_id}") {{ '
+            f'overnightRestSummary(date: "{yesterday}T00:00:00Z") {{ __typename '
+            "... on ConcreteOvernightRestSummary { sleepAmounts napAmounts "
+            "sleepAmount napAmount amounts dataPoints start end } } } }",
+        ),
+        (
+            "heatmapPoints",
+            f'query KonaSpeculativeHeatmapPoints {{ pet(id: "{pet_id}") {{ '
+            f'heatmap(startDate: "{week_ago}T00:00:00Z", endDate: "{today.isoformat()}T00:00:00Z") '
+            "{ points { __typename } } } }",
+        ),
+        (
+            "heatmapPointFields",
+            f'query KonaSpeculativeHeatmapPointFields {{ pet(id: "{pet_id}") {{ '
+            f'heatmap(startDate: "{week_ago}T00:00:00Z", endDate: "{today.isoformat()}T00:00:00Z") '
+            "{ points { latitude longitude weight count date duration } } } }",
+        ),
+        (
+            "activityFeedShape",
+            f'query KonaSpeculativeActivityFeedShape {{ pet(id: "{pet_id}") {{ '
+            "activityFeed(limit: 3) { activities { __typename } "
+            "pageInfo { __typename } } } }",
+        ),
+        (
+            "activityItemFields",
+            f'query KonaSpeculativeActivityItemFields {{ pet(id: "{pet_id}") {{ '
+            "activityFeed(limit: 3) { activities { __typename id start end "
+            "totalSteps duration areaName } } } }",
+        ),
     ]
 
 
