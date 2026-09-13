@@ -433,3 +433,125 @@ def rest_position_from(data: Any) -> LocationPoint | None:
         longitude=point[1],
         recorded_at=_moment(ongoing.get("lastReportTimestamp")),
     )
+
+
+#: A walk's route as Fi sends it can run to several hundred fixes. That is
+#: fine to draw, but not unbounded: a day-long hike must not become a page
+#: the phone cannot render. Over the cap the route is thinned evenly, first
+#: and last fix always kept, so the shape survives.
+MAX_PATH_POINTS = 600
+
+
+@dataclass(frozen=True)
+class Walk:
+    """One finished activity from `activityFeed`.
+
+    Fi's feed carries two concrete kinds: `Walk`, with steps, a distance and
+    a GPS `path`, and `Travel`, which is a car ride -- zero steps, a
+    distance, no path. Both are kept because both are part of her day, and
+    `kind` says which. Measured on Kona's collar 2026-09-13 (rounds 10-11):
+    distance is metres, the same unit as the daily total; a 70-minute walk
+    read 6449 m and 11,353 steps.
+    """
+
+    id: str
+    kind: str
+    start: datetime | None
+    end: datetime | None
+    steps: int | float | None = None
+    distance_m: int | float | None = None
+    area_name: str | None = None
+    path: tuple[LocationPoint, ...] = ()
+
+    @property
+    def seconds(self) -> float | None:
+        if self.start is None or self.end is None:
+            return None
+        return max(0.0, (self.end - self.start).total_seconds())
+
+
+@dataclass(frozen=True)
+class Overnight:
+    """Last night as an interval, from `overnightRestSummary`.
+
+    The daily rest window says how long she slept; this says *when*. Both
+    come from Fi, and on 2026-09-13 they agreed to the second: the window's
+    SLEEP was 27832 s and this read sleepStart 04:20Z, sleepEnd 12:04Z,
+    sleepSeconds 27832. `interruptions` are the spans she was awake in
+    between, as Fi drew them.
+    """
+
+    date: datetime | None
+    sleep_seconds: int | float | None
+    sleep_start: datetime | None
+    sleep_end: datetime | None
+    interruptions: tuple[tuple[datetime, datetime], ...] = ()
+
+
+def _thin(points: list[LocationPoint], cap: int = MAX_PATH_POINTS) -> tuple[LocationPoint, ...]:
+    if len(points) <= cap:
+        return tuple(points)
+    last = len(points) - 1
+    picked = [points[round(i * last / (cap - 1))] for i in range(cap)]
+    return tuple(picked)
+
+
+def walks_from(data: Any) -> list[Walk]:
+    """Activities from `pet_walks`, in the order Fi returns them (newest first).
+
+    An item that is neither Walk nor Travel, or has no id, is dropped rather
+    than guessed at; a fix without both coordinates is skipped, not zeroed.
+    """
+    feed = _dict(_dict(_dict(data).get("pet")).get("activityFeed"))
+    walks: list[Walk] = []
+    for raw in feed.get("activities") or []:
+        item = _dict(raw)
+        kind = {"Walk": "walk", "Travel": "travel"}.get(item.get("__typename"))
+        walk_id = item.get("id")
+        if kind is None or not isinstance(walk_id, str) or not walk_id:
+            continue
+        path: list[LocationPoint] = []
+        for fix in item.get("path") or []:
+            point = _coordinates(fix)
+            if point is not None:
+                path.append(LocationPoint(latitude=point[0], longitude=point[1]))
+        area = item.get("areaName")
+        walks.append(
+            Walk(
+                id=walk_id,
+                kind=kind,
+                start=_moment(item.get("start")),
+                end=_moment(item.get("end")),
+                steps=_num(item.get("totalSteps")),
+                distance_m=_num(item.get("distance")),
+                area_name=area if isinstance(area, str) and area else None,
+                path=_thin(path),
+            )
+        )
+    return walks
+
+
+def overnight_from(data: Any) -> Overnight | None:
+    """Last night's interval from `pet_overnight`, or None when Fi has none.
+
+    None rather than a zero-length night: a date Fi has no summary for
+    (before the collar existed, or tonight before it happens) is not a night
+    she did not sleep.
+    """
+    summary = _dict(_dict(_dict(data).get("pet")).get("overnightRestSummary"))
+    if summary.get("__typename") != "ConcreteOvernightRestSummary":
+        return None
+    spans: list[tuple[datetime, datetime]] = []
+    for raw in summary.get("interruptions") or []:
+        span = _dict(raw)
+        start, end = _moment(span.get("start")), _moment(span.get("end"))
+        if start is not None and end is not None and end >= start:
+            spans.append((start, end))
+    spans.sort()
+    return Overnight(
+        date=_moment(summary.get("date")),
+        sleep_seconds=_num(summary.get("sleepSeconds")),
+        sleep_start=_moment(summary.get("sleepStart")),
+        sleep_end=_moment(summary.get("sleepEnd")),
+        interruptions=tuple(spans),
+    )

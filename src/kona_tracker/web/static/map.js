@@ -78,6 +78,14 @@
     } else {
       map.setView(latlngs[0], 16);
     }
+    // A finished walk has two ends and they matter: a dot where the route
+    // begins, the K where it ended. One point is a place, not a route.
+    if (latlngs.length > 1) {
+      L.marker(latlngs[0], {
+        icon: L.divIcon({ className: 'kona-map-start', html: '<span></span>', iconSize: [14, 14], iconAnchor: [7, 7] }),
+        interactive: false
+      }).addTo(map);
+    }
     var last = points[points.length - 1];
     if (last.accuracy) {
       L.circle([last.lat, last.lon], {

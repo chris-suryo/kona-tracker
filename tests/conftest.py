@@ -44,6 +44,8 @@ def fake_fi_handler(request: httpx.Request) -> httpx.Response:
             ("KonaDevice", "device"),
             ("KonaLocation", "location"),
             ("KonaWhereabouts", "whereabouts"),
+            ("KonaWalks", "walks"),
+            ("KonaOvernight", "overnight"),
         ):
             if op in query:
                 return httpx.Response(200, json=fixture(name))

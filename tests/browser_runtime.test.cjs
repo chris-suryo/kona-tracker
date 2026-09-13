@@ -376,3 +376,22 @@ test('a tile server that answers nothing says so, and recovers if it wakes up', 
   assert.equal(notice.hidden, true);
   assert.equal(resized, 1, 'Leaflet sized itself while hidden and must re-measure');
 });
+
+
+test('a route gets a start dot and a single point does not', () => {
+  const icons = [];
+  const layer = {addTo() {}, on() {}};
+  const L = {map: () => ({remove() {}, setView() {}, fitBounds() {}}), tileLayer: () => layer,
+    marker: (ll, opts) => { icons.push(opts.icon.className); return layer; },
+    polyline: () => layer, divIcon: (o) => o, control: {zoom: () => layer}};
+  const classes = new Set();
+  const mapEl = {hidden: false, classList: {toggle: (n, on) => on ? classes.add(n) : classes.delete(n), contains: n => classes.has(n)}};
+  let points = '[{"lat":30,"lon":-97},{"lat":30.001,"lon":-97.001}]';
+  const document = {getElementById: id => id === 'map-points' ? {textContent: points} : id === 'kona-map' ? mapEl : null};
+  const window = {};
+  vm.runInNewContext(fs.readFileSync(path.join(staticDir,'map.js'),'utf8'), {window,document,L});
+  assert.deepEqual(icons, ['kona-map-start', 'kona-map-marker']);
+  icons.length = 0; points = '[{"lat":30,"lon":-97}]';
+  window.KonaMap.init();
+  assert.deepEqual(icons, ['kona-map-marker'], 'one point is a place, not a route');
+});
