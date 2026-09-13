@@ -341,7 +341,9 @@ def test_context_shows_raw_seconds_when_the_unit_is_not_credible():
 def test_context_of_nothing_at_all_is_all_dashes():
     ctx = activity_context(None, configured=False)
     assert ctx["sleep_parts"] is None and ctx["steps"] is None and ctx["as_of"] is None
-    assert ctx["ring"] == {"percent": 0, "arc": 0.0, "overflow": 0.0}
+    # Nothing measured at all: an empty ring whose label is a dash, not a
+    # confident "0%" about a collar that was never configured.
+    assert ctx["ring"] == {"percent": None, "arc": 0.0, "overflow": 0.0, "known": False}
     assert ctx["has_data"] is False and ctx["dial_offset"] == TRACK
 
 

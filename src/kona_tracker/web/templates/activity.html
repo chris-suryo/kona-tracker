@@ -47,14 +47,14 @@
     <span class="hero-note">{% if step_goal %}of {{ step_goal }}{% else %}No goal available{% endif %}</span>
     {% if preview %}<a class="metric-open" href="/preview/steps" aria-label="Open sample steps detail"><span aria-hidden="true">View activity ›</span></a>{% elif configured %}<a class="metric-open" href="/steps" aria-label="Open today's steps by hour"><span aria-hidden="true">View steps ›</span></a>{% endif %}
   </div>
-  <div class="goal-ring" aria-label="{{ ring.percent }} percent of today's step goal">
+  <div class="goal-ring" aria-label="{% if ring.known %}{{ ring.percent }} percent of today's step goal{% else %}Goal progress unavailable{% endif %}">
     <svg viewBox="0 0 120 120" aria-hidden="true">
       <circle class="track" cx="60" cy="60" r="46" pathLength="100"/>
       <circle class="value" cx="60" cy="60" r="46" pathLength="100" stroke-dasharray="100" stroke-dashoffset="{{ 100 - ring.arc }}"/>
       {# Past the goal, a second lap in a brighter green over the first. #}
       {% if ring.overflow %}<circle class="value over" cx="60" cy="60" r="46" pathLength="100" stroke-dasharray="100" stroke-dashoffset="{{ 100 - ring.overflow }}"/>{% endif %}
     </svg>
-    <strong>{{ ring.percent }}%</strong>
+    <strong>{% if ring.known %}{{ ring.percent }}%{% else %}<span class="empty">&ndash;</span>{% endif %}</strong>
   </div>
 </section>
 
@@ -127,9 +127,13 @@
      "Start walk" is standing at the door before Fi has sent any route at
      all, which is exactly when there are no map points to draw. #}
   <div class="location-actions">
-    {% if map_points %}
+    {% if map_points and not preview %}
     {# The tile cannot be pinched -- page zoom is off and Leaflet is boxed
-       into a small element -- so the way to see more is a page of map. #}
+       into a small element -- so the way to see more is a page of map.
+       Not offered in preview: /map reads the real collar, so the link led
+       out of sample data and into an empty real map without saying so
+       (ChatGPT's visual audit, 2026-09-13). Preview is for judging layout,
+       and every other way out of it is labelled. #}
     <a class="map-expand" href="/map">Open full map<span aria-hidden="true"> ›</span></a>
     {% endif %}
     {% if live.offered %}

@@ -103,16 +103,23 @@ def step_ring(steps: int | float | None, goal: int | float | None) -> dict[str, 
     which stops at 100; `overflow` is the surplus drawn as a second lap on
     top of the first, also capped at 100. A day at 150% shows a full ring
     with half of a brighter one over it. A third lap would only paint over
-    the second and say nothing new, hence the second cap. No goal, or no
-    steps, is an empty ring rather than a division by zero in the template.
+    the second and say nothing new, hence the second cap.
+
+    `known` is the difference between two states this used to collapse into
+    one confident "0%": a day on which she genuinely has not moved yet, and
+    a server with no collar configured at all, where the steps are unknown
+    and there is no goal to measure them against. The second was printing a
+    measurement (ChatGPT's visual audit, 2026-09-13). An empty ring is right
+    for both; the number in the middle is only right for the first.
     """
-    if not steps or not goal or goal <= 0:
-        return {"percent": 0, "arc": 0.0, "overflow": 0.0}
+    if steps is None or not goal or goal <= 0:
+        return {"percent": None, "arc": 0.0, "overflow": 0.0, "known": False}
     percent = float(steps) / float(goal) * 100.0
     return {
         "percent": int(round(percent)),
         "arc": round(min(percent, 100.0), 1),
         "overflow": round(min(max(percent - 100.0, 0.0), 100.0), 1),
+        "known": True,
     }
 
 

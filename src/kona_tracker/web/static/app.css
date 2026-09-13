@@ -472,18 +472,6 @@ body.activity-page { overscroll-behavior-y: contain; }
 .setting-note { margin: 12px 0 0; font-size: 12px; color: var(--ink2); }
 .setting-note.warn { color: var(--warn); }
 
-@media (prefers-reduced-motion: reduce) {
-  @view-transition { navigation: none; }
-  .goal-ring .value, .collar-summary, .location-card, .steps-hero, .rest-grid, .week-row { animation: none; }
-  /* Kept as a compatibility guard for the previous template and its test. */
-  .dial .val, .stat { animation: none; }
-  .dot.on { animation: none; opacity: 1; }
-  .cam-connecting span::before { animation: none; opacity: 1; }
-  .nub, .shutter, .switch, .switch span { transition: none; }
-  /* `.pull.busy span` outranks `.pull span`, so it is named here too. */
-  .pull, .pull span, .pull.busy span { transition: none; animation: none; }
-  .pull.busy span::before { animation: none; }
-}
 
 /* ---------------------------------------------------------------------- *
  * The full-screen live map (/map).
@@ -519,6 +507,11 @@ body.activity-page { overscroll-behavior-y: contain; }
               display: flex; gap: 8px; }
 .live-stat { flex: 1 1 0; min-width: 0; background: var(--bg2); border: 1px solid var(--line);
              border-radius: 12px; padding: 9px 12px; display: grid; gap: 1px; }
+/* `display: grid` outranks the browser's own [hidden] rule, so a panel the
+   server marked hidden was still drawing a dash on the empty map. Every
+   other component in this file carries the same guard; this one was missed
+   (found in ChatGPT's visual audit, 2026-09-13, by reading the DOM). */
+.live-stat[hidden], .live-walk[hidden], .live-recentre[hidden], .live-note[hidden] { display: none; }
 .live-stat strong { font-size: 19px; font-weight: 700; letter-spacing: -.03em;
                     font-variant-numeric: tabular-nums; white-space: nowrap; }
 .live-stat strong small { font-size: 12px; font-weight: 600; margin: 0 4px 0 1px; color: var(--ink2); }
@@ -559,3 +552,22 @@ body.activity-page { overscroll-behavior-y: contain; }
              display: flex; align-items: center; gap: 10px; }
 .live-walk .walk-toggle { margin-left: 0; flex: none; }
 .live-walk .walk-note { margin: 0; font-size: 12px; color: var(--ink2); min-width: 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  @view-transition { navigation: none; }
+  .goal-ring .value, .collar-summary, .location-card, .steps-hero, .rest-grid, .week-row { animation: none; }
+  /* Kept as a compatibility guard for the previous template and its test. */
+  .dial .val, .stat { animation: none; }
+  .dot.on { animation: none; opacity: 1; }
+  .cam-connecting span::before { animation: none; opacity: 1; }
+  .nub, .shutter, .switch, .switch span { transition: none; }
+  /* `.pull.busy span` outranks `.pull span`, so it is named here too. */
+  .pull, .pull span, .pull.busy span { transition: none; animation: none; }
+  .pull.busy span::before { animation: none; }
+  /* Added 2026-09-13 with the live map and the walk button. They were
+     appended *after* this block, which is how a convention with a test
+     that only greps forwards gets quietly broken -- the test still passed
+     because it slices from here to the end of the file, and the new rules
+     were simply inside the slice without being covered by it. */
+  .walk-toggle, .live-recentre, .seg.small .opt { transition: none; }
+}
