@@ -170,6 +170,17 @@ running the app must be on the same network.
    ```
 
    (`/stream2` is a lighter stream if the picture stutters on the Pi.)
+
+   For the switches on the Camera tab -- night vision, privacy mode, the
+   status light -- add your TP-Link cloud password too:
+
+   ```
+   KONA_TAPO_PASSWORD=<the password you sign in to the Tapo app with>
+   ```
+
+   That is a different password from the camera account, and it is the one
+   recent firmware wants for the control API. Leave it blank and the
+   switches are not shown; the video still works.
 6. Test the camera once, then run for real:
 
    ```

@@ -54,9 +54,10 @@ TAPO_PAN_TILT = Capabilities(
 # A plain webcam: we can read frames and nothing else.
 USB = Capabilities()
 
-# The simulated camera claims pan/tilt so the control surface can be built
-# and judged before any hardware arrives. Nothing else is pretended.
-FAKE = Capabilities(ptz=True, presets=True)
+# The simulated camera claims pan/tilt, and the three switches a Tapo has,
+# so the control surface can be built and judged before any hardware
+# arrives. Nothing else is pretended: no alarm, no motion, no talk.
+FAKE = Capabilities(ptz=True, presets=True, night_vision=True, privacy=True, led=True)
 
 # `KONA_CAMERA_MODEL` picks one of these. Unknown models fall back to the
 # most cautious reading of the source rather than the most generous.
