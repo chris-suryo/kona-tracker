@@ -191,6 +191,7 @@
         : '';
       note.hidden = !data.stale;
     }
+    if (data.button && window.KonaWalkMode) { window.KonaWalkMode.draw(data.button); }
     ageSeconds = (typeof data.fix_age_s === 'number') ? data.fix_age_s : null;
     paintAge();
     if (data.points && data.points.length) {

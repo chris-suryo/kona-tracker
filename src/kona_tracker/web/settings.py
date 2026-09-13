@@ -88,6 +88,10 @@ class Settings:
     fi_email: str = ""
     fi_password: str = ""
     fi_refresh_seconds: float = 300.0
+    #: The cadence while she is out: the button is pressed, or Fi says walk.
+    fi_live_seconds: float = 20.0
+    #: How long a press of "Start walk" lasts before it expires by itself.
+    fi_live_max_seconds: float = 7200.0
     fi_data_start: date | None = None
 
     @property
@@ -255,6 +259,8 @@ def load_settings(env_file: Path | None = Path(".env"), fake_camera: bool = Fals
         fi_email=get("FI_EMAIL"),
         fi_password=get("FI_PASSWORD"),
         fi_refresh_seconds=float(get("KONA_FI_REFRESH_SECONDS", "300")),
+        fi_live_seconds=float(get("KONA_FI_LIVE_SECONDS", "20")),
+        fi_live_max_seconds=float(get("KONA_FI_LIVE_MAX_SECONDS", "7200")),
         fi_data_start=data_start,
         trusted_proxy_header=trusted_proxy_header,
         trusted_proxy_ips=trusted_proxy_ips,

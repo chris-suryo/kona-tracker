@@ -49,6 +49,14 @@
 
   <button type="button" class="live-recentre" id="live-recentre" hidden>Recentre</button>
 
+  {% if live.offered %}
+  <div class="live-walk">
+    <button type="button" class="walk-toggle{{ ' on' if live.on else '' }}" id="walk-toggle"
+            data-on="{{ 'true' if live.on else 'false' }}">{{ live.label }}</button>
+    <span class="walk-note" id="walk-note">{{ live.note }}</span>
+  </div>
+  {% endif %}
+
   <p class="live-note" id="live-note" {% if not stale %}hidden{% endif %}>
     {%- if stale %}Fi stopped answering — this is the last fix we have.{% endif -%}
   </p>
@@ -58,4 +66,5 @@
 {% if map_tiles %}<script type="application/json" id="map-config">{{ map_tiles|tojson }}</script>{% endif %}
 <script src="/static/leaflet/leaflet.js" defer></script>
 <script src="{{ asset('map_live.js') }}" defer></script>
+<script src="{{ asset('walk_mode.js') }}" defer></script>
 {% endblock %}

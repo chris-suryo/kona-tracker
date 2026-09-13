@@ -18,6 +18,7 @@ import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, timedelta
+from typing import Any
 
 from kona_tracker.fi.client import FiClient, FiError, FiGraphQLError
 from kona_tracker.fi.parse import (
@@ -56,6 +57,19 @@ from kona_tracker.fi.queries import (
 log = logging.getLogger("kona_tracker.fi")
 
 DEFAULT_REFRESH_SECONDS = 300.0
+#: While she is out, this is how often the server may ask Fi. Fi's own GPS
+#: rate setting decides how fresh the answer can possibly be -- on the
+#: 2026-09-13 walk the collar's last report was about a minute old -- so
+#: asking much faster than this buys nothing but requests against somebody
+#: else's private API.
+DEFAULT_LIVE_SECONDS = 20.0
+#: The fast cadence never goes below this, whatever the setting says.
+LIVE_FLOOR_SECONDS = 10.0
+#: A walk button nobody remembers to switch off must not poll Fi all night,
+#: so live mode expires by itself. Two hours is longer than any walk and
+#: short enough that a forgotten press costs one afternoon, not a week.
+DEFAULT_LIVE_MAX_SECONDS = 7200.0
+
 #: How often a *person* may make us ask Fi again (pull-to-refresh, coming back
 #: to the app). Well under the background TTL, well above a thumb twitch: Fi's
 #: API is private and undocumented, and a request loop against it is the one
@@ -308,10 +322,16 @@ class FiService:
         client_factory=FiClient,
         clock: Callable[[], datetime] = _now,
         data_start: date | None = None,
+        live_seconds: float = DEFAULT_LIVE_SECONDS,
+        live_max_seconds: float = DEFAULT_LIVE_MAX_SECONDS,
     ):
         self._email = email
         self._password = password
         self._ttl = max(refresh_seconds, 1.0)
+        self._live_ttl = max(live_seconds, LIVE_FLOOR_SECONDS)
+        self._live_max = max(live_max_seconds, 60.0)
+        #: When the fast cadence stops. None means it is not running.
+        self._live_until: datetime | None = None
         self._client_factory = client_factory
         self._clock = clock
         self._data_start = data_start
@@ -389,6 +409,59 @@ class FiService:
             self._refreshing = False
             self._lock.notify_all()
 
+    # -- live mode ---------------------------------------------------------
+    #
+    # Fi decides a walk has started two to three minutes after it has, which
+    # is most of a short walk spent at the resting cadence. So the person
+    # holding the lead gets to say so: "Start walk" turns the fast cadence on
+    # at once, and Fi's own detection stays underneath for the walks nobody
+    # pressed a button for.
+
+    def start_live(self) -> dict[str, Any]:
+        """Ask Fi more often, from now until it expires or is stopped."""
+        with self._lock:
+            self._live_until = self._clock() + timedelta(seconds=self._live_max)
+            return self._live_state()
+
+    def stop_live(self) -> dict[str, Any]:
+        with self._lock:
+            self._live_until = None
+            return self._live_state()
+
+    def live_state(self) -> dict[str, Any]:
+        with self._lock:
+            return self._live_state()
+
+    def _live_state(self) -> dict[str, Any]:
+        """Caller holds the lock."""
+        remaining = 0.0
+        if self._live_until is not None:
+            remaining = max(0.0, (self._live_until - self._clock()).total_seconds())
+            if remaining <= 0.0:
+                self._live_until = None
+        return {
+            "live": self._live_until is not None,
+            "seconds_left": int(remaining),
+            "every_seconds": int(self._live_ttl),
+        }
+
+    def _effective_ttl(self) -> float:
+        """The refresh interval that applies right now. Caller holds the lock.
+
+        Two ways to earn the fast one: somebody pressed the button, or the
+        snapshot we already hold says she is on a walk. The second means a
+        walk started by anyone -- Chris's sister, say -- speeds the page up
+        on its own once Fi notices it.
+        """
+        if self._live_until is not None:
+            if (self._live_until - self._clock()).total_seconds() > 0:
+                return self._live_ttl
+            self._live_until = None
+        status = self._snapshot.status if self._snapshot else None
+        if status is not None and status.activity == "walk" and not status.positions_carried:
+            return self._live_ttl
+        return self._ttl
+
     def peek(self) -> FiSnapshot | None:
         """What the cache holds, without asking Fi for anything.
 
@@ -430,7 +503,8 @@ class FiService:
 
         with self._lock:
             since = self._since_attempt()
-            wanted = since >= self._ttl or (force and since >= PULL_REFRESH_FLOOR_SECONDS)
+            ttl = self._effective_ttl()
+            wanted = since >= ttl or (force and since >= PULL_REFRESH_FLOOR_SECONDS)
             due = wanted and not self._refreshing
             if due:
                 self._refreshing = True
