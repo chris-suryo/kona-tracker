@@ -116,6 +116,11 @@ def test_a_failed_call_scrubs_the_password_and_forgets_the_session():
     with pytest.raises(TapoError) as exc:
         control.settings()
     assert "cloud-secret" not in str(exc.value) and "***" in str(exc.value)
+    # The camera's session token rides in the request URL that requests
+    # echoes on a connection error; it must not reach a log line either.
+    assert control._scrub("HTTPSConnectionPool: https://10.0.0.111/stok=AbC123xyz/ds failed") == (
+        "HTTPSConnectionPool: https://10.0.0.111/stok=***/ds failed"
+    )
     assert control.settings()["night"] == "auto"
     assert len(made) == 2, "logged in again after the failure"
 

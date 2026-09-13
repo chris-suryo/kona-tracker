@@ -21,6 +21,7 @@ module has the password scrubbed from it in case pytapo echoed it.
 from __future__ import annotations
 
 import logging
+import re
 import threading
 from collections.abc import Callable
 from typing import Any
@@ -29,6 +30,8 @@ from kona_tracker.camera.capabilities import Capabilities
 from kona_tracker.camera.control import ControlUnsupported, parse_setting
 
 log = logging.getLogger("kona_tracker.camera.tapo")
+#: The session token as it appears inside a pytapo request URL.
+_STOK = re.compile(r"stok=[^/\s\"']+")
 
 
 class TapoError(RuntimeError):
@@ -82,8 +85,13 @@ class TapoControl:
 
     # -- switches ------------------------------------------------------------
     def _scrub(self, text: str) -> str:
+        """Nothing secret leaves in an error string: not the password, and
+        not the camera's session token, which requests echoes as part of
+        the URL (`/stok=<token>/ds`) when a cached session hits a dead
+        camera. Short-lived and LAN-only, but a log line is forever."""
         if self._password and self._password in text:
             text = text.replace(self._password, "***")
+        text = _STOK.sub("stok=***", text)
         return text[:200]
 
     def _connect(self) -> Any:
@@ -166,4 +174,5 @@ class TapoControl:
         return self.settings()
 
     def close(self) -> None:
-        self._client = None
+        with self._lock:
+            self._client = None
