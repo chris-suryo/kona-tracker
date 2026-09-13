@@ -137,7 +137,9 @@ def default_control(s: Settings) -> CameraControl:
         if host:
             from kona_tracker.camera.tapo import TapoControl
 
-            return TapoControl(host, s.tapo_user, s.tapo_password, caps)
+            return TapoControl(
+                host, s.tapo_user, s.tapo_password, caps, cloud_password=s.tapo_cloud_password
+            )
     return NoControl(caps)
 
 

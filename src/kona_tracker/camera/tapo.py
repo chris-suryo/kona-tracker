@@ -38,10 +38,17 @@ class TapoError(RuntimeError):
     """The camera did not do what was asked. The message is safe to show."""
 
 
-def _default_client(host: str, user: str, password: str) -> Any:
+def _default_client(host: str, user: str, password: str, cloud_password: str = "") -> Any:
     from pytapo import Tapo  # imported here: only a configured Tapo pays for it
 
-    return Tapo(host, user, password)
+    # Two credentials, not one. Recent firmware wants the camera account for
+    # most calls and the TP-Link *cloud* password to establish the session;
+    # pytapo takes them separately and we were only ever filling the first.
+    # That is what "Invalid authentication data" meant on Chris's C120 on
+    # 2026-09-13, and no amount of trying the other password in the one slot
+    # could have fixed it. Blank falls back to the old single-credential
+    # behaviour, which is what older firmware wants.
+    return Tapo(host, user, password, cloudPassword=cloud_password or password)
 
 
 class TapoControl:
@@ -51,11 +58,13 @@ class TapoControl:
         user: str,
         password: str,
         model: Capabilities,
-        client_factory: Callable[[str, str, str], Any] = _default_client,
+        client_factory: Callable[..., Any] = _default_client,
+        cloud_password: str = "",
     ):
         self._host = host
         self._user = user
         self._password = password
+        self._cloud_password = cloud_password
         self._factory = client_factory
         self._client: Any = None
         self._lock = threading.Lock()
@@ -85,19 +94,22 @@ class TapoControl:
 
     # -- switches ------------------------------------------------------------
     def _scrub(self, text: str) -> str:
-        """Nothing secret leaves in an error string: not the password, and
+        """Nothing secret leaves in an error string: neither password, and
         not the camera's session token, which requests echoes as part of
         the URL (`/stok=<token>/ds`) when a cached session hits a dead
         camera. Short-lived and LAN-only, but a log line is forever."""
-        if self._password and self._password in text:
-            text = text.replace(self._password, "***")
+        for secret in (self._password, self._cloud_password):
+            if secret and secret in text:
+                text = text.replace(secret, "***")
         text = _STOK.sub("stok=***", text)
         return text[:200]
 
     def _connect(self) -> Any:
         if self._client is None:
             try:
-                self._client = self._factory(self._host, self._user, self._password)
+                self._client = self._factory(
+                    self._host, self._user, self._password, self._cloud_password
+                )
             except Exception as e:  # pytapo raises plain Exception
                 raise TapoError(
                     f"Could not reach the camera's control API: {self._scrub(str(e))}"
