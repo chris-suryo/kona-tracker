@@ -107,6 +107,12 @@ class CollarStatus:
     battery_percent: int | float | None = None
     time_to_empty_s: int | float | None = None
     on_base: bool | None = None
+    #: When Fi recorded that connection state. The field is `lastConnection-
+    #: State`, and "last" is load-bearing: on the 2026-09-13 walk it still
+    #: said ConnectedToBase from hours earlier while she was 878 m from the
+    #: house, and the page printed "On charger" in the present tense. Keeping
+    #: the date is what lets the page tell a current reading from a memory.
+    connection_at: datetime | None = None
     signal_percent: int | float | None = None
     led_on: bool | None = None
     led_color: str | None = None
@@ -387,6 +393,7 @@ def status_from(data: Any) -> CollarStatus:
         on_base=(
             True if kind == "ConnectedToBase" else False if kind == "ConnectedToCellular" else None
         ),
+        connection_at=_moment(conn.get("date")),
         signal_percent=_num(conn.get("signalStrengthPercent")),
         led_on=params.get("ledEnabled") if isinstance(params.get("ledEnabled"), bool) else None,
         led_color=led_name if isinstance(led_name, str) and led_name else None,

@@ -75,7 +75,10 @@
     {% if sleep_parts %}
     <span class="d metric-value">{{ duration(sleep_parts) }}</span>
     {# Fi's own interval for the night when it has one (rounds 10-11), else the window's dates. #}
-    <span>{% if overnight and overnight.span %}{{ overnight.span }} · {{ overnight.wake_label }}{% elif window_from and window_to %}{{ window_from }} to {{ window_to }}{% else %}Most recent full night{% endif %}</span>
+    {# The span belongs to the same night as the figure above it. When Fi
+       sends no overnight summary the figure is the whole day's sleep, and
+       the caption has to say so rather than borrow a night's hours. #}
+    <span>{% if overnight and overnight.span %}{{ overnight.span }} · {{ overnight.wake_label }}{% elif sleep_source == 'day' and window_from %}All sleep on {{ window_from }}{% else %}Most recent full night{% endif %}</span>
     {% elif sleep_raw is not none %}
     <span class="d metric-value">{{ sleep_raw }}<small>raw</small></span>
     <span class="warn">Unrecognised unit</span>
@@ -107,7 +110,7 @@
   {% if activity in ('walk', 'rest') and (activity_since or walk_distance_m) %}
   <p class="location-note activity-timing">{% if activity == 'walk' and walk_distance %}{{ walk_distance }} walked{% if activity_since %} · {% endif %}{% endif %}{% if activity_since %}{{ 'Started' if activity == 'walk' else 'Resting since' }} {{ activity_since }}{% endif %}</p>
   {% endif %}
-  {% if on_base is not none %}<p class="location-note connection"><span class="status-dot {{ 'warn-dot' if stale else 'live' }}"></span>{% if on_base %}On charger{% elif signal %}Cellular {{ signal }}%{% else %}Cellular{% endif %}</p>{% endif %}
+  {% if connection %}<p class="location-note connection {{ '' if connection.current else 'past' }}"><span class="status-dot {{ 'warn-dot' if stale or not connection.current else 'live' }}"></span>{{ connection.text }}</p>{% endif %}
   {% if stale %}<p class="location-note warn">From the last successful Fi update{% if as_of %} · {{ as_of }}{% endif %}</p>{% endif %}
   {% if map_points %}
   <div id="kona-map" class="map" aria-label="Map showing Kona's {% if map_kind == 'current' %}current walk route{% elif map_kind == 'rest' %}resting place{% elif map_kind == 'home' %}Home location{% else %}last reported location{% endif %}"></div>

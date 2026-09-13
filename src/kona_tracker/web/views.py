@@ -239,6 +239,83 @@ def overnight_labels(night: Overnight | None, zone: tzinfo | None) -> dict[str, 
     }
 
 
+#: How far behind the collar's last report a connection reading may be and
+#: still describe the present. The collar reports every ~3 minutes at rest
+#: (`nextLocationUpdateExpectedBy`, measured 2026-09-13), and when it is on
+#: the base the two timestamps are identical, so a minute is generous.
+CONNECTION_CURRENT_SECONDS = 60
+
+
+def connection_label(status: CollarStatus | None, zone: tzinfo | None) -> dict[str, Any] | None:
+    """Where the collar is connected -- and whether that is news or memory.
+
+    Fi's field is `lastConnectionState`. On 2026-09-13 it still said
+    ConnectedToBase, from hours earlier, while Kona was 878 m from the house
+    on a walk, and the page printed "On charger" beside a moving map. Fi was
+    not wrong; we were reading a *last known* state as a current one.
+
+    So the reading is only allowed to speak in the present tense when its own
+    timestamp keeps up with the collar's last report. Otherwise it says what
+    it actually is: the last connection Fi recorded, and when.
+    """
+    if status is None or status.on_base is None:
+        return None
+    place = "the charger" if status.on_base else "cellular"
+    current = True
+    if status.connection_at is not None and status.last_report is not None:
+        behind = (status.last_report - status.connection_at).total_seconds()
+        current = behind <= CONNECTION_CURRENT_SECONDS
+    if current:
+        if status.on_base:
+            text = "On charger"
+        elif status.signal_percent is not None:
+            text = f"Cellular {_count(status.signal_percent)}%"
+        else:
+            text = "Cellular"
+        return {"text": text, "current": True}
+    when = _clock(status.connection_at, zone).strftime("%H:%M") if status.connection_at else None
+    return {
+        "text": f"Last connected to {place}{f' · {when}' if when else ''}",
+        "current": False,
+    }
+
+
+def last_night(snapshot: FiSnapshot | None, zone: tzinfo | None) -> dict[str, Any] | None:
+    """ "Asleep last night" -- one night's sleep, with the span that matches it.
+
+    Two numbers were being shown as one. The hero used Fi's SLEEP total for
+    the whole calendar day (35513 s on 2026-09-12, "9h 52m"), while the
+    caption under it used `overnightRestSummary`'s actual bout (27832 s,
+    00:20-08:04, "7h 44m"). A figure and its own caption disagreeing by two
+    hours is exactly the confident-wrong output this project refuses, and
+    Chris chose the overnight bout on 2026-09-13: it is what a person means
+    by "last night", and it is the one the span describes.
+
+    The day total is not lost -- it is what `/rest` charts, per day, where
+    the label says so. When Fi sends no overnight summary the day total
+    stands in, and `source` says which is on screen so the caption can too.
+    """
+    if snapshot is None:
+        return None
+    night = snapshot.overnight
+    window = snapshot.window
+    if night is not None and night.sleep_seconds is not None and night.sleep_start is not None:
+        return {
+            "parts": duration_parts(night.sleep_seconds),
+            "raw": night.sleep_seconds,
+            "source": "overnight",
+            "labels": overnight_labels(night, zone),
+        }
+    if window is None:
+        return None
+    return {
+        "parts": duration_parts(window.sleep),
+        "raw": window.sleep,
+        "source": "day",
+        "labels": None,
+    }
+
+
 def age_label(birthday: date | None, on: datetime) -> str | None:
     """`13 months`, `1 year 1 month`, `3 years`. None without a birthday."""
     if birthday is None:
@@ -324,6 +401,7 @@ def activity_context(snapshot: FiSnapshot | None, configured: bool) -> dict[str,
     sleep_hours = snapshot.sleep_hours if snapshot else None
     zone = kona_zone(profile.timezone if profile else None)
     fetched_local = _clock(snapshot.fetched_at, zone) if snapshot else None
+    night = last_night(snapshot, zone)
     positions = status.positions if status else ()
     rest_position = status.rest_position if status else None
     home_position = status.home_location if status else None
@@ -423,13 +501,16 @@ def activity_context(snapshot: FiSnapshot | None, configured: bool) -> dict[str,
         "pet_name": (snapshot.pet_name if snapshot else "") or "Kona",
         # `8h 30m` as (figure, unit) pairs. None when there is nothing to say
         # or the figure is not credible as seconds; `sleep_raw` covers that.
-        "sleep_parts": duration_parts(window.sleep if window else None),
+        # One night, and the span that describes that same night. See
+        # `last_night`: these used to come from two different calculations.
+        "sleep_parts": (night["parts"] if night else None),
+        "sleep_source": (night["source"] if night else None),
         "nap_parts": duration_parts(today.nap if today else None),
         # The collar was paired today: there is a day in progress but no
         # completed night yet. Say so, rather than "no data".
         "night_pending": window is None and today is not None,
         # Kept so a unit change shows the real figure instead of nothing.
-        "sleep_raw": window.sleep if window else None,
+        "sleep_raw": (night["raw"] if night else None),
         "nap_raw": today.nap if today else None,
         "unit_suspect": bool(snapshot and snapshot.unit_suspect),
         # Two different failures that must not share a sentence: "stale"
@@ -441,7 +522,8 @@ def activity_context(snapshot: FiSnapshot | None, configured: bool) -> dict[str,
         "window_to": _day(window.end if window else None),
         # Last night as a time span, and the day's walks. Both are Fi's
         # own records (rounds 10-11), not inferred from anything.
-        "overnight": overnight_labels(snapshot.overnight if snapshot else None, zone),
+        "overnight": (night["labels"] if night else None),
+        "connection": connection_label(status, zone),
         "walks_today": (
             walk_rows(snapshot.walks, fetched_local, zone) if snapshot and fetched_local else []
         ),
