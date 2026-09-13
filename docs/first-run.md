@@ -246,6 +246,19 @@ uv sync
 uv run kona serve
 ```
 
+**On the Windows PC**, Application Control blocks `uv sync` (error 4551,
+seen 2026-09-12). Two workarounds, depending on whether the update added a
+dependency; the PR or session summary says which:
+
+```powershell
+uv run --no-sync kona serve          # nothing new to install
+uv sync --no-build-isolation         # a new dependency (e.g. pytapo, 2026-09-13); untested here
+```
+
+If the second one is blocked too, paste the error into the next session
+rather than working around it; the fix may be a policy exception, not a
+command.
+
 ## If something goes wrong
 
 - **Video is choppy.** Measured on the C270: at the default 1280x720 the

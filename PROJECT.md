@@ -8,27 +8,32 @@ once the hardware exists.
 kit: 3e06b156508b881bef26345c0bb7a63c90db4824 · stamped by dos new
 ---
 
-## Status (2026-09-11, chapter 2)
+## Status (2026-09-13, chapter 2)
 
-**Start from `main`.** It is no longer stale: chapter 2's work lands there by
-PR rather than accumulating on a long-lived branch. Branch from `main`, open
-a PR, Chris merges. The overnight UI pass is in; the Fi data brief and the
-camera rewrite from MJPEG to snapshot polling are PRs #9 and #8. One branch
-stays deliberately unmerged -- `chatgpt/ui-pass` (PR #7), a visiting
-assistant's work in flight.
+**Start from `main`.** Every PR through #28 is merged; nothing is stacked or
+waiting. Branch from `main`, open a PR, CI green, merge. ChatGPT's UI pass
+(PR #7) was reconciled in as #14 and #7 closed.
 
 `docs/production-punchlist.md` is the queue and carries the reasoning behind
 every item; `docs/scaling-limits.md` is the standing list of ceilings;
 `docs/chatgpt-handoff.md` is the brief for a visiting assistant.
 
-- **Slice 1:** `kona probe` dumps every Fi API field, redacted. Still
-  unverified against the real API. `docs/slice-1-probe-plan.md`.
+- **Slice 1:** `kona probe` dumps every Fi API field, redacted. Eleven rounds
+  run against Kona's collar; each round asks one unknown per query so the
+  validation error names the next thing. `docs/slice-1-probe-plan.md`.
 - **Slice 2 + 2b:** `kona serve` = passcode gate, live camera (USB or RTSP,
-  reconnects, "NO SIGNAL" when stale). Verified with simulated cameras only.
-  `docs/slice-2-camera-plan.md`, `docs/slice-2b-rtsp-plan.md`.
-- **Pan/tilt:** abilities are data (`KONA_CAMERA_MODEL` ->
-  `camera/capabilities.py`); the fake camera is steerable so the control
-  surface exists before the hardware. `docs/device-capabilities.md`.
+  reconnects, "NO SIGNAL" when stale). `docs/slice-2-camera-plan.md`,
+  `docs/slice-2b-rtsp-plan.md`.
+- **Camera is the Tapo C120 (2026-09-12).** RTSP `stream1` at 2560x1440,
+  downscaled server-side to `KONA_CAMERA_WIDTH` after decode so the phone
+  gets a sharp 1280-wide frame without the full bitrate. Latency: the reader
+  drains the decoder's queue to the newest frame before every snapshot and
+  opens FFmpeg with `nobuffer`/`low_delay`, which is what the 8-second lag
+  Chris measured was made of. **The lag after that fix is not yet measured
+  on his phone.** Pinch-to-zoom and double-tap on the picture (PR #27).
+  Night vision, privacy mode and the status light are real switches on the
+  Camera tab through pytapo (PR #28, the one new dependency, approved
+  2026-09-13). `docs/device-capabilities.md`.
 - **Slice 3 (Activity is real):** `fi/parse.py` holds the only parsers, shared
   by the probe and the page. `fi/service.py` caches one snapshot, refreshes on
   a background thread past `KONA_FI_REFRESH_SECONDS`, and never discards a good
@@ -36,142 +41,86 @@ every item; `docs/scaling-limits.md` is the standing list of ceilings;
   honest states: not configured, failing, **partial** (fresh but a query
   failed), and stale (old data, refresh failed).
 - **Slice 4 (first contact with the real API, 2026-09-10):** steps are live.
-  Sleep was rejected — `RestSummary.data` is abstract and `sleepAmounts` needs
-  an inline fragment on `ConcreteRestSummaryData`. Fixed. The probe now also
-  asks for profile/photos, device/connection, and location, and
-  `FiGraphQLError` preserves the whole graphql-js validation family instead of
-  one message shape. See `docs/device-capabilities.md` §2 for what is
-  confirmed present, confirmed **absent**, and untrustworthy.
+  Sleep was rejected -- `RestSummary.data` is abstract and `sleepAmounts` needs
+  an inline fragment on `ConcreteRestSummaryData`. Fixed. See
+  `docs/device-capabilities.md` §2 for what is confirmed present, confirmed
+  **absent**, and untrustworthy.
+- **History pages (2026-09-11 to 13):** `/rest` = today by hour (24 buckets
+  from `restFeed(period: DAY)`) then one bar per day since the collar came
+  online (`restSummaryFeed`); `/steps` = today by hour from `stepFeed`;
+  last night's span and interruptions from `overnightRestSummary`; a walk
+  log from `activityFeed` with the route drawn on `/walks/<id>`. The walk
+  routes and the Fi hourly buckets' field names came from "Did you mean"
+  hints across rounds 8-11 and **have not yet been seen rendering on
+  Chris's phone**; a query that fails shows up as a labelled problem line on
+  the page, never as a blank.
+- **Refresh (PR #20):** static files are cache-busted by content hash, the
+  Activity page re-fetches once a minute while visible, and the map keeps
+  its tiles unless none ever loaded. Three clocks decide how old the
+  position on screen is; `.env.example` explains them and why 120 is the
+  better `KONA_FI_REFRESH_SECONDS` for watching a walk.
 - **Motion:** `@view-transition { navigation: auto; }` gives animated
-  cross-document navigation on Safari 18.2+ and Chrome 126+; the dial arc
-  sweeps up and the stats stagger in. All CSS, no build step, all inside
-  `prefers-reduced-motion` guards. `docs/design-brief.md` explains why the app
-  is HTML and not React, and is the block to paste into a design session.
+  cross-document navigation on Safari 18.2+ and Chrome 126+. All CSS, no
+  build step, all inside `prefers-reduced-motion` guards.
+  `docs/design-brief.md` explains why the app is HTML and not React.
 - **Slice 5 (production pass, 2026-09-11):** her resting position on the map
   with honest tiers, a login lockout that survives a tunnel, Secure cookies
   by setting, a CSP with every script in a file, vendored Leaflet,
   pull-to-refresh that repaints without dropping the video, page zoom off by
-  request, camera health readable from a phone, a rotating log, times in
-  Kona's timezone, and an outbound heartbeat so a dead PC still raises an
-  alarm. `docs/production-punchlist.md` marks what is done and what is left.
-- **Hardware:** Fi collar paired and live since 2026-09-10. The USB webcam
-  (Logitech C270, fixed) works; its recurring failure is a **wedged USB
-  device**, cleared by a replug, not a code or resolution problem. Blink
-  Mini 2K+ and Wyze v4 do NOT work without unofficial bridges.
-- **Hardware bought 2026-09-11** (an earlier version of this bullet said a
-  Pi was already bought and unopened -- it was not, and acting on that sent
-  a session telling Chris the wrong thing while he stood in the store):
-  one **Raspberry Pi 5 8GB, open box**, a 52Pi case with fan, a 128 GB
-  microSD, a card reader, an RTC battery, a **Hiwonder TurboPi** robot kit
-  (**no Pi included**, so the Pi 5 is its brain for now), and a 6 ft USB-A
-  extension for the C270. **No power supply** -- Chris is trying a charger
-  he already owns, so an undervoltage check is the first thing to do.
-- **Kona still runs on the Windows PC**, and should. The Pi migration waits
-  on the Tapo, per `docs/handoff.md`: prove the new camera on a machine that
-  already works. `KONA_KEEP_AWAKE=true` in `.env` is the whole of "leave it
-  running"; boot-start (`docs/remote-access.md` 3c) stays deferred as the
-  least-tested step in the setup.
+  request (the camera picture is the one exception, by design), camera
+  health readable from a phone, a rotating log, times in Kona's timezone,
+  and an outbound heartbeat so a dead PC still raises an alarm.
+- **Windows PC:** `uv sync` is blocked by Application Control (error 4551)
+  on Chris's machine. `uv run --no-sync kona serve` runs what is already
+  installed; a new dependency needs `uv sync --no-build-isolation`, which
+  is untested there. The USB webcam (Logitech C270) is retired by the Tapo.
+- **Hardware bought 2026-09-11:** one Raspberry Pi 5 8GB, a 52Pi case, a
+  128 GB microSD, an RTC battery, a Hiwonder TurboPi kit (no Pi included).
+  No power supply; an undervoltage check is the first thing to do. **Kona
+  still runs on the Windows PC**, and should, until the Tapo is proven
+  there. `KONA_KEEP_AWAKE=true` in `.env` is the whole of "leave it running".
 
 **next:**
 
-*When Chris is back -- bookmarked 2026-09-11 evening, not yet run:*
+*Chris's checks, all on the real phone against the real collar and camera
+(none has been done; every item below was built against fakes):*
 
-Six PRs are open and none is merged. Merge in this order, then pull.
+0. Pull, install the new dependency, add `KONA_TAPO_PASSWORD` (the Tapo app
+   login, not the camera account) and `KONA_FI_REFRESH_SECONDS=120` to
+   `.env`, restart. `docs/first-run.md` "Updating later" has the commands.
+1. **Camera lag** after the drain fix: wave at the camera, count. Under
+   two seconds is the target on the LAN; report the number either way.
+2. **The three switches** on the Camera tab: they only appear when the
+   camera answered `GET /control/settings`. If the section is missing, the
+   pytapo login failed; `/settings` shows the last problem. The likeliest
+   cause is the password (cloud password vs camera account).
+3. **`/rest` "Today by hour", `/steps`, and the walk log** on Activity. Any
+   line starting "Hourly:" or "Walks:" is a field name Fi rejected; paste
+   it back and it is a one-line fix.
+4. **A walk while the page is open**: with refresh at 120 the position
+   should move within about four minutes of the collar reporting. Pull to
+   refresh for sooner.
+5. **Pinch-zoom** on the camera; double-tap to 2.5x, double-tap again to
+   reset.
 
-1. **#14** -- ChatGPT's UI pass reconciled onto current main. **Replaces #7**,
-   which GitHub reports as unmergeable (`dirty`); close #7 without merging.
-2. **#13** -- daily rest history in the data layer (`rest_days` on the
-   snapshot).
-3. **#17** -- the real `/rest` page drawn from that data, and "View rest"
-   pointing at it. Stacked on #14 and #13; it shrinks to two commits once
-   they land. Screenshots in `docs/screenshots/2026-09-11/rest-real-*.png`.
-4. **#12** -- the Tailscale path and the Secure-cookie trap, in docs.
-5. **#15** -- the README, this note, and the session artifact.
-6. **#16** -- probe round 7 (`stepFeed`/`restFeed` with a period,
-   `overnightRestSummary` with a date, `heatmap` with a range).
+*Still owed, in order:*
+6. The ten-minute polling soak (`/status.json` holds `streams: 0`) and the
+   cellular data delta against `docs/scaling-limits.md` §1.
+7. Pan/tilt for a C225 if one is ever bought; the C120 has no motors.
+   `KONA_CAMERA_MODEL` already gates the pad.
+8. `KONA_HEARTBEAT_URL` against healthchecks.io, not yet run. A domain and a
+   named tunnel (`docs/remote-access.md` 3a) so the URL survives a restart
+   and the Stadia key can move to domain auth. Then the Pi as the real host.
+9. One lights-off evening for the camera's black-frame rule in a genuinely
+   dark room; with night vision now switchable this is also the check that
+   "auto" actually kicks in.
+10. After a week of polling holding up, delete `/stream.mjpg` and the
+    containment that exists only for it.
 
-Then, in PowerShell in the kona-tracker folder:
-
-```powershell
-git checkout main
-git pull origin main
-uv sync
-uv run kona serve
-```
-
-Check `http://localhost:8000`: Activity should be the new Steps-first layout,
-the map still dark Stadia tiles, the camera still live, and **"View rest"
-should open a real page** -- one bar per day since the collar came online,
-averages over complete days only. **"View activity" still has no real
-destination**: there is no verified step history until round 7 answers.
-
-Then run round 7 and paste `probe-out\round7\summary.md` back:
-
-```powershell
-uv run kona probe --out probe-out\round7
-```
-
-If `stepFeedPeriod` comes back ACCEPTED, steps get the same treatment rest
-just got. Also still open: the cellular data delta against the 37.7 GB
-baseline, and whether the home charger undervolts the Pi 5.
-
-*The camera on the phone: fixed, merged, and confirmed on 2026-09-11.*
-`docs/camera-black-screen-handoff.md` is the whole record. Two bugs. The
-slow reveal is fixed. The second, the one that hung the phone on
-"Connecting…" after a tab switch, was abandoned MJPEG streams piling up
-until the small pool the stream waits use was full; restarting `kona serve`
-cleared it every time, which is what proved it was ours and not Safari's.
-The Camera tab now polls `/snapshot.jpg` one frame at a time, so nothing
-outlives a request and nothing can pile up; the MJPEG path that remains is
-fenced and capped; `/status.json` reports `streams` and `viewers`.
-
-**Chris confirmed it on the real phone**: force-close and reopen, switching
-browsers, restarting `kona serve` with the page open, and **three devices
-streaming at once** off one camera open. He also reached it over the
-Cloudflare tunnel on cellular with Wi-Fi off, which was the first real
-exercise of `docs/remote-access.md` Part 0.
-
-0. **Still unverified, and both are his to run:** the ten-minute soak
-   (`/status.json` should hold `streams: 0`, `viewers` bouncing 0/1, and
-   `opens` at 1), and the cellular data cost -- baseline noted at 37.7 GB on
-   Safari's counter, and the delta tests the 1.2 GB/hour estimate in
-   `docs/scaling-limits.md` §1. If it disagrees, that doc is wrong.
-1. **After a week of polling holding up**, delete `/stream.mjpg` and the
-   containment that exists only for it.
-
-*Fi, measured 2026-09-11 (probe rounds 5 and 6):*
-2. **Resting position: confirmed.** `whereabouts` returned
-   `... on OngoingRest { position }` on Kona's collar, so the map's resting
-   tier stands on measured ground. **Rest history: confirmed.**
-   `restSummaryFeed(limit: 14)` returned every day since the collar came
-   online; PR #13 reads it. **Steps history: a path exists.** `stepFeed`
-   and `restFeed` are real fields that need `period:
-   ActivityRestStrainPeriod!`; `overnightRestSummary` needs `date:
-   DateTime!`; `heatmap` needs `startDate`/`endDate`. Round 7 asks each
-   with one argument supplied so the next error names the next thing.
-
-*The road to always-on, in order:*
-3. **Done 2026-09-11:** the Cloudflare quick tunnel worked over cellular
-   with Wi-Fi off -- the first real exercise of Part 0 -- and then, hours
-   later, stopped handing out tunnels for a reason never established
-   (network provably fine; a downgrade of cloudflared never installed).
-   `docs/remote-access.md` "When it breaks" has the record. Tailscale is
-   what carried the evening, and is now documented as the path for one
-   person's own phone.
-4. `KONA_HEARTBEAT_URL` against healthchecks.io, so a sleeping or dead PC
-   raises an alarm. Part 3d. Not yet run.
-5. **Set 2026-09-11:** `KONA_KEEP_AWAKE=true`.
-6. A domain, then a named tunnel, so the URL survives a restart and does not
-   depend on the quick-tunnel API that failed. Part 3a. This is also what
-   would let the Stadia map key move to domain auth.
-7. The Pi as the real host. Bought 2026-09-11; it is TurboPi's brain first.
-   Everything above is a patch on a machine that was never meant to be a
-   server.
-
-*Still owed, needs the hardware:*
-8. One lights-off evening to check the camera's black-frame rule behaves in
-   a genuinely dark room. The wedged-device half is measured; the dark-room
-   half is reasoned.
+*Record, for the reasoning behind any of the above:* `docs/archive/`,
+`docs/camera-black-screen-handoff.md` (why the camera polls one frame at a
+time), `docs/remote-access.md` "When it breaks" (the quick tunnel failure),
+and `.dos/outbox/` (every session's artifact).
 
 ## Ownership
 
@@ -212,6 +161,8 @@ app is env-var configured only, so nothing locks that in.
 
 ```powershell
 uv sync                         # install (first run pulls the OpenCV wheel, ~50 MB)
+uv sync --no-build-isolation    # Windows PC only: Application Control blocks plain uv sync
+uv run --no-sync kona serve     # Windows PC only: run what is installed without re-syncing
 uv run pytest -q                # tests
 uv run ruff check . ; uv run ruff format .
 Copy-Item .env.example .env     # then fill KONA_PASSCODE, camera keys (and FI_* when the collar arrives)
@@ -219,7 +170,7 @@ uv run kona cameras             # usb only: which webcam indexes open -> KONA_CA
 uv run kona camera-test         # open the configured camera once: size, fps, redacted URL, exact error
 uv run kona serve               # http://0.0.0.0:8000 ; allow the Windows Firewall prompt
 uv run kona serve --fake-camera # no camera needed; test pattern
-uv run kona probe               # Fi API discovery -> probe-out\summary.md
+uv run kona probe --out probe-out\round12   # Fi API discovery -> summary.md, one round per folder
 ipconfig                        # IPv4 of the PC; iPhone opens http://<that-ip>:8000
 ```
 

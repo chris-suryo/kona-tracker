@@ -370,11 +370,18 @@ My own read, ordered by what would actually bite first.
    deliberately whether times are shown in Kona's timezone (almost certainly
    yes — "last night" means her night) and make that explicit rather than
    incidental.
-6. **`?preview=1` sample-data mode** needs auditing against the "never show
-   data you do not have" rule in every state. Carried from
-   `next-session.md` §5.
+6. **`?preview=1` sample-data mode -- audited 2026-09-13, kept.** Every
+   entry point is labelled: the Settings link says "Preview sample data ...
+   fictional readings", the banner on every preview page says "Sample data
+   preview", and the only links into `/preview/*` sit inside
+   `{% if preview %}` blocks, so a real page never points at fiction. Now
+   that `/steps`, `/rest` by hour and `/walks/<id>` exist, the preview
+   pages show nothing the real ones cannot; removing the mode is a
+   ChatGPT-era cleanup, not a correctness fix, and is left for a quiet
+   session. `_history_spark.html` is an unused macro from that pass and
+   goes with it.
 7. **The Fi refresh thread has no backoff.** `fi_refresh_seconds` is a flat
-   300s. If Fi is down or the password is wrong, it re-asks every five
+   300s (120 recommended since 2026-09-13; see `.env.example`). If Fi is down or the password is wrong, it re-asks every five
    minutes forever. Not urgent; worth a bounded backoff before this runs
    unattended for weeks.
 8. **Two cameras in one app: Kona's, and the robot's.** Bookmarked
