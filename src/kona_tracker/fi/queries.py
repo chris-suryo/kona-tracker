@@ -5,6 +5,7 @@ exists only to harvest the server's validation errors ("Did you mean ...?")
 when introspection is disabled. Nothing here is documented by Fi.
 """
 
+import base64
 from datetime import UTC, date, datetime, timedelta
 
 # Full schema dump. `ofType` is nested a few levels so NON_NULL/LIST wrappers
@@ -167,6 +168,10 @@ def speculative_queries(pet_id: str, on: date | None = None) -> list[tuple[str, 
     today = on or datetime.now(UTC).date()
     yesterday = (today - timedelta(days=1)).isoformat()
     week_ago = (today - timedelta(days=7)).isoformat()
+    # Round 9 read restFeed's cursor and it decoded to the start of the
+    # current Fi day, "2026-09-12T04:00:00.000Z" -- midnight in Kona's zone,
+    # base64. So a cursor for yesterday is the same string one day back.
+    yesterday_cursor = base64.b64encode(f"{yesterday}T04:00:00.000Z".encode()).decode()
     return [
         ("pet", pet_speculative(pet_id)),
         (
@@ -466,6 +471,89 @@ def speculative_queries(pet_id: str, on: date | None = None) -> list[tuple[str, 
             f'query KonaSpeculativeActivityItemFields {{ pet(id: "{pet_id}") {{ '
             "activityFeed(limit: 3) { activities { __typename id start end "
             "totalSteps duration areaName } } } }",
+        ),
+        # Round 10, 2026-09-13. Round 9 was the round that paid: every miss
+        # came back with a "Did you mean", and the accepted queries returned
+        # shapes rather than bare typenames.
+        #
+        #   RestFeed has `restSummary` (singular) and `period`; StepFeed has
+        #   `stepSummary` and `period`. Its `cursor` is base64 of the current
+        #   Fi day's start, so the feed pages by day.
+        #   ConcreteOvernightRestSummary has `sleepSeconds`, `sleepStart`,
+        #   `sleepEnd` -- last night as an interval, not just a total.
+        #   HeatmapPoint has `position`. ActivityFeed.activities are `Walk`
+        #   and `Travel`, and `id start end totalSteps areaName` all passed on
+        #   the Activity interface -- a walk log, with steps per walk.
+        #
+        # This round reads those, and asks each newly-named type what else it
+        # has. The hourly question is now precise: is `restSummary` the same
+        # daily RestSummary the rest page already draws, or something with a
+        # finer grain inside it?
+        (
+            "restFeedSummary",
+            f'query KonaSpeculativeRestFeedSummary {{ pet(id: "{pet_id}") {{ '
+            "restFeed(period: DAY) { period restSummary { __typename } } } }",
+        ),
+        (
+            "stepFeedSummary",
+            f'query KonaSpeculativeStepFeedSummary {{ pet(id: "{pet_id}") {{ '
+            "stepFeed(period: DAY) { period stepSummary { __typename } } } }",
+        ),
+        (
+            "restFeedBack",
+            f'query KonaSpeculativeRestFeedBack {{ pet(id: "{pet_id}") {{ '
+            f'restFeed(period: DAY, cursor: "{yesterday_cursor}") {{ cursor }} }} }}',
+        ),
+        (
+            "restSummaryGrain",
+            f'query KonaSpeculativeRestSummaryGrain {{ pet(id: "{pet_id}") {{ '
+            "restFeed(period: DAY) { restSummary { start end data hourly hours "
+            "buckets restEvents events naps sleeps intervals dataPoints points } } } }",
+        ),
+        (
+            "stepSummaryGrain",
+            f'query KonaSpeculativeStepSummaryGrain {{ pet(id: "{pet_id}") {{ '
+            "stepFeed(period: DAY) { stepSummary { start end data totalSteps hourly "
+            "hours buckets stepEvents events dataPoints points } } } }",
+        ),
+        (
+            "overnightSleep",
+            f'query KonaSpeculativeOvernightSleep {{ pet(id: "{pet_id}") {{ '
+            f'overnightRestSummary(date: "{yesterday}T00:00:00Z") {{ __typename date '
+            "... on ConcreteOvernightRestSummary { sleepSeconds sleepStart sleepEnd } } } }",
+        ),
+        (
+            "overnightMore",
+            f'query KonaSpeculativeOvernightMore {{ pet(id: "{pet_id}") {{ '
+            f'overnightRestSummary(date: "{yesterday}T00:00:00Z") {{ '
+            "... on ConcreteOvernightRestSummary { napSeconds napStart napEnd naps "
+            "sleeps quality restSeconds interruptions } } } }",
+        ),
+        (
+            "heatmapPosition",
+            f'query KonaSpeculativeHeatmapPosition {{ pet(id: "{pet_id}") {{ '
+            f'heatmap(startDate: "{week_ago}T00:00:00Z", endDate: "{today.isoformat()}T00:00:00Z") '
+            "{ points { position { __typename latitude longitude } } } } }",
+        ),
+        (
+            "heatmapPointMore",
+            f'query KonaSpeculativeHeatmapPointMore {{ pet(id: "{pet_id}") {{ '
+            f'heatmap(startDate: "{week_ago}T00:00:00Z", endDate: "{today.isoformat()}T00:00:00Z") '
+            "{ points { value intensity visits seconds time timestamp } } } }",
+        ),
+        (
+            "walkFields",
+            f'query KonaSpeculativeWalkFields {{ pet(id: "{pet_id}") {{ '
+            "activityFeed(limit: 3) { activities { __typename id start end totalSteps "
+            "areaName ... on Walk { distance } } "
+            "pageInfo { __typename hasNextPage endCursor } } } }",
+        ),
+        (
+            "walkMore",
+            f'query KonaSpeculativeWalkMore {{ pet(id: "{pet_id}") {{ '
+            "activityFeed(limit: 3) { activities { __typename "
+            "... on Walk { path positions place restSeconds activeSeconds } "
+            "... on Travel { distance positions } } } } }",
         ),
     ]
 
