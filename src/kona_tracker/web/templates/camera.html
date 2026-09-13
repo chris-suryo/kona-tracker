@@ -11,6 +11,7 @@
      failure drops it and the badge's own words stand. #}
   <div class="cam-connecting" aria-hidden="true"><span>Connecting…</span></div>
   <div class="top">
+    <span class="zoom-level" id="zoom-level" hidden aria-live="polite"></span>
     <span class="live"><span class="dot" id="dot"></span><span id="livetxt">CONNECTING</span></span>
   </div>
   <div class="frame-actions">
@@ -21,7 +22,7 @@
 </figure>
 <div class="cam-meta">
   <div><div class="d">Home</div><div class="s" id="cap">Opening the camera…</div></div>
-  <span class="cam-hint" id="capture-hint">Capture and share a still</span>
+  <span class="cam-hint" id="capture-hint">Capture and share a still · pinch to zoom</span>
 </div>
 {% if caps.ptz %}
 {# Only rendered when the camera actually has motors. A fixed camera such as

@@ -33,9 +33,12 @@ function element() {
 }
 
 function setup(script, preview = false) {
-  const names = ['cam', 'cap', 'dot', 'livetxt', 'capture', 'capture-hint', 'activity-body', 'pull'];
+  const names = ['cam', 'cap', 'dot', 'livetxt', 'capture', 'capture-hint', 'activity-body', 'pull', 'zoom-level'];
   const nodes = Object.fromEntries(names.map(name => [name, element()]));
   const page = element(), label = element(), note = element(), freshness = element(), camFrame = element();
+  // A 400x225 frame at the page origin, so the zoom maths can be checked in px.
+  camFrame.clientWidth = 400; camFrame.clientHeight = 225;
+  camFrame.getBoundingClientRect = () => ({left: 0, top: 0});
   nodes.pull.querySelector = () => label;
   nodes['activity-body'].querySelector = selector => ({
     '.preview-banner': preview ? element() : null, '.freshness': freshness, 'p.note': note
@@ -394,4 +397,97 @@ test('a route gets a start dot and a single point does not', () => {
   icons.length = 0; points = '[{"lat":30,"lon":-97}]';
   window.KonaMap.init();
   assert.deepEqual(icons, ['kona-map-marker'], 'one point is a place, not a route');
+});
+
+
+// The camera's own zoom: a pinch scales about the fingers, a drag pans
+// while zoomed and never past the edge, a double-tap jumps in and out.
+function touch(x, y) { return {clientX: x, clientY: y}; }
+function pinchFrom(x, d1, d2) {
+  x.camFrame.events.touchstart({touches: [touch(100, 100), touch(100 + d1, 100)], target: element(), preventDefault() {}});
+  x.camFrame.events.touchmove({touches: [touch(100, 100), touch(100 + d2, 100)], target: element(), preventDefault() {}});
+  x.camFrame.events.touchend({touches: []});
+}
+
+test('a pinch zooms the picture about the fingers and shows the level', () => {
+  const x = setup('camera.js');
+  pinchFrom(x, 100, 200);
+  const z = x.window.KonaZoom.get();
+  assert.equal(z.s, 2);
+  // The spot that was under the fingers' midpoint (150 in the frame) is
+  // still under it after they spread and drifted right to 200: image
+  // coordinate 150 at 2x sits at x + 300, so x = -100. y did not move.
+  assert.equal(z.x, -100);
+  assert.equal(z.y, -100);
+  assert.match(x.nodes.cam.style.transform, /scale\(2\.000\)/);
+  assert.equal(x.nodes['zoom-level'].hidden, false);
+  assert.equal(x.nodes['zoom-level'].textContent, '2\u00d7');
+  assert.equal(x.camFrame.classList.contains('zoomed'), true);
+});
+
+test('zoom is capped, and a near-1x pinch snaps back to exactly 1x with no offset', () => {
+  const x = setup('camera.js');
+  pinchFrom(x, 50, 500);
+  assert.equal(x.window.KonaZoom.get().s, 4, 'ZOOM_MAX');
+  x.window.KonaZoom.reset();
+  pinchFrom(x, 100, 104);
+  const z = {...x.window.KonaZoom.get()};  // spread: vm objects have another realm's prototype
+  assert.deepEqual(z, {s: 1, x: 0, y: 0});
+  assert.equal(x.nodes.cam.style.transform, '');
+  assert.equal(x.nodes['zoom-level'].hidden, true);
+});
+
+test('a drag while zoomed pans but never shows a gap past the picture edge', () => {
+  const x = setup('camera.js');
+  pinchFrom(x, 100, 200);           // 2x, offset (-100, -100)
+  x.camFrame.events.touchstart({touches: [touch(200, 100)], target: element(), preventDefault() {}});
+  x.camFrame.events.touchmove({touches: [touch(120, 60)], target: element(), preventDefault() {}});
+  x.camFrame.events.touchend({touches: []});
+  let z = x.window.KonaZoom.get();
+  assert.equal(z.x, -180, 'dragged 80px left');
+  assert.equal(z.y, -140);
+  // A second drag starting where the first did is two drags, not a
+  // double-tap: it moved. Far past the edge it clamps to (1 - s) * frame.
+  x.camFrame.events.touchstart({touches: [touch(200, 100)], target: element(), preventDefault() {}});
+  x.camFrame.events.touchmove({touches: [touch(-900, -900)], target: element(), preventDefault() {}});
+  x.camFrame.events.touchend({touches: []});
+  z = x.window.KonaZoom.get();
+  assert.deepEqual([z.x, z.y], [-400, -225]);
+});
+
+test('a drag at 1x does nothing to the picture, so the page can still scroll', () => {
+  const x = setup('camera.js');
+  let prevented = 0;
+  x.camFrame.events.touchstart({touches: [touch(200, 100)], target: element(), preventDefault() { prevented++; }});
+  x.camFrame.events.touchmove({touches: [touch(120, 60)], target: element(), preventDefault() { prevented++; }});
+  assert.equal(prevented, 0);
+  assert.equal(x.nodes.cam.style.transform, '');
+});
+
+test('a double-tap jumps in on the spot and a second one jumps back out', () => {
+  const x = setup('camera.js');
+  const tap = () => {
+    x.camFrame.events.touchstart({touches: [touch(300, 50)], target: element(), preventDefault() {}});
+    x.camFrame.events.touchend({touches: []});
+  };
+  tap(); tap();
+  let z = x.window.KonaZoom.get();
+  assert.equal(z.s, 2.5);
+  // (300, 50) stays under the finger: 300 - 300 * 2.5 = -450, clamped to -400 wide... but
+  // -450 < (1 - 2.5) * 400 = -600? No: -450 > -600, so it stands.
+  assert.equal(z.x, -450);
+  assert.equal(z.y, -75);
+  tap(); tap();
+  assert.deepEqual({...x.window.KonaZoom.get()}, {s: 1, x: 0, y: 0});
+});
+
+test('a touch on the shutter is a button press, not a zoom gesture', () => {
+  const x = setup('camera.js');
+  const button = element(); button.closest = sel => sel === 'button' ? button : null;
+  const tap = () => {
+    x.camFrame.events.touchstart({touches: [touch(300, 50)], target: button, preventDefault() {}});
+    x.camFrame.events.touchend({touches: []});
+  };
+  tap(); tap();
+  assert.equal(x.window.KonaZoom.get().s, 1);
 });
