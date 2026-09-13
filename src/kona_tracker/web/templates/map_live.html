@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Kona · map{% endblock %}
+{% block pageclass %}map-page{% endblock %}
+{% block head %}
+<link rel="stylesheet" href="/static/leaflet/leaflet.css">
+{% endblock %}
+{% block body %}
+{# The map is the page. Everything else floats over it, because on a walk
+   the thing you are looking at is the dot, not the chrome around it. #}
+<div class="live-map-frame" id="live-frame" data-activity="{{ activity or '' }}">
+  {% if map_points %}
+  <div id="kona-map" class="live-map" aria-label="Map of Kona's {{ map_title|lower }}"></div>
+  <p id="map-unavailable" class="map-empty live-map-empty" hidden>Map unavailable. The map provider did not supply the background.</p>
+  {% else %}
+  <div class="map-empty live-map-empty">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s6-5.2 6-11a6 6 0 1 0-12 0c0 5.8 6 11 6 11Z"/><circle cx="12" cy="10" r="2"/></svg>
+    <span>{% if area_name %}Fi reported {{ area_name }} without a map position.{% else %}Fi hasn't sent a map position.{% endif %}</span>
+  </div>
+  {% endif %}
+
+  <header class="live-head">
+    <a class="live-back" href="/activity" aria-label="Back to Activity">{% include "_chevron.svg" %}</a>
+    <div class="live-titles">
+      <strong id="live-title">{{ map_title }}</strong>
+      <span id="live-sub" class="live-sub">
+        {%- if area_name and map_kind in ('rest', 'home') %}{{ area_name }}{% endif -%}
+        {%- if location_updated %}{% if area_name and map_kind in ('rest', 'home') %} · {% endif %}Collar reported {{ location_updated }}{% endif -%}
+      </span>
+    </div>
+    {% if escaped or lost %}<span class="live-flag">{{ 'Lost mode' if lost else 'Left the safe zone' }}</span>{% endif %}
+  </header>
+
+  <div class="live-stats" id="live-stats">
+    <div class="live-stat">
+      <span class="cap">Fix</span>
+      {# Seconds from the server; the script counts up from here so the
+         number keeps moving between polls instead of sitting still. #}
+      <strong id="live-age" data-age="{{ fix_age_s if fix_age_s is not none else '' }}">{{ fix_age or '—' }}</strong>
+    </div>
+    <div class="live-stat" id="live-distance-stat" {% if not walk_distance %}hidden{% endif %}>
+      <span class="cap">Distance</span>
+      <strong id="live-distance">{{ walk_distance or '—' }}</strong>
+    </div>
+    <div class="live-stat" id="live-elapsed-stat" {% if not elapsed %}hidden{% endif %}>
+      <span class="cap">{{ 'Walking' if activity == 'walk' else 'Resting' }}</span>
+      <strong id="live-elapsed">{% if elapsed %}{% for figure, unit in elapsed %}{{ figure }}<small>{{ unit }}</small>{% endfor %}{% else %}—{% endif %}</strong>
+    </div>
+  </div>
+
+  <button type="button" class="live-recentre" id="live-recentre" hidden>Recentre</button>
+
+  <p class="live-note" id="live-note" {% if not stale %}hidden{% endif %}>
+    {%- if stale %}Fi stopped answering — this is the last fix we have.{% endif -%}
+  </p>
+</div>
+
+{% if map_points %}<script type="application/json" id="map-points">{{ map_points|tojson }}</script>{% endif %}
+{% if map_tiles %}<script type="application/json" id="map-config">{{ map_tiles|tojson }}</script>{% endif %}
+<script src="/static/leaflet/leaflet.js" defer></script>
+<script src="{{ asset('map_live.js') }}" defer></script>
+{% endblock %}

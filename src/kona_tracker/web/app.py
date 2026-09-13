@@ -36,6 +36,8 @@ from kona_tracker.web.views import (
     activity_context,
     activity_json,
     camera_health,
+    live_map_context,
+    live_map_json,
     map_tile_config,
     preview_activity_context,
     rest_history_context,
@@ -380,6 +382,26 @@ def create_app(
         )
         context["map_tiles"] = tile_config
         return templates.TemplateResponse(request, "activity.html", context)
+
+    @app.get("/map", response_class=HTMLResponse)
+    def live_map(request: Request, fresh: bool = False):
+        """The map, full screen, for watching a walk as it happens.
+
+        Chris asked for it after the 2026-09-13 walk: the Activity card's
+        map is a tile that cannot be enlarged, and on a walk the map is the
+        whole page. It polls `/map.json` on its own clock rather than
+        re-rendering Activity underneath it.
+        """
+        snapshot = fi.snapshot(force=fresh) if fi else None
+        context = live_map_context(snapshot, configured=fi is not None)
+        context["map_tiles"] = tile_config
+        return templates.TemplateResponse(request, "map_live.html", context)
+
+    @app.get("/map.json")
+    def live_map_feed():
+        """Just the map's own facts, small enough to ask for every 10 s."""
+        snapshot = fi.snapshot() if fi else None
+        return live_map_json(snapshot, configured=fi is not None)
 
     @app.get("/rest", response_class=HTMLResponse)
     def rest_history(

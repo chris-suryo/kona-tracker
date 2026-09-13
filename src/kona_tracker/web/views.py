@@ -161,6 +161,34 @@ def _span(start: datetime | None, end: datetime | None, zone: tzinfo | None) -> 
     return f"{_clock(start, zone):%H:%M} \u2013 {_clock(end, zone):%H:%M}"
 
 
+def _age_seconds(moment: datetime | None, now: datetime | None) -> int | None:
+    """Whole seconds between a collar fix and now, never negative.
+
+    Sent as a number rather than a timestamp on purpose: the page counts up
+    from it locally, so a phone whose clock disagrees with the server's --
+    which is every phone, by a few seconds at least -- still shows an age
+    that is right, instead of one skewed by the difference between clocks.
+    """
+    if moment is None or now is None:
+        return None
+    return max(0, int((now - moment).total_seconds()))
+
+
+def fix_age_label(seconds: int | None) -> str | None:
+    """`47 s ago`, `4 min ago`, `2 h ago`. The unit a person would say.
+
+    Not `age_label`, which is Kona's age in years; this is the age of a GPS
+    fix in seconds, and the two live in the same module.
+    """
+    if seconds is None:
+        return None
+    if seconds < 90:
+        return f"{seconds} s ago"
+    if seconds < 5400:  # an hour and a half
+        return f"{round(seconds / 60)} min ago"
+    return f"{round(seconds / 3600)} h ago"
+
+
 def walk_rows(walks: tuple[Walk, ...], on: datetime, zone: tzinfo | None) -> list[dict[str, Any]]:
     """The day's activities as rows for the page, newest first as Fi sends them.
 
@@ -345,6 +373,17 @@ def activity_context(snapshot: FiSnapshot | None, configured: bool) -> dict[str,
         # became totalDistance 286 for the day. A true 0 is a real "no walk".
         "distance_m": _count(activity.distance if activity else None),
         "walk_distance_m": _count(status.walk_distance) if status else None,
+        # The same number in the units the rest of the app uses. The live
+        # walk said "878.4 m walked" on 2026-09-13 while the walk log below
+        # it said miles, which is the app disagreeing with itself on screen.
+        "walk_distance": distance_label(status.walk_distance) if status else None,
+        # How old the fix on the map is, in seconds. The map page counts up
+        # from it; the Activity card renders it once.
+        "fix_age_s": (
+            _age_seconds(last_position.recorded_at, snapshot.fetched_at)
+            if last_position and snapshot
+            else None
+        ),
         "led_on": status.led_on if status else None,
         "area_name": location_label,
         "map_points": [
@@ -984,4 +1023,82 @@ def hourly_json(snapshot: FiSnapshot | None) -> dict[str, Any] | None:
         "steps_present": day.steps_present,
         "steps_total": day.steps_total,
         "hours": [{"sleep_s": h.sleep_s, "nap_s": h.nap_s, "steps": h.steps} for h in day.hours],
+    }
+
+
+# --------------------------------------------------------------------------
+# The full-screen live map.
+#
+# Chris asked for it after the 2026-09-13 walk: the Activity card's map is a
+# tile you cannot enlarge, and on a walk the map is the whole point. This is
+# its own page so it can hold what a live map needs -- distance, elapsed, how
+# old the fix is -- and poll on its own clock without the rest of Activity
+# re-rendering underneath it.
+# --------------------------------------------------------------------------
+#: What the map page calls each state. `activity_context` decides which one
+#: applies; this only names it, so both pages cannot disagree.
+MAP_TITLES = {
+    "current": "On a walk",
+    "rest": "Resting",
+    "last": "Last GPS fix",
+    "home": "Home",
+}
+
+
+def live_map_context(snapshot: FiSnapshot | None, configured: bool) -> dict[str, Any]:
+    """Everything `map_live.html` needs, borrowed from the Activity page.
+
+    Deliberately a thin layer over `activity_context` rather than its own
+    reading of the snapshot: the decision about what the map may honestly
+    claim (current / rest / last / home, and the staleness rules behind it)
+    is subtle and already made once. A second copy would drift, and the two
+    pages would eventually disagree about where the dog is.
+    """
+    context = activity_context(snapshot, configured=configured)
+    status = snapshot.status if snapshot else None
+    elapsed = None
+    if status and status.activity_since and snapshot and snapshot.fetched_at:
+        elapsed = duration_parts(
+            max(0.0, (snapshot.fetched_at - status.activity_since).total_seconds())
+        )
+    context.update(
+        {
+            "tab": None,  # full-bleed: the map is the page, not a tab within it
+            "map_title": MAP_TITLES.get(context["map_kind"] or "", "Location unavailable"),
+            "elapsed": elapsed,
+            "fix_age": fix_age_label(context["fix_age_s"]),
+        }
+    )
+    return context
+
+
+def live_map_json(snapshot: FiSnapshot | None, configured: bool) -> dict[str, Any]:
+    """The same, small enough to poll every few seconds while walking.
+
+    Its own endpoint rather than `/activity.json`, which carries the rest
+    history, the walk log and the hourly buckets -- kilobytes that do not
+    change while someone watches a dot move.
+    """
+    context = live_map_context(snapshot, configured=configured)
+    return {
+        "configured": configured,
+        "points": context["map_points"],
+        "kind": context["map_kind"],
+        "title": context["map_title"],
+        "area": context["area_name"],
+        "distance": context["walk_distance"],
+        "elapsed": context["elapsed"],
+        "activity": context["activity"],
+        "activity_since": context["activity_since"],
+        # Seconds, not a timestamp: the page counts up from it, so a phone
+        # clock that disagrees with this one does not corrupt the age.
+        "fix_age_s": context["fix_age_s"],
+        "reported": context["location_updated"],
+        "live": context["location_live"],
+        "stale": context["stale"],
+        "partial": context["partial"],
+        "escaped": context["escaped"],
+        "lost": context["lost"],
+        "signal": context["signal"],
+        "on_base": context["on_base"],
     }

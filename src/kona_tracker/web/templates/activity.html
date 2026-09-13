@@ -105,12 +105,15 @@
   </div>
   {% if map_kind == 'home' %}<p class="location-note">Saved Home location · not Kona's reported position</p>{% endif %}
   {% if activity in ('walk', 'rest') and (activity_since or walk_distance_m) %}
-  <p class="location-note activity-timing">{% if activity == 'walk' and walk_distance_m %}{{ walk_distance_m }} m walked{% if activity_since %} · {% endif %}{% endif %}{% if activity_since %}{{ 'Started' if activity == 'walk' else 'Resting since' }} {{ activity_since }}{% endif %}</p>
+  <p class="location-note activity-timing">{% if activity == 'walk' and walk_distance %}{{ walk_distance }} walked{% if activity_since %} · {% endif %}{% endif %}{% if activity_since %}{{ 'Started' if activity == 'walk' else 'Resting since' }} {{ activity_since }}{% endif %}</p>
   {% endif %}
   {% if on_base is not none %}<p class="location-note connection"><span class="status-dot {{ 'warn-dot' if stale else 'live' }}"></span>{% if on_base %}On charger{% elif signal %}Cellular {{ signal }}%{% else %}Cellular{% endif %}</p>{% endif %}
   {% if stale %}<p class="location-note warn">From the last successful Fi update{% if as_of %} · {{ as_of }}{% endif %}</p>{% endif %}
   {% if map_points %}
   <div id="kona-map" class="map" aria-label="Map showing Kona's {% if map_kind == 'current' %}current walk route{% elif map_kind == 'rest' %}resting place{% elif map_kind == 'home' %}Home location{% else %}last reported location{% endif %}"></div>
+  {# The tile cannot be pinched -- page zoom is off and Leaflet is boxed into
+     a small element -- so the way to see more is a page that is all map. #}
+  <a class="map-expand" href="/map">Open full map<span aria-hidden="true"> ›</span></a>
   <p id="map-unavailable" class="map-empty" hidden>Map unavailable. The map provider did not supply the background. Collar report details are shown above.</p>
   {% else %}
   <div class="map-empty">

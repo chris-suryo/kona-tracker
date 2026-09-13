@@ -484,3 +484,60 @@ body.activity-page { overscroll-behavior-y: contain; }
   .pull, .pull span, .pull.busy span { transition: none; animation: none; }
   .pull.busy span::before { animation: none; }
 }
+
+/* ---------------------------------------------------------------------- *
+ * The full-screen live map (/map).
+ *
+ * The map fills the viewport and everything else floats over it. Built for
+ * a walk: one hand, outdoors, glancing down. The stats sit at the bottom
+ * where a thumb is, not at the top under the notch.
+ * ---------------------------------------------------------------------- */
+.map-page { padding: 0; }
+.page.map-page { padding: 0; max-width: none; }
+.live-map-frame { position: fixed; inset: 0; }
+.live-map { position: absolute; inset: 0; width: 100%; height: 100%; }
+.live-map-empty { position: absolute; inset: 0; display: grid; place-content: center;
+                  gap: 10px; justify-items: center; text-align: center; padding: 0 24px; }
+
+.live-head { position: absolute; z-index: 500; top: 0; left: 0; right: 0;
+             display: flex; align-items: center; gap: 12px;
+             padding: calc(env(safe-area-inset-top, 0px) + 12px) 16px 16px;
+             background: linear-gradient(to bottom, var(--bg) 35%, transparent); }
+.live-back { display: grid; place-items: center; width: 36px; height: 36px; flex: none;
+             border-radius: 999px; background: var(--bg2); border: 1px solid var(--line);
+             color: var(--ink); text-decoration: none; }
+.live-back svg { width: 18px; height: 18px; }
+.live-titles { min-width: 0; display: grid; gap: 1px; }
+.live-titles strong { font-size: 17px; font-weight: 700; letter-spacing: -.02em; }
+.live-sub { font-size: 12px; color: var(--ink2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.live-flag { margin-left: auto; flex: none; font-size: 11px; font-weight: 700; letter-spacing: .04em;
+             text-transform: uppercase; color: var(--on); background: var(--bad);
+             padding: 4px 9px; border-radius: 999px; }
+
+.live-stats { position: absolute; z-index: 500; left: 12px; right: 12px;
+              bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
+              display: flex; gap: 8px; }
+.live-stat { flex: 1 1 0; min-width: 0; background: var(--bg2); border: 1px solid var(--line);
+             border-radius: 12px; padding: 9px 12px; display: grid; gap: 1px; }
+.live-stat strong { font-size: 19px; font-weight: 700; letter-spacing: -.03em;
+                    font-variant-numeric: tabular-nums; white-space: nowrap; }
+.live-stat strong small { font-size: 12px; font-weight: 600; margin: 0 4px 0 1px; color: var(--ink2); }
+/* The fix age is the one number that can be bad news, so it is the one
+   number allowed to change colour. Amber past two minutes, red past five. */
+.live-stat strong.warn { color: var(--warn); }
+.live-stat strong.bad { color: var(--bad); }
+
+.live-recentre { position: absolute; z-index: 500; left: 50%; transform: translateX(-50%);
+                 bottom: calc(env(safe-area-inset-bottom, 0px) + 76px);
+                 font: inherit; font-size: 13px; font-weight: 600; color: var(--t5);
+                 background: var(--t1); border: 1px solid var(--t3); border-radius: 999px;
+                 padding: 7px 16px; cursor: pointer; }
+.live-note { position: absolute; z-index: 500; left: 12px; right: 12px;
+             bottom: calc(env(safe-area-inset-bottom, 0px) + 76px);
+             margin: 0; font-size: 12px; color: var(--warn); text-align: center;
+             background: var(--bg2); border: 1px solid var(--line); border-radius: 10px; padding: 7px 12px; }
+
+/* The way into it from the Activity card. */
+.map-expand { display: inline-block; margin-top: 10px; font-size: 14px; font-weight: 600;
+              color: var(--t4); text-decoration: none; }
+.map-expand:focus-visible { outline: 2px solid var(--t4); outline-offset: 3px; border-radius: 4px; }
