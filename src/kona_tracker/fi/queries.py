@@ -779,3 +779,24 @@ def pet_overnight(pet_id: str, on: date) -> str:
         "... on ConcreteOvernightRestSummary { sleepSeconds sleepStart sleepEnd "
         "interruptions { __typename start end } } } } }"
     )
+
+
+def pet_hourly(pet_id: str) -> str:
+    """Today by the hour: rest and steps in one round trip.
+
+    Round 11 (2026-09-13): `restFeed(period: DAY)` returns a RestFeedSummary
+    whose `restData` is a list of exactly 24 RestFeedSummaryData, and
+    `stepFeed(period: DAY)` a StepSummary whose `stepData` is 24
+    StepSummaryData -- the Fi app's Day tab, bucket for bucket. The buckets
+    carry no time of their own; they are positional from the summary's
+    `start`, which is midnight in the owner's zone (04:00Z for Kona). The
+    field names inside the buckets are Fi's own suggestions when asked for
+    near-misses: "Did you mean sleepSeconds?", "napSeconds", "steps".
+    """
+    return (
+        f'query KonaHourly {{ pet(id: "{pet_id}") {{ __typename '
+        "restFeed(period: DAY) { __typename period restSummary { __typename start "
+        "restData { __typename sleepSeconds napSeconds } } } "
+        "stepFeed(period: DAY) { __typename period stepSummary { __typename start totalSteps "
+        "stepData { __typename steps } } } } }"
+    )

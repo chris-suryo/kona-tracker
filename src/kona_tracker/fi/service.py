@@ -23,12 +23,14 @@ from kona_tracker.fi.client import FiClient, FiError, FiGraphQLError
 from kona_tracker.fi.parse import (
     ActivityStats,
     CollarStatus,
+    HourlyDay,
     Overnight,
     PetProfile,
     RestDay,
     RestWindow,
     Walk,
     activity_from,
+    hourly_from,
     hours_from_duration,
     overnight_from,
     pets_from,
@@ -43,6 +45,7 @@ from kona_tracker.fi.parse import (
 from kona_tracker.fi.queries import (
     CURRENT_USER_PETS,
     pet_activity,
+    pet_hourly,
     pet_overnight,
     pet_rest,
     pet_status,
@@ -104,6 +107,8 @@ class FiSnapshot:
     walks: tuple[Walk, ...] = ()
     #: Last night as an interval, for the same night `window` totals.
     overnight: Overnight | None = None
+    #: Today by the hour: rest and steps in 24 buckets from midnight her time.
+    hourly: HourlyDay | None = None
 
     @property
     def sleep_hours(self) -> float | None:
@@ -257,6 +262,11 @@ def fetch_snapshot(
         walks = tuple(walks_from(client.graphql(pet_walks(pet.id))))
     except FiError as e:
         problems.append(f"Walks: {_explain(e)}")
+    hourly: HourlyDay | None = None
+    try:
+        hourly = hourly_from(client.graphql(pet_hourly(pet.id)))
+    except FiError as e:
+        problems.append(f"Hourly: {_explain(e)}")
     overnight: Overnight | None = None
     if window is not None and window.start is not None:
         # The night that `window` totals: Fi keys the overnight summary by
@@ -283,6 +293,7 @@ def fetch_snapshot(
         rest_days=rest_days,
         walks=walks,
         overnight=overnight,
+        hourly=hourly,
     )
 
 

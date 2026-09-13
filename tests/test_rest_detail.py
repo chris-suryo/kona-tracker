@@ -163,10 +163,12 @@ def test_rest_page_renders_real_days_and_never_the_sample_vocabulary():
     # Chicago timezone must not pull them back a day.
     assert "9 Sep – 10 Sep" in body
     assert "checked Fi 10:00 CDT" in body
-    # Nothing from the design-preview page may appear here.
-    for word in ("sample", "Sample", "Fictional", "fictional", "Design preview", "by hour"):
+    # Nothing from the design-preview page may appear here. "by hour" is no
+    # longer on the list: since 2026-09-13 the hours are Fi's own
+    # (restFeed period: DAY), and the page draws them above the days.
+    for word in ("sample", "Sample", "Fictional", "fictional", "Design preview"):
         assert word not in body, word
-    assert "Fi reports daily totals, not hours" in body
+    assert "Today by hour" in body
 
 
 def test_rest_page_selected_day_reads_back_its_numbers():

@@ -555,3 +555,72 @@ def overnight_from(data: Any) -> Overnight | None:
         sleep_end=_moment(summary.get("sleepEnd")),
         interruptions=tuple(spans),
     )
+
+
+#: Fi's Day tab is 24 buckets and nothing in the response says so; the count
+#: is the contract. A list of any other length is treated as a shape change
+#: and dropped, because drawing 23 bars under a 24-hour axis would be a lie
+#: that looks like a reading.
+HOURS_IN_DAY = 24
+
+
+@dataclass(frozen=True)
+class HourBucket:
+    """One hour of the day. None is "no reading", never zero."""
+
+    sleep_s: int | float | None = None
+    nap_s: int | float | None = None
+    steps: int | float | None = None
+
+    @property
+    def rest_s(self) -> int | float | None:
+        parts = [x for x in (self.sleep_s, self.nap_s) if x is not None]
+        return sum(parts) if parts else None
+
+
+@dataclass(frozen=True)
+class HourlyDay:
+    """Today by the hour, from `pet_hourly`.
+
+    `start` is the day's first bucket, midnight in the owner's zone as Fi
+    sent it; bucket `i` covers `start + i hours`. `steps_total` is Fi's own
+    day total, kept separately so a sum of buckets is never mistaken for
+    it. Either half may be missing when its feed did not come back.
+    """
+
+    start: datetime | None
+    hours: tuple[HourBucket, ...]
+    steps_total: int | float | None = None
+    rest_present: bool = False
+    steps_present: bool = False
+
+
+def hourly_from(data: Any) -> HourlyDay | None:
+    pet = _dict(_dict(data).get("pet"))
+    rest = _dict(_dict(pet.get("restFeed")).get("restSummary"))
+    steps = _dict(_dict(pet.get("stepFeed")).get("stepSummary"))
+    rest_data = rest.get("restData")
+    step_data = steps.get("stepData")
+    rest_ok = isinstance(rest_data, list) and len(rest_data) == HOURS_IN_DAY
+    steps_ok = isinstance(step_data, list) and len(step_data) == HOURS_IN_DAY
+    if not rest_ok and not steps_ok:
+        return None
+    start = _moment(rest.get("start")) if rest_ok else _moment(steps.get("start"))
+    hours = []
+    for i in range(HOURS_IN_DAY):
+        r = _dict(rest_data[i]) if rest_ok else {}
+        st = _dict(step_data[i]) if steps_ok else {}
+        hours.append(
+            HourBucket(
+                sleep_s=_num(r.get("sleepSeconds")),
+                nap_s=_num(r.get("napSeconds")),
+                steps=_num(st.get("steps")),
+            )
+        )
+    return HourlyDay(
+        start=start,
+        hours=tuple(hours),
+        steps_total=_num(steps.get("totalSteps")) if steps_ok else None,
+        rest_present=rest_ok,
+        steps_present=steps_ok,
+    )

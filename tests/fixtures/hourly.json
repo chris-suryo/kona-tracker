@@ -1,0 +1,244 @@
+{
+ "data": {
+  "pet": {
+   "__typename": "Pet",
+   "restFeed": {
+    "__typename": "RestFeed",
+    "period": "DAY",
+    "restSummary": {
+     "__typename": "RestFeedSummary",
+     "start": "2026-09-10T05:00:00.000Z",
+     "restData": [
+      {
+       "__typename": "RestFeedSummaryData",
+       "sleepSeconds": 3600,
+       "napSeconds": 0
+      },
+      {
+       "__typename": "RestFeedSummaryData",
+       "sleepSeconds": 3600,
+       "napSeconds": 0
+      },
+      {
+       "__typename": "RestFeedSummaryData",
+       "sleepSeconds": 3600,
+       "napSeconds": 0
+      },
+      {
+       "__typename": "RestFeedSummaryData",
+       "sleepSeconds": 3600,
+       "napSeconds": 0
+      },
+      {
+       "__typename": "RestFeedSummaryData",
+       "sleepSeconds": 3600,
+       "napSeconds": 0
+      },
+      {
+       "__typename": "RestFeedSummaryData",
+       "sleepSeconds": 3600,
+       "napSeconds": 0
+      },
+      {
+       "__typename": "RestFeedSummaryData",
+       "sleepSeconds": 1800,
+       "napSeconds": 0
+      },
+      {
+       "__typename": "RestFeedSummaryData",
+       "sleepSeconds": 0,
+       "napSeconds": 0
+      },
+      {
+       "__typename": "RestFeedSummaryData",
+       "sleepSeconds": 0,
+       "napSeconds": 600
+      },
+      {
+       "__typename": "RestFeedSummaryData",
+       "sleepSeconds": 0,
+       "napSeconds": 1290
+      },
+      {
+       "__typename": "RestFeedSummaryData",
+       "sleepSeconds": 0,
+       "napSeconds": 0
+      },
+      {
+       "__typename": "RestFeedSummaryData",
+       "sleepSeconds": null,
+       "napSeconds": null
+      },
+      {
+       "__typename": "RestFeedSummaryData",
+       "sleepSeconds": null,
+       "napSeconds": null
+      },
+      {
+       "__typename": "RestFeedSummaryData",
+       "sleepSeconds": null,
+       "napSeconds": null
+      },
+      {
+       "__typename": "RestFeedSummaryData",
+       "sleepSeconds": null,
+       "napSeconds": null
+      },
+      {
+       "__typename": "RestFeedSummaryData",
+       "sleepSeconds": null,
+       "napSeconds": null
+      },
+      {
+       "__typename": "RestFeedSummaryData",
+       "sleepSeconds": null,
+       "napSeconds": null
+      },
+      {
+       "__typename": "RestFeedSummaryData",
+       "sleepSeconds": null,
+       "napSeconds": null
+      },
+      {
+       "__typename": "RestFeedSummaryData",
+       "sleepSeconds": null,
+       "napSeconds": null
+      },
+      {
+       "__typename": "RestFeedSummaryData",
+       "sleepSeconds": null,
+       "napSeconds": null
+      },
+      {
+       "__typename": "RestFeedSummaryData",
+       "sleepSeconds": null,
+       "napSeconds": null
+      },
+      {
+       "__typename": "RestFeedSummaryData",
+       "sleepSeconds": null,
+       "napSeconds": null
+      },
+      {
+       "__typename": "RestFeedSummaryData",
+       "sleepSeconds": null,
+       "napSeconds": null
+      },
+      {
+       "__typename": "RestFeedSummaryData",
+       "sleepSeconds": null,
+       "napSeconds": null
+      }
+     ]
+    }
+   },
+   "stepFeed": {
+    "__typename": "StepFeed",
+    "period": "DAY",
+    "stepSummary": {
+     "__typename": "StepSummary",
+     "start": "2026-09-10T05:00:00.000Z",
+     "totalSteps": 4210,
+     "stepData": [
+      {
+       "__typename": "StepSummaryData",
+       "steps": 40
+      },
+      {
+       "__typename": "StepSummaryData",
+       "steps": 0
+      },
+      {
+       "__typename": "StepSummaryData",
+       "steps": 0
+      },
+      {
+       "__typename": "StepSummaryData",
+       "steps": 0
+      },
+      {
+       "__typename": "StepSummaryData",
+       "steps": 0
+      },
+      {
+       "__typename": "StepSummaryData",
+       "steps": 120
+      },
+      {
+       "__typename": "StepSummaryData",
+       "steps": 900
+      },
+      {
+       "__typename": "StepSummaryData",
+       "steps": 1480
+      },
+      {
+       "__typename": "StepSummaryData",
+       "steps": 620
+      },
+      {
+       "__typename": "StepSummaryData",
+       "steps": 1050
+      },
+      {
+       "__typename": "StepSummaryData",
+       "steps": 0
+      },
+      {
+       "__typename": "StepSummaryData",
+       "steps": null
+      },
+      {
+       "__typename": "StepSummaryData",
+       "steps": null
+      },
+      {
+       "__typename": "StepSummaryData",
+       "steps": null
+      },
+      {
+       "__typename": "StepSummaryData",
+       "steps": null
+      },
+      {
+       "__typename": "StepSummaryData",
+       "steps": null
+      },
+      {
+       "__typename": "StepSummaryData",
+       "steps": null
+      },
+      {
+       "__typename": "StepSummaryData",
+       "steps": null
+      },
+      {
+       "__typename": "StepSummaryData",
+       "steps": null
+      },
+      {
+       "__typename": "StepSummaryData",
+       "steps": null
+      },
+      {
+       "__typename": "StepSummaryData",
+       "steps": null
+      },
+      {
+       "__typename": "StepSummaryData",
+       "steps": null
+      },
+      {
+       "__typename": "StepSummaryData",
+       "steps": null
+      },
+      {
+       "__typename": "StepSummaryData",
+       "steps": null
+      }
+     ]
+    }
+   }
+  }
+ }
+}
