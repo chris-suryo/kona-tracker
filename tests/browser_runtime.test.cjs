@@ -45,12 +45,17 @@ function setup(script, preview = false) {
     querySelector: s => s === 'main.activity-page' ? page : s === '.cam' ? camFrame : null,
     createElement: element, createTextNode: text => ({textContent: text})
   };
-  const timers = new Map(), requests = [], created = [], revoked = [], window = {...element(), location: {href: ''}};
+  const timers = new Map(), intervals = new Map(), requests = [], created = [], revoked = [];
+  const window = {...element(), location: {href: ''}};
   let nextTimer = 0, files = 0;
   const env = {
     document, window, AbortController, Date, console,
     setTimeout: (fn, delay) => { timers.set(++nextTimer, {fn, delay}); return nextTimer; },
     clearTimeout: id => timers.delete(id),
+    // Intervals are kept apart from timeouts so `fire(delay)` cannot reach
+    // the quiet refresh ticker by accident; `tick()` is its own door.
+    setInterval: (fn, delay) => { intervals.set(++nextTimer, {fn, delay}); return nextTimer; },
+    clearInterval: id => intervals.delete(id),
     fetch: (url, options = {}) => new Promise((resolve, reject) => {
       const req = {url, options, resolve, reject}; requests.push(req);
       options.signal?.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), {name:'AbortError'})));
@@ -65,8 +70,13 @@ function setup(script, preview = false) {
     DOMParser: class { parseFromString() { return {getElementById: () => ({innerHTML:'new render'}), querySelector: () => null}; } }
   };
   vm.runInNewContext(fs.readFileSync(path.join(staticDir, script), 'utf8'), env);
-  return {nodes, page, label, note, document, window, requests, timers, created, revoked, camFrame,
+  return {nodes, page, label, note, document, window, requests, timers, intervals, created, revoked, camFrame,
     files: () => files,
+    tick() {
+      const entry = [...intervals][0];
+      assert.ok(entry, 'no interval installed');
+      entry[1].fn();
+    },
     fire(delay) {
       const entry = [...timers].find(([, t]) => t.delay === delay);
       assert.ok(entry, `missing timer ${delay}`);
@@ -212,6 +222,43 @@ test('sample preview never installs automatic or pull refresh', () => {
   assert.equal(x.window.KonaRefresh, undefined);
   assert.equal(x.document.events.visibilitychange, undefined);
   assert.equal(x.requests.length, 0);
+  assert.equal(x.intervals.size, 0, 'sample data must never tick');
+});
+
+// The page used to render once and sit there, so a walk could finish while
+// the screen still showed where she was when it opened.
+test('an open page asks again on its own, quietly, without forcing a Fi call', async () => {
+  const x = setup('app.js');
+  assert.equal(x.intervals.size, 1);
+  assert.equal([...x.intervals.values()][0].delay, 60000);
+  x.tick();
+  assert.equal(x.requests.length, 1);
+  assert.equal(x.requests[0].url, '/activity', 'the timer collects, it does not force');
+  assert.equal(x.nodes.pull.classList.contains('busy'), false, 'a quiet tick shows no pull bar');
+  assert.notEqual(x.label.textContent, 'Refreshing\u2026');
+  x.requests[0].resolve(response({})); await settle();
+  assert.equal(x.nodes['activity-body'].innerHTML, 'new render');
+  assert.equal(x.nodes.pull.classList.contains('finished'), false);
+});
+
+test('a pocketed phone stops asking, and asks once on the way back', () => {
+  const x = setup('app.js');
+  x.document.hidden = true; x.document.events.visibilitychange();
+  assert.equal(x.intervals.size, 0);
+  assert.equal(x.requests.length, 0);
+  x.document.hidden = false; x.document.events.visibilitychange();
+  assert.equal(x.requests.length, 1);
+  assert.equal(x.requests[0].url, '/activity?fresh=1', 'coming back is a person asking');
+  assert.equal(x.intervals.size, 1);
+});
+
+test('the pull gesture still forces a fresh reading', () => {
+  const x = setup('app.js'); x.window.scrollY = 0;
+  x.page.events.touchstart({touches:[{clientY:0}], target:element()});
+  x.page.events.touchmove({touches:[{clientY:150}]});
+  x.page.events.touchend();
+  assert.equal(x.requests.length, 1);
+  assert.equal(x.requests[0].url, '/activity?fresh=1');
 });
 
 test('refresh timeout unlocks retry and explains failure', async () => {
@@ -274,4 +321,58 @@ test('map init releases the previous Leaflet instance even when new points are a
   window.KonaMap.init(); assert.equal(removed, 1);
   points = null; window.KonaMap.init(); assert.equal(removed, 2);
   window.KonaMap.destroy(); assert.equal(removed, 2);
+});
+
+// A map on screen with "Map unavailable" printed under it is the page
+// contradicting itself; that is what one failed tile used to produce.
+test('one failed tile does not hide a map that has already drawn', () => {
+  const handlers = {};
+  const window = {}, layer = {addTo() {}, on(name, fn) { handlers[name] = fn; }};
+  let resized = 0;
+  const map = {remove() {}, setView() {}, invalidateSize() { resized++; }};
+  const L = {map: () => map, tileLayer: () => layer, marker: () => layer,
+    divIcon: () => ({}), control: {zoom: () => layer}};
+  const classes = new Set();
+  const mapEl = {hidden: false,
+    classList: {toggle: (n, on) => on ? classes.add(n) : classes.delete(n), contains: n => classes.has(n)}};
+  const notice = {hidden: true};
+  const document = {getElementById: id => ({
+    'map-points': {textContent: '[{"lat":30,"lon":-97}]'},
+    'kona-map': mapEl, 'map-unavailable': notice
+  })[id] || null};
+  vm.runInNewContext(fs.readFileSync(path.join(staticDir,'map.js'),'utf8'), {window,document,L});
+  window.KonaMap.init();
+
+  handlers.tileload();
+  handlers.tileerror();
+  assert.equal(mapEl.hidden, false, 'a drawn map stays drawn');
+  assert.equal(notice.hidden, true);
+});
+
+test('a tile server that answers nothing says so, and recovers if it wakes up', () => {
+  const handlers = {};
+  const window = {}, layer = {addTo() {}, on(name, fn) { handlers[name] = fn; }};
+  let resized = 0;
+  const map = {remove() {}, setView() {}, invalidateSize() { resized++; }};
+  const L = {map: () => map, tileLayer: () => layer, marker: () => layer,
+    divIcon: () => ({}), control: {zoom: () => layer}};
+  const classes = new Set();
+  const mapEl = {hidden: false,
+    classList: {toggle: (n, on) => on ? classes.add(n) : classes.delete(n), contains: n => classes.has(n)}};
+  const notice = {hidden: true};
+  const document = {getElementById: id => ({
+    'map-points': {textContent: '[{"lat":30,"lon":-97}]'},
+    'kona-map': mapEl, 'map-unavailable': notice
+  })[id] || null};
+  vm.runInNewContext(fs.readFileSync(path.join(staticDir,'map.js'),'utf8'), {window,document,L});
+  window.KonaMap.init();
+
+  handlers.tileerror();
+  assert.equal(mapEl.hidden, true);
+  assert.equal(notice.hidden, false);
+
+  handlers.tileload();
+  assert.equal(mapEl.hidden, false);
+  assert.equal(notice.hidden, true);
+  assert.equal(resized, 1, 'Leaflet sized itself while hidden and must re-measure');
 });

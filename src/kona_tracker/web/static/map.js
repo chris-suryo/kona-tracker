@@ -47,11 +47,29 @@
       attribution: cfg.attribution
     });
     // From the frontend branch: a dead tile server should say so rather than
-    // leave a blank grey rectangle that reads as a broken app.
+    // leave a blank grey rectangle that reads as a broken app. But a single
+    // failed tile is not a dead server -- a retina variant that does not
+    // exist, one request lost on a phone changing cells -- and hiding a map
+    // that has already drawn is worse than the grey rectangle this guards
+    // against. It showed up exactly that way on 2026-09-12: a full map on
+    // screen with "Map unavailable" printed underneath it, which is the page
+    // contradicting itself. So the message is for the case it was written
+    // for and no other: errors before any tile has arrived. If one does
+    // arrive later the map comes back, and Leaflet is told to re-measure,
+    // because it sized itself while the element was hidden.
+    var unavailable = document.getElementById('map-unavailable');
+    var arrived = 0;
     tiles.on('tileerror', function () {
+      if (arrived > 0) { return; }
       el.hidden = true;
-      var unavailable = document.getElementById('map-unavailable');
       if (unavailable) { unavailable.hidden = false; }
+    });
+    tiles.on('tileload', function () {
+      arrived += 1;
+      if (!el.hidden) { return; }
+      el.hidden = false;
+      if (unavailable) { unavailable.hidden = true; }
+      map.invalidateSize();
     });
     tiles.addTo(map);
     if (latlngs.length > 1) {

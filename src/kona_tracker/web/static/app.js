@@ -87,20 +87,27 @@
     }
   }
 
-  function refresh() {
+  // `force` asks the server to go to Fi now (the pull gesture, and coming
+  // back to the app); without it the request returns whatever the server
+  // already has, which is what the quiet timer below wants. `silent` keeps
+  // the pull bar out of it: a bar that announces itself every minute is an
+  // interruption, not feedback.
+  function refresh(force, silent) {
     if (busy) { return; }
-    interruptDismissal();
     busy = true;
-    bar.hidden = false;
-    bar.classList.remove('ready', 'dragging');
-    bar.style.transform = '';
-    bar.style.opacity = '';
-    bar.classList.add('busy');
-    label.textContent = 'Refreshing\u2026';
+    if (!silent) {
+      interruptDismissal();
+      bar.hidden = false;
+      bar.classList.remove('ready', 'dragging');
+      bar.style.transform = '';
+      bar.style.opacity = '';
+      bar.classList.add('busy');
+      label.textContent = 'Refreshing\u2026';
+    }
     var succeeded = false;
     var controller = new AbortController();
     var deadline = setTimeout(function () { controller.abort(); }, 20000);
-    fetch('/activity?fresh=1', { cache: 'no-store', signal: controller.signal, headers: { 'Accept': 'text/html' } })
+    fetch(force ? '/activity?fresh=1' : '/activity', { cache: 'no-store', signal: controller.signal, headers: { 'Accept': 'text/html' } })
       .then(function (r) {
         if (r.redirected) { window.location.href = r.url; return; }  // signed out
         if (!r.ok) { throw new Error('refresh failed'); }
@@ -120,6 +127,7 @@
       .finally(function () {
         clearTimeout(deadline);
         busy = false;
+        if (silent) { return; }
         bar.classList.remove('busy');
         bar.classList.add('finished');
         bar.classList.toggle('failed', !succeeded);
@@ -152,14 +160,41 @@
     startY = null;
     if (!pulling) { return; }
     pulling = false;
-    if (ready) { refresh(); } else { hide(); }
+    if (ready) { refresh(true); } else { hide(); }
   }
   page.addEventListener('touchend', end);
   function cancel() { startY = null; pulling = false; if (!busy) { hide(); } }
   page.addEventListener('touchcancel', cancel);
+  // Nothing on this page moved on its own until now. It rendered once and
+  // sat there, so a dog could go out, walk, and come home while the screen
+  // still showed where she was when the page opened -- which is how the map
+  // came to look stuck during a walk on 2026-09-12. Three clocks stack up:
+  // the collar reports every few minutes, the server asks Fi at most once
+  // per KONA_FI_REFRESH_SECONDS, and the page asked for neither.
+  //
+  // This fixes the third. The tick is deliberately not a forced Fi call: it
+  // collects whatever the server already has, and by asking at all it starts
+  // the background refresh that the next tick will collect. So the page
+  // follows the server's cadence instead of adding a second one on top of
+  // somebody else's private API. Watching faster is the server's setting to
+  // change, not this file's.
+  //
+  // It runs only while the page is actually on screen. A phone in a pocket
+  // asks for nothing.
+  var AUTO_REFRESH_MS = 60000;
+  var ticker = null;
+  function startTicking() {
+    if (ticker === null) { ticker = setInterval(function () { refresh(false, true); }, AUTO_REFRESH_MS); }
+  }
+  function stopTicking() {
+    if (ticker !== null) { clearInterval(ticker); ticker = null; }
+  }
   document.addEventListener('visibilitychange', function () {
-    if (!document.hidden) { refresh(); }
+    if (document.hidden) { stopTicking(); return; }
+    refresh(true);
+    startTicking();
   });
+  startTicking();
   window.KonaRefresh = refresh;
 })();
 
