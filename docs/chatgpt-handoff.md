@@ -214,6 +214,15 @@ a path, `[OBSERVED]` cites a screenshot, and neither may be used for the other.
 the output still cannot *run* the app, and a tag that invites someone to
 report a measurement they did not take is worse than no tag at all.
 
+**On the pin, and why it is written loosely.** A document cannot pin the commit
+that contains it: the moment this file is merged, the tip it names is one
+behind. Chasing that with another commit only moves the problem. So the pin
+names a known-good commit *and* permits the current tip, and the reviewer is
+asked to report which it actually read rather than to fail a check that the
+repository's own history guarantees it will eventually fail. Verify it is still
+true before pasting — `git diff --stat <pinned>..main -- src/ tests/` should be
+empty — and re-pin when it is not.
+
 ## ✂️ ——— START ———
 
 I need a professional UI/UX critique of a phone-first web app. **Give me a
@@ -224,12 +233,15 @@ once already.
 ### Read this exact commit
 
 **`chris-suryo/kona-tracker`** is a public GitHub repository. Read it at commit
-**`86727a692b9070551c49a7e7d4d6ed7757ba29ce`** (tip of `main`).
+**`b6e20cda863c42c8fe70cba49e1ada838fee49dc`**, or at the current tip of `main`
+if that has moved on — `src/` and `tests/` have not changed since `38afbeb`, so
+either way you are reading the same application.
 
-**Begin your report with the commit SHA you actually read.** If you cannot
-fetch that one, say so and stop rather than auditing whatever tip you get. An
-earlier round audited a three-day-old commit and most of its findings had
-already been built; one line at the top would have caught it in seconds.
+**Begin your report with the commit SHA you actually read.** An earlier round
+audited a three-day-old commit and most of its findings had already been built;
+one line at the top would have caught it in seconds. If the SHA you read is not
+one of the two above, say so plainly and carry on — that is information, not a
+failure.
 
 Useful entry points:
 
