@@ -4,7 +4,7 @@
 //
 // MANUAL TEST, NOT A GATE. CI (.github/workflows/ci.yml) runs ruff and pytest
 // only; nothing runs this file automatically, so a green CI says nothing
-// about it. Run it yourself after touching app.js or camera.js. Wiring it
+// about it. Run it yourself after touching app.js, poll.js, camera.js or robot.js. Wiring it
 // into CI means installing Node on both runners, which is a dependency
 // decision that is Chris's to make (docs/overnight-brief.md, item 3).
 const {test} = require('node:test');
@@ -72,7 +72,10 @@ function setup(script, preview = false) {
     File: class { constructor() { files++; } }, navigator: {},
     DOMParser: class { parseFromString() { return {getElementById: () => ({innerHTML:'new render'}), querySelector: () => null}; } }
   };
-  vm.runInNewContext(fs.readFileSync(path.join(staticDir, script), 'utf8'), env);
+  // The two picture pages load poll.js first, as their templates do; the
+  // loop lives there and camera.js / robot.js call window.KonaPoll.
+  const scripts = script === 'camera.js' || script === 'robot.js' ? ['poll.js', script] : [script];
+  scripts.forEach(s => vm.runInNewContext(fs.readFileSync(path.join(staticDir, s), 'utf8'), env));
   return {nodes, page, label, note, document, window, requests, timers, intervals, created, revoked, camFrame,
     files: () => files,
     tick() {
@@ -115,6 +118,26 @@ test('camera long-polls one frame at a time and reveals only a decoded live fram
   assert.equal(x.requests[1].url, '/snapshot.jpg?after=7');
   // Exactly one in flight: nothing else is scheduled while it is pending.
   assert.equal([...x.timers.values()].filter(t => t.delay !== 10000).length, 0);
+});
+
+test('the robot page runs the same loop against its own camera and its own words', async () => {
+  const x = setup('robot.js');
+  assert.equal(x.nodes.livetxt.textContent, 'CONNECTING');
+  assert.equal(x.nodes.cap.textContent, 'Reaching the robot…');
+  assert.equal(x.requests[0].url, '/snapshot.jpg?cam=robot&after=0');
+  x.requests[0].resolve(frame('live', 3)); await settle();
+  x.nodes.cam.naturalWidth = 640; x.nodes.cam.events.load();
+  assert.equal(x.nodes.livetxt.textContent, 'LIVE');
+  x.fire(0);
+  assert.equal(x.requests[1].url, '/snapshot.jpg?cam=robot&after=3');
+  // An off robot is its normal state, said plainly: never a USB cable.
+  x.requests[1].resolve(frame('disconnected', 3, {error: 'open'})); await settle();
+  assert.equal(x.nodes.livetxt.textContent, 'ROBOT OFF');
+  assert.match(x.nodes.cap.textContent, /off or off the network/);
+  assert.doesNotMatch(x.nodes.cap.textContent, /USB/);
+  assert.equal(x.nodes.cam.classList.contains('unavailable'), true);
+  // Nothing on this page can move the robot yet.
+  assert.equal(x.requests.filter(q => q.options.method === 'POST').length, 0);
 });
 
 test('a response the server did not call live stays masked and is described honestly', async () => {

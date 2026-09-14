@@ -23,7 +23,14 @@ from fastapi.templating import Jinja2Templates
 
 from kona_tracker.camera.control import CameraControl, ControlUnsupported, FakeControl, NoControl
 from kona_tracker.camera.hub import BOUNDARY, MAX_STREAMS, CameraHub
-from kona_tracker.camera.source import FakeSource, FrameSource, OpenCVSource, RtspSource
+from kona_tracker.camera.placeholder import ROBOT_OFF_JPEG
+from kona_tracker.camera.source import (
+    FakeSource,
+    FrameSource,
+    OpenCVSource,
+    RtspSource,
+    SnapshotSource,
+)
 from kona_tracker.fi.service import FiService
 from kona_tracker.web.assets import asset_url, asset_versions
 from kona_tracker.web.auth import COOKIE_NAME, Lockout, PasscodeAuth, client_key
@@ -184,6 +191,7 @@ def create_app(
     control: CameraControl | None = None,
     fi_service: FiService | None = None,
     avatar_fetch: AvatarFetch = fetch_avatar,
+    robot_source_factory: Callable[[], FrameSource] | None = None,
 ):
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
@@ -217,6 +225,8 @@ def create_app(
             yield
         finally:
             hub.stop()  # release the webcam on shutdown
+            if robot_hub is not None:
+                robot_hub.stop()
             if beat is not None:
                 beat.stop()
             if holding:
@@ -234,6 +244,9 @@ def create_app(
     # for the day that cost us.
     versions = asset_versions(HERE / "static")
     templates.env.globals["asset"] = lambda name: asset_url(versions, name)
+    # The header grows a Robot tab only when there is a robot to show. Set
+    # once here rather than threaded through every page's context.
+    templates.env.globals["robot_configured"] = settings.robot_configured
 
     auth = PasscodeAuth(
         settings.passcode,
@@ -254,8 +267,25 @@ def create_app(
         stale_after=settings.stale_seconds,
         hang_after=settings.hang_seconds,
     )
+    # The robot is a second camera with its own hub: own reader thread, own
+    # backoff (it is off more than on), own placeholder, and a lower frame
+    # rate because every frame is one HTTP GET to the Pi. Built only when
+    # KONA_ROBOT_SNAPSHOT_URL is set; with it blank nothing here changes.
+    robot_hub: CameraHub | None = None
+    if settings.robot_configured:
+        robot_hub = CameraHub(
+            robot_source_factory or (lambda: SnapshotSource(settings.robot_snapshot_url)),
+            idle_stop_seconds=settings.camera_idle_seconds,
+            reopen_cooldown_seconds=settings.camera_reopen_seconds,
+            max_fps=settings.robot_fps,
+            stale_after=settings.stale_seconds,
+            hang_after=settings.hang_seconds,
+            placeholder=ROBOT_OFF_JPEG,
+            name="robot",
+        )
     fi = fi_service if fi_service is not None else default_fi_service(settings)
     app.state.hub = hub
+    app.state.robot_hub = robot_hub
     app.state.auth = auth
     app.state.control = control
     app.state.fi = fi
@@ -265,6 +295,17 @@ def create_app(
 
     def authed(request: Request) -> bool:
         return auth.valid_cookie(request.cookies.get(COOKIE_NAME))
+
+    def hub_for(cam: str) -> CameraHub:
+        """The hub a `cam=` query names. `house` is the default and what
+        every pre-robot URL means; `robot` exists only when configured.
+        Anything else is a 404. The value is compared, never used: it
+        reaches no path, no filename and no log line."""
+        if cam == "house":
+            return hub
+        if cam == "robot" and robot_hub is not None:
+            return robot_hub
+        raise HTTPException(status_code=404, detail="no such camera")
 
     @app.middleware("http")
     async def gate(request: Request, call_next):
@@ -373,6 +414,19 @@ def create_app(
     def camera(request: Request):
         return templates.TemplateResponse(
             request, "camera.html", {"tab": "camera", "caps": capabilities}
+        )
+
+    @app.get("/robot", response_class=HTMLResponse)
+    def robot(request: Request):
+        """The robot's camera, and in a later phase its controls. 404 with
+        no robot configured: the header has no tab for it either, so the
+        page cannot be reached by accident, only by typing the URL."""
+        if robot_hub is None:
+            raise HTTPException(status_code=404, detail="no robot configured")
+        return templates.TemplateResponse(
+            request,
+            "robot.html",
+            {"tab": "robot", "robot_name": settings.robot_name, "drive": False},
         )
 
     @app.get("/activity", response_class=HTMLResponse)
@@ -503,8 +557,15 @@ def create_app(
         context["tab"] = None
         # The same statistics camera-doctor reads, so a wedged USB device
         # can be diagnosed from a phone instead of at the machine.
-        context["camera"] = camera_health(hub.status())
+        house_kind = "rtsp" if settings.camera_source == "rtsp" else "usb"
+        context["camera"] = camera_health(hub.status(), kind=house_kind)
         context["camera_description"] = settings.camera_description()
+        # The robot is a second camera and gets its own rows, in its own
+        # words; None when there is no robot and the section is not drawn.
+        context["robot"] = (
+            camera_health(robot_hub.status(), kind="robot") if robot_hub is not None else None
+        )
+        context["robot_name"] = settings.robot_name
         context["from_preview"] = from_preview
         return templates.TemplateResponse(request, "settings.html", context)
 
@@ -557,7 +618,7 @@ def create_app(
         )
 
     @app.get("/snapshot.jpg")
-    def snapshot(after: int = Query(0, ge=0)):
+    def snapshot(after: int = Query(0, ge=0), cam: str = Query("house")):
         """One frame, and the truth about it in the same response.
 
         `after` is the seq the caller last received. The hub holds the
@@ -572,8 +633,11 @@ def create_app(
         before giving up and a frame older than that is stale by definition.
         `X-Kona-Error` is the hub's last error *kind*, a short token, never
         the message, which can carry a redacted camera host.
+
+        `cam` picks the camera; a query rather than a path prefix because
+        the gate's bare-401 rule for an <img> is keyed on the path.
         """
-        snap = hub.snapshot(after_seq=after)
+        snap = hub_for(cam).snapshot(after_seq=after)
         headers = {
             "Cache-Control": "no-store",
             "X-Kona-State": snap.state,
@@ -585,7 +649,11 @@ def create_app(
         return Response(content=snap.jpeg, media_type="image/jpeg", headers=headers)
 
     @app.get("/status.json")
-    def status():
+    def status(cam: str = Query("house")):
+        if cam != "house":
+            # The robot has no control driver in this phase: its status is
+            # the hub's alone, with none of the house camera's numbers.
+            return hub_for(cam).status()
         pan, tilt = control.position()
         return {
             **hub.status(),

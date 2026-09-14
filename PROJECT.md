@@ -70,6 +70,14 @@ every item; `docs/scaling-limits.md` is the standing list of ceilings;
   request (the camera picture is the one exception, by design), camera
   health readable from a phone, a rotating log, times in Kona's timezone,
   and an outbound heartbeat so a dead PC still raises an alarm.
+- **Robot tab (2026-09-14):** the TurboPi is a second camera, read one
+  JPEG per GET from its port 8080 through its own `CameraHub`, behind the
+  same gate, on its own tab. `KONA_ROBOT_SNAPSHOT_URL` is the switch; blank
+  means no tab. Driving is **gated** on the Pi-side watchdog service
+  existing and answering `/health` (its contract is in
+  `docs/device-capabilities.md` §1b); the app never talks to the robot's
+  raw port 9030. Chris still owes `Test-NetConnection 10.0.0.3 -Port 8080`
+  from the PC and a DHCP reservation for the robot.
 - **Windows PC:** `uv sync` is blocked by Application Control (error 4551)
   on Chris's machine. `uv run --no-sync kona serve` runs what is already
   installed; a new dependency needs `uv sync --no-build-isolation`, which
@@ -102,6 +110,10 @@ every item; `docs/scaling-limits.md` is the standing list of ceilings;
    refresh for sooner.
 5. **Pinch-zoom** on the camera; double-tap to 2.5x, double-tap again to
    reset.
+6. **The Robot tab** with `KONA_ROBOT_SNAPSHOT_URL` set and the robot on;
+   then switch the robot off and confirm the tab says ROBOT OFF within
+   about 15 s; then on again and confirm the picture returns without a
+   restart. `docs/first-run.md` §4b.
 
 *Still owed, in order:*
 6. The ten-minute polling soak (`/status.json` holds `streams: 0`) and the

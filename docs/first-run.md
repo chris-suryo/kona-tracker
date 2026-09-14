@@ -200,6 +200,40 @@ running the app must be on the same network.
    after the last viewer leaves (`KONA_CAMERA_IDLE_SECONDS`). Stop the
    server first. This cost most of a day on 2026-09-11.
 
+## 4b. When the robot is on (needs the home Wi-Fi)
+
+The TurboPi serves its camera on the LAN with no login, and the app reads
+it exactly the way it reads the Tapo: from the PC, so the phone never needs
+to reach the robot. Two checks, then two lines.
+
+1. From the PC (PowerShell), prove the PC can reach the robot -- this is
+   the one link nobody has tested yet:
+
+   ```
+   Test-NetConnection 10.0.0.3 -Port 8080
+   ```
+
+   `TcpTestSucceeded : True` is the answer. `False` with the robot on means
+   the router is keeping the two apart, and no `.env` line will fix that.
+2. Reserve `10.0.0.3` for the robot in the router (DHCP reservation), the
+   same as the camera in step 4. Without it the address can change on the
+   next reboot and the tab goes quiet without saying why.
+3. Edit `.env`:
+
+   ```
+   KONA_ROBOT_SNAPSHOT_URL=http://10.0.0.3:8080/?action=snapshot
+   ```
+
+   Restart `kona serve`. A **Robot** tab appears next to Camera. It says
+   **ROBOT OFF** whenever the robot is off or off the Wi-Fi, and the picture
+   comes back on its own when it is on again -- no restart. With the URL
+   blank there is no tab and nothing else changes.
+
+   Driving is not in this tab yet, on purpose: the robot never stops on its
+   own, so the stop-when-the-phone-vanishes watchdog has to be built on the
+   robot first. `KONA_ROBOT_CONTROL_URL` and `KONA_ROBOT_TOKEN` are for that
+   day.
+
 ## 5. When the Fi collar arrives (anywhere, any machine)
 
 Fi's API is a normal internet service, so this does **not** need the home

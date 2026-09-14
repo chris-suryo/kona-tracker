@@ -16,6 +16,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+import httpx
+
 from kona_tracker.camera.redact import redact_url, with_credentials
 
 
@@ -488,6 +490,80 @@ def _render_scene():
     cv2.ellipse(scene, (760, horizon + 46), (150, 58), 0, 0, 360, (70, 95, 165), -1, cv2.LINE_AA)
     cv2.ellipse(scene, (760, horizon + 40), (112, 40), 0, 0, 360, (95, 125, 200), -1, cv2.LINE_AA)
     return scene
+
+
+class SnapshotSource:
+    """A camera that answers one JPEG per HTTP GET: the TurboPi's
+    `?action=snapshot`, or any mjpg-streamer.
+
+    The bytes are handed on untouched -- no decode, no re-encode, no OpenCV.
+    That is not a shortcut, it is the point: the RTSP path decodes and
+    re-encodes every frame because FFmpeg is the only thing that speaks
+    RTSP, and this camera already speaks JPEG. Less CPU on the PC and less
+    latency on the phone than the Tapo gets, for a camera that is measured
+    (2026-09-13) to serve any number of readers at once.
+
+    Why this and not the multipart stream on the same port: it is twenty
+    lines against eighty in the layer of this project with the worst
+    history, and the hub already provides everything a stream parser would
+    have to -- reconnect, hang detection, backoff. If bandwidth ever
+    matters, a stream parser slots in behind the same two-method protocol.
+
+    Opening means proving the camera answers *now*. A robot that is off --
+    its normal state, on two 18650 cells -- is therefore an open failure,
+    which the hub answers with exponential backoff, rather than ten empty
+    reads and a reconnect every second.
+    """
+
+    def __init__(self, url: str, timeout: float = 2.0, client: httpx.Client | None = None):
+        self.display_url = redact_url(url)
+        self._url = url
+        self._client = client if client is not None else httpx.Client(timeout=timeout)
+        self._owns_client = client is None
+        try:
+            first = self._fetch()
+        except httpx.HTTPError as e:
+            self.close()
+            raise CameraOpenError(
+                f"could not reach {self.display_url}: {type(e).__name__}"
+            ) from None
+        if first is None:
+            self.close()
+            raise CameraOpenError(f"{self.display_url} did not answer with a JPEG")
+        # Already fetched to prove the camera is there; hand it over rather
+        # than throwing a frame away and asking again.
+        self._first: bytes | None = first
+
+    def __repr__(self) -> str:
+        return f"SnapshotSource({self.display_url})"
+
+    def _fetch(self) -> bytes | None:
+        response = self._client.get(self._url)
+        if response.status_code != 200:
+            return None
+        body = response.content
+        # A JPEG starts with the SOI marker. mjpg-streamer answers a wrong
+        # path with an HTML page and a 200, and an <img> would silently
+        # show nothing; this is the difference between "frame" and "not".
+        if not body.startswith(b"\xff\xd8"):
+            return None
+        return body
+
+    def read_jpeg(self) -> bytes | None:
+        if self._first is not None:
+            jpeg, self._first = self._first, None
+            return jpeg
+        try:
+            return self._fetch()
+        except httpx.HTTPError as e:
+            # The connection died mid-run. Raise so the hub records it and
+            # reopens -- and a reopen against an off robot fails loudly into
+            # backoff -- rather than returning None ten times first.
+            raise RuntimeError(f"{type(e).__name__} fetching {self.display_url}") from None
+
+    def close(self) -> None:
+        if self._owns_client:
+            self._client.close()
 
 
 class FakeSource:

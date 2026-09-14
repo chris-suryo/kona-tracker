@@ -96,6 +96,22 @@ class Settings:
     #: How long a press of "Start walk" lasts before it expires by itself.
     fi_live_max_seconds: float = 7200.0
     fi_data_start: date | None = None
+    #: A second camera: the TurboPi, or anything that answers one JPEG per
+    #: GET. Blank means no Robot tab and no second hub -- nothing changes.
+    #: Expected: http://10.0.0.3:8080/?action=snapshot
+    robot_snapshot_url: str = ""
+    robot_name: str = "Robot"
+    #: Lower than the house camera: every frame is one HTTP GET to the Pi,
+    #: and ten a second of ~50 KB is plenty on a LAN.
+    robot_fps: float = 10.0
+    #: Phase 2, declared now so the shape is settled: the Pi-side safety
+    #: service (never the raw motor port) and the shared token it wants.
+    robot_control_url: str = ""
+    robot_token: str = ""
+
+    @property
+    def robot_configured(self) -> bool:
+        return bool(self.robot_snapshot_url)
 
     @property
     def fi_configured(self) -> bool:
@@ -139,6 +155,7 @@ class Settings:
             f"rtsp_user={self.rtsp_user!r}, rtsp_password='***', "
             f"tapo_user={self.tapo_user!r}, tapo_password='***', "
             f"tapo_cloud_password='***', "
+            f"robot={redact_url(self.robot_snapshot_url)!r}, robot_token='***', "
             f"fi_email={'set' if self.fi_email else 'unset'}, fi_password='***', "
             f"heartbeat={'set' if self.heartbeat_url else 'unset'})"
         )
@@ -205,6 +222,18 @@ def load_settings(env_file: Path | None = Path(".env"), fake_camera: bool = Fals
         # FFmpeg could not open it anyway, and a scheme-less URL is the one
         # shape a credential redactor can get wrong; refuse early.
         raise SettingsError("KONA_RTSP_URL must start with a scheme, e.g. rtsp://<ip>:554/stream1")
+
+    robot_snapshot_url = get("KONA_ROBOT_SNAPSHOT_URL").strip()
+    if robot_snapshot_url and not has_scheme(robot_snapshot_url):
+        raise SettingsError(
+            "KONA_ROBOT_SNAPSHOT_URL must start with a scheme, "
+            "e.g. http://10.0.0.3:8080/?action=snapshot"
+        )
+    robot_control_url = get("KONA_ROBOT_CONTROL_URL").strip()
+    if robot_control_url and not has_scheme(robot_control_url):
+        raise SettingsError(
+            "KONA_ROBOT_CONTROL_URL must start with a scheme, e.g. http://10.0.0.3:9031"
+        )
 
     trusted_proxy_header = get("KONA_TRUSTED_PROXY_HEADER").strip()
     trusted_proxy_ips = tuple(
@@ -276,4 +305,9 @@ def load_settings(env_file: Path | None = Path(".env"), fake_camera: bool = Fals
         heartbeat_seconds=float(get("KONA_HEARTBEAT_SECONDS", "300")),
         map_tiles=map_tiles,
         stadia_api_key=stadia_api_key,
+        robot_snapshot_url=robot_snapshot_url,
+        robot_name=get("KONA_ROBOT_NAME", "Robot").strip() or "Robot",
+        robot_fps=float(get("KONA_ROBOT_FPS", "10")),
+        robot_control_url=robot_control_url,
+        robot_token=get("KONA_ROBOT_TOKEN").strip(),
     )

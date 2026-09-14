@@ -292,10 +292,13 @@ def test_camera_page_polls_snapshots_and_holds_no_stream(client):
     login(client)
     page = client.get("/camera").text
     assert 'src="/stream.mjpg"' not in page and 'id="cam"' in page
-    js = (HERE / "static" / "camera.js").read_text(encoding="utf-8")
-    assert "/snapshot.jpg?after=" in js and "X-Kona-Seq" in js
-    assert "status.json" not in js, "one source of truth per frame, not two pollers"
-    assert "stream.mjpg" not in js
+    assert 'src="/static/poll.js?v=' in page, "the loop is the shared file"
+    loop = (HERE / "static" / "poll.js").read_text(encoding="utf-8")
+    assert "/snapshot.jpg?" in loop and "after=" in loop and "X-Kona-Seq" in loop
+    for name in ("poll.js", "camera.js", "robot.js"):
+        js = (HERE / "static" / name).read_text(encoding="utf-8")
+        assert "status.json" not in js, f"{name}: one source of truth per frame, not two pollers"
+        assert "stream.mjpg" not in js, name
 
 
 def test_the_pad_appears_only_when_something_can_actually_move_the_camera():
