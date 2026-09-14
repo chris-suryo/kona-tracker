@@ -129,19 +129,52 @@ behaviour the house camera already had. All robot traffic goes through the
 PC (the phone is on Tailscale and cannot see the LAN; the CSP would refuse
 anyway). `KONA_ROBOT_SNAPSHOT_URL` is the only switch.
 
-**What is deliberately not built.** Driving. Port 9030 is never spoken to
-by this app. Because nothing on the robot ever expires a motor command, the
-watchdog that zeroes the motors when commands stop has to live **on the
-Pi** -- the failure being guarded against is the PC or the phone becoming
-unreachable, and a watchdog on the far side of a broken link cannot fire.
-The other session is building that service to a contract (port 9031, a
-shared token, `/health`, `/telemetry`, `/drive` with a mandatory TTL and a
-background task that stops the motors when it lapses, `/stop`, `/look`
-clamped to ±45°, refusal below 7.0 V). Our side -- a proxy under `/robot/*`
-and a joystick -- starts only once that answers `/health`. Demos (line
-following and the rest) come after that again. Never a CORS patch to the
-robot's `RPCServer.py`: it would make the robot drivable by any web page on
-the LAN.
+**Driving (2026-09-14).** Built, behind the Pi-side *gateway* on port 9031,
+which is the only thing this app ever talks to on the robot -- port 9030 is
+never spoken to from here. The gateway was built by the robot session to a
+contract and reports 62 checks passing, including its watchdog firing at
+317 ms on a 300 ms TTL with no stop sent. Our side sends a body velocity
+(`vx` forward, `vy` left, `omega` counter-clockwise, each in [-1, 1]) and
+never a motor id: the mecanum kinematics, the wiring inversion and the duty
+cap all live on the Pi.
+
+Four things the gateway's author found in the vendor source changed our
+design, and all four are worth knowing before reading the code:
+
+| Finding | What we do about it |
+|---|---|
+| **`GetRunningFunc` can never succeed.** `RPCServer.py:384` passes a string into a `callable()` check, so it returns `E05` every time. Their `patch_getrunningfunc.py` fixes the line | Until it is applied the "a demo is driving" guard cannot be enforced. `/telemetry` reports `demo_detection: false` and the drive screen **says so out loud** rather than implying a guard that is not running |
+| **Battery reads come back `None` routinely** -- `get_battery()` pops a queue that TurboPi's own thread drains once a second | An unknown battery does **not** block driving, on either side. It would look identical to a flat cell and make the robot unusable. The strip says "unknown" |
+| **The robot's RPC server handles one request at a time** (`run_simple()`, threading off) and an unnecessary `StopFunc` blocks two seconds | We send `/drive` every **200 ms** against a **500 ms** TTL: two refreshes per TTL, at half the load of a 100 ms loop. The gateway skips `StopFunc` unless a demo is loaded, so a stop can never queue behind the previous stop |
+| **`/stop` answers 503 when 9030 is silent** rather than a comforting 200 | A failed stop is the loudest thing on the drive screen and retries on its own. It never travels as success |
+
+**Stopping, in layers.** The gateway's watchdog is the real one, because it
+is on the far side of the link that fails. Above it: an explicit stop on
+every release path in the browser (pointer up or cancelled, window blur, tab
+hidden, rotation back to portrait, Escape, the STOP button), a `sendBeacon`
+stop that outlives the page being torn down, and a stop from this app's own
+shutdown. Below it: the gateway stops on start and on SIGTERM, and a systemd
+`ExecStopPost` that runs even on SIGKILL.
+
+**The one failure mode nothing covers.** Every layer above reaches the motors
+through port 9030. If `TurboPi.py` itself dies while the motors are spinning,
+none of them can zero it -- including the watchdog. Nothing in this app can
+fix that; it is recorded here so it is a known gap rather than a surprise.
+
+**Untested on hardware, as of 2026-09-14.** Which way the robot physically
+moves. "Positive `vy` goes left" rests on the mecanum roller orientation and
+"positive `pan_deg` looks left" on how the servo horn was mounted, and
+neither has been measured on this robot. The drive screen starts in **Slow**
+(0.4x) for that reason, and `docs/first-run.md` section 4c says to verify on
+a stand. Also unmeasured: command latency, and the gateway on real hardware
+at all -- every check so far ran against a stand-in for port 9030.
+
+**Still not built, deliberately.** The six built-in demos (line following and
+the rest): they need `Heartbeat()`, they drive the motors themselves, and the
+guard that would stop us fighting them is exactly the one the unpatched robot
+cannot run. Recording from the robot camera. Any robot traffic that does not
+go through the PC, and any CORS patch to `RPCServer.py` -- that would make
+the robot drivable by any web page on the LAN.
 
 ## 2. Fi collar
 

@@ -61,7 +61,8 @@ body { min-height: 100dvh; display: flex; flex-direction: column; -webkit-font-s
    someone with poor eyesight reads this page -- and nothing here reaches
    inside the map, where pinch is how you zoom it. .nub keeps `none`
    because press-and-hold must not scroll. */
-.seg a, .avatar, .shutter, .pill, .settings-link, .login button, .logout { touch-action: manipulation; }
+.seg a, .avatar, .shutter, .pill, .settings-link, .login button, .logout,
+.drive-exit, .drive-link { touch-action: manipulation; }
 
 /* Pull to refresh (app.js). The body, not main, owns the viewport scroll,
    so `overscroll-behavior` goes there: it keeps Safari's own
@@ -583,6 +584,92 @@ body.activity-page { overscroll-behavior-y: contain; }
 .live-walk .walk-toggle { margin-left: 0; flex: none; }
 .live-walk .walk-note { margin: 0; font-size: 12px; color: var(--ink2); min-width: 0; }
 
+/* The robot's camera is 640x480. `.cam img` forces 16/9 with object-fit
+   cover, which on a 4:3 source crops top and bottom -- and the bottom is
+   the floor directly in front of the wheels, the one part you cannot drive
+   without. The Tapo is genuinely 16:9 and keeps its rule. */
+.robot-page .cam img { aspect-ratio: 4 / 3; }
+.robot-page .drive-link { display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; margin: 18px 0 0; padding: 16px; border: 1px solid var(--line); border-radius: 18px;
+  background: var(--bg2); color: var(--ink); text-decoration: none; font-weight: 600; }
+.robot-page .drive-link small { display: block; margin-top: 3px; color: var(--ink2);
+  font-size: 12px; font-weight: 400; }
+
+/* Landscape drive mode. iOS Safari cannot be asked to rotate the screen
+   (screen.orientation.lock is unimplemented there), so the layout asks
+   instead: portrait says so plainly rather than pretending in miniature. */
+.drive-page .page { max-width: none; padding: 0; }
+.drive-turn { min-height: 100dvh; display: grid; place-content: center; gap: 14px;
+  padding: 24px; text-align: center; }
+.drive-turn .d { font-size: 26px; }
+.drive-turn p { margin: 0; color: var(--ink2); font-size: 14px; line-height: 1.5; max-width: 30ch; }
+.drive { display: none; }
+@media (orientation: landscape) {
+  .drive-turn { display: none; }
+  .drive { display: block; }
+}
+/* The picture is the page. `contain`, not `cover`: letterboxing at the
+   sides is honest, cropping the floor is not. */
+.drive .cam { position: fixed; inset: 0; margin: 0; background: #000; }
+.drive .cam img { width: 100%; height: 100%; aspect-ratio: auto; object-fit: contain; }
+.drive-hud { position: fixed; inset: 0; display: flex; flex-direction: column;
+  justify-content: space-between; pointer-events: none;
+  padding: max(10px, env(safe-area-inset-top)) max(14px, env(safe-area-inset-right))
+           max(10px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left)); }
+.drive-hud > * { pointer-events: auto; }
+.drive-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.drive-exit { flex: none; display: inline-flex; align-items: center; gap: 6px; height: 34px;
+  padding: 0 14px; border-radius: 999px; background: rgba(0,0,0,.55); color: #fff;
+  font-size: 12px; font-weight: 700; letter-spacing: .04em; text-decoration: none; }
+.drive-tele { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px;
+  padding: 7px 14px; border-radius: 999px; background: rgba(0,0,0,.55); color: #fff;
+  font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.drive-tele span { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.drive-tele .v { color: #fff; }
+.drive-tele .v.unknown { color: #C9CCC4; font-weight: 400; }
+.drive-tele .v.bad { color: #FF8B78; }
+.drive-note { margin: 8px 0 0; padding: 7px 12px; border-radius: 12px; max-width: 46ch;
+  background: rgba(0,0,0,.55); color: #F0D9A8; font-size: 11px; line-height: 1.4; }
+.drive-note.gone { color: #FFB3A3; }
+/* A stop that did not land is the most dangerous state this app has, so it
+   is the loudest thing on the screen and it does not wait to be dismissed. */
+/* Fourth time this has bitten (the pull banner, the zoom badge, the map
+   panels, the live-map stats): any display other than the initial one
+   outranks the browser's own [hidden] rule, and the element stays on
+   screen. Here it meant a "the stop did not reach the robot" alarm showing
+   permanently on a page where nothing was wrong -- the worst possible
+   place to cry wolf. Caught by a screenshot, not by a test: the harness
+   asserts the `hidden` property, which was correct all along. */
+.drive-shout[hidden] { display: none; }
+.drive-shout { align-self: center; display: flex; align-items: center; gap: 10px;
+  padding: 12px 18px; border-radius: 14px; background: var(--bad); color: #fff;
+  font-size: 14px; font-weight: 700; box-shadow: 0 6px 24px rgba(0,0,0,.4); }
+.drive-pads { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; }
+.stick { position: relative; width: 128px; height: 128px; flex: none; border-radius: 50%;
+  background: rgba(0,0,0,.42); border: 1px solid rgba(255,255,255,.35); touch-action: none; }
+.stick::after { content: ''; position: absolute; inset: 50% auto auto 50%; width: 6px; height: 6px;
+  margin: -3px 0 0 -3px; border-radius: 50%; background: rgba(255,255,255,.45); }
+.stick .knob { position: absolute; left: 50%; top: 50%; width: 56px; height: 56px;
+  margin: -28px 0 0 -28px; border-radius: 50%; background: rgba(255,255,255,.9);
+  transition: transform .12s ease-out; }
+.stick.held .knob { transition: none; }
+.stick[aria-disabled="true"] { opacity: .4; }
+.drive-right { display: flex; align-items: center; gap: 12px; }
+.spin { width: 62px; height: 62px; flex: none; border-radius: 50%; border: 1px solid rgba(255,255,255,.35);
+  background: rgba(0,0,0,.42); color: #fff; font-size: 22px; font-weight: 700;
+  touch-action: none; transition: transform .1s ease-out; }
+.spin:active { transform: scale(.93); }
+.spin:disabled { opacity: .4; }
+.estop { width: 88px; height: 88px; flex: none; border-radius: 50%; border: 3px solid #fff;
+  background: var(--bad); color: #fff; font-size: 15px; font-weight: 800; letter-spacing: .06em;
+  touch-action: manipulation; transition: transform .1s ease-out; }
+.estop:active { transform: scale(.94); }
+.drive-speed { position: absolute; left: 50%; bottom: max(10px, env(safe-area-inset-bottom));
+  transform: translateX(-50%); height: 34px; padding: 0 16px; border-radius: 999px;
+  border: 1px solid rgba(255,255,255,.35); background: rgba(0,0,0,.55); color: #fff;
+  font-size: 12px; font-weight: 700; touch-action: manipulation; }
+.drive-speed[aria-pressed="true"] { background: var(--warn); border-color: transparent; }
+
 @media (prefers-reduced-motion: reduce) {
   @view-transition { navigation: none; }
   .goal-ring .value, .collar-summary, .location-card, .steps-hero, .rest-grid, .week-row { animation: none; }
@@ -600,4 +687,6 @@ body.activity-page { overscroll-behavior-y: contain; }
      because it slices from here to the end of the file, and the new rules
      were simply inside the slice without being covered by it. */
   .walk-toggle, .live-recentre, .seg.small .opt { transition: none; }
+  /* Added 2026-09-14 with landscape drive mode. */
+  .stick .knob, .spin, .estop { transition: none; }
 }

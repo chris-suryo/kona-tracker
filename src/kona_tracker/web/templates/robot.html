@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Kona · {{ robot_name|lower }}{% endblock %}
-{% block pageclass %}cam-page{% endblock %}
+{% block pageclass %}cam-page robot-page{% endblock %}
 {% block body %}
 {# The Camera tab's frame, verbatim, pointed at the robot's hub. One .cam
    per page keeps the kona-frame view-transition name unique. No shutter,
@@ -17,8 +17,15 @@
   <div><div class="d">{{ robot_name }}</div><div class="s" id="cap">Reaching the robot…</div></div>
   <span class="cam-hint">Off when the robot is off · back on its own when it returns</span>
 </div>
-{# Driving lands only once the Pi-side safety service exists and answers;
-   until then `drive` is false and nothing that moves the robot is drawn. #}
+{# Driving appears only once the Pi-side safety gateway is configured --
+   until then `drive` is false and nothing that could move the robot is
+   drawn at all, rather than a button that would 404 on every press. #}
+{% if drive %}
+<a class="drive-link" href="/drive">
+  <span>Drive {{ robot_name }}<small>Turn your phone sideways. Let go and it stops.</small></span>
+  <span class="go" aria-hidden="true">{% include "_chevron.svg" %}</span>
+</a>
+{% endif %}
 <script src="{{ asset('poll.js') }}" defer></script>
 <script src="{{ asset('robot.js') }}" defer></script>
 {% endblock %}

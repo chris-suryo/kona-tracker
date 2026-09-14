@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import re
 import sys
 from collections.abc import AsyncIterator, Callable
@@ -32,6 +33,13 @@ from kona_tracker.camera.source import (
     SnapshotSource,
 )
 from kona_tracker.fi.service import FiService
+from kona_tracker.robot.gateway import (
+    DRIVE_INTERVAL_MS,
+    RobotFault,
+    RobotGateway,
+    RobotRefused,
+    RobotUnreachable,
+)
 from kona_tracker.web.assets import asset_url, asset_versions
 from kona_tracker.web.auth import COOKIE_NAME, Lockout, PasscodeAuth, client_key
 from kona_tracker.web.awake import allow_sleep, keep_awake
@@ -49,6 +57,7 @@ from kona_tracker.web.views import (
     map_tile_config,
     preview_activity_context,
     rest_history_context,
+    robot_refusal,
     steps_context,
     walk_context,
 )
@@ -184,6 +193,8 @@ def default_source_factory(s: Settings, control: CameraControl | None = None):
 #: length, strict on alphabet, because the value lands in a path.
 WALK_ID = re.compile(r"[A-Za-z0-9_-]{1,64}")
 
+log = logging.getLogger("kona_tracker.web")
+
 
 def create_app(
     settings: Settings,
@@ -192,6 +203,7 @@ def create_app(
     fi_service: FiService | None = None,
     avatar_fetch: AvatarFetch = fetch_avatar,
     robot_source_factory: Callable[[], FrameSource] | None = None,
+    robot_gateway: RobotGateway | None = None,
 ):
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
@@ -227,6 +239,12 @@ def create_app(
             hub.stop()  # release the webcam on shutdown
             if robot_hub is not None:
                 robot_hub.stop()
+            if robot is not None:
+                # The watchdog on the Pi would zero the motors half a second
+                # after we stop refreshing anyway; this is the explicit half
+                # of the contract, and it costs one request on the way out.
+                robot.stop_quietly()
+                robot.close()
             if beat is not None:
                 beat.stop()
             if holding:
@@ -284,8 +302,15 @@ def create_app(
             name="robot",
         )
     fi = fi_service if fi_service is not None else default_fi_service(settings)
+    # Driving. Its own predicate, not `robot_configured`: until the Pi-side
+    # safety gateway is installed the robot is watchable and not drivable,
+    # and that is the normal state rather than a broken one.
+    robot: RobotGateway | None = robot_gateway
+    if robot is None and settings.robot_drive_configured:
+        robot = RobotGateway(settings.robot_control_url, settings.robot_token)
     app.state.hub = hub
     app.state.robot_hub = robot_hub
+    app.state.robot = robot
     app.state.auth = auth
     app.state.control = control
     app.state.fi = fi
@@ -417,7 +442,7 @@ def create_app(
         )
 
     @app.get("/robot", response_class=HTMLResponse)
-    def robot(request: Request):
+    def robot_page(request: Request):
         """The robot's camera, and in a later phase its controls. 404 with
         no robot configured: the header has no tab for it either, so the
         page cannot be reached by accident, only by typing the URL."""
@@ -426,8 +451,100 @@ def create_app(
         return templates.TemplateResponse(
             request,
             "robot.html",
-            {"tab": "robot", "robot_name": settings.robot_name, "drive": False},
+            {"tab": "robot", "robot_name": settings.robot_name, "drive": robot is not None},
         )
+
+    def robot_or_404() -> RobotGateway:
+        """The gateway, or a 404 -- which is what "no robot to drive" is.
+
+        There is no third state. A page that could reach these routes while
+        the gateway is unconfigured would be a set of controls that 500 on
+        every press, which is the dead button `capabilities.py` exists to
+        prevent, on the one surface where a dead button is dangerous.
+        """
+        if robot is None:
+            raise HTTPException(status_code=404, detail="no robot gateway is configured")
+        return robot
+
+    def robot_reply(what: str, call: Callable[[], dict[str, Any]]):
+        """The single exit for every robot route: four failures, four answers.
+
+        `/control/move` and `/control/preset` have no arm like this and would
+        answer a driver failure with a 500 and a traceback-derived body. For a
+        network-backed driver that is both a leak and a lie -- the page cannot
+        tell "the robot said no" from "the robot is gone", and those need
+        different words and different behaviour from the operator.
+
+        Nothing here sends a stop on failure. The gateway's watchdog zeroes
+        the motors half a second after commands stop arriving, which is the
+        whole reason it exists; a second failing call would only delay the
+        truth reaching the screen. A refusal must *especially* not stop, since
+        `demo_running` means a demo is driving and a stop would kill it.
+        """
+        try:
+            return call()
+        except RobotRefused as e:
+            return JSONResponse(
+                {"error": robot_refusal(e.reason), "reason": e.reason}, status_code=409
+            )
+        except RobotUnreachable as e:
+            return JSONResponse({"error": str(e), "reason": "unreachable"}, status_code=503)
+        except RobotFault as e:
+            return JSONResponse({"error": str(e), "reason": "fault"}, status_code=502)
+        except Exception as e:
+            # Unexamined by definition, so its text is not shown: only the
+            # class name, to the log on Chris's PC, the way Heartbeat does it.
+            log.warning("robot %s failed: %s", what, type(e).__name__)
+            return JSONResponse(
+                {"error": "The robot gateway failed unexpectedly.", "reason": "fault"},
+                status_code=502,
+            )
+
+    @app.get("/drive", response_class=HTMLResponse)
+    def drive_page(request: Request):
+        """Landscape drive mode. Its own page rather than a section of the
+        Robot tab: driving wants the whole screen and both thumbs, and iOS
+        Safari cannot be asked to rotate, so the layout asks instead."""
+        robot_or_404()
+        return templates.TemplateResponse(
+            request,
+            "drive.html",
+            {
+                "tab": None,
+                "robot_name": settings.robot_name,
+                "drive_interval_ms": DRIVE_INTERVAL_MS,
+            },
+        )
+
+    @app.get("/robot/telemetry")
+    def robot_telemetry():
+        """Polled at 1 Hz while driving. Passed through as the gateway sends
+        it: this app does not get to decide what the battery reads."""
+        gateway = robot_or_404()
+        return robot_reply("telemetry", gateway.telemetry)
+
+    @app.post("/robot/drive")
+    def robot_drive(vx: float = Form(0.0), vy: float = Form(0.0), omega: float = Form(0.0)):
+        """One body velocity, held by the gateway for its TTL and no longer.
+
+        The TTL is not a parameter here and must never become one: it is the
+        length of the operator's own dead-man switch.
+        """
+        gateway = robot_or_404()
+        return robot_reply("drive", lambda: gateway.drive(vx, vy, omega))
+
+    @app.post("/robot/stop")
+    def robot_stop():
+        """The one call that must always be attempted. It answers 503 when
+        the robot is silent rather than a comforting 200, because a stop that
+        did not land is the most dangerous state this app can be in."""
+        gateway = robot_or_404()
+        return robot_reply("stop", gateway.stop)
+
+    @app.post("/robot/look")
+    def robot_look(pan_deg: float = Form(0.0), tilt_deg: float = Form(0.0)):
+        gateway = robot_or_404()
+        return robot_reply("look", lambda: gateway.look_at(pan_deg, tilt_deg))
 
     @app.get("/activity", response_class=HTMLResponse)
     def activity(request: Request, preview: bool = False, fresh: bool = False):

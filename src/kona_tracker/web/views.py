@@ -916,6 +916,22 @@ def camera_health(status: dict[str, Any], kind: str = "usb") -> dict[str, Any]:
     }
 
 
+#: The robot gateway's refusal reasons, in words that name what to do about
+#: them. `low_battery` and `demo_running` are the two it is contracted to
+#: send; `turbopi_unreachable` arrives as a 503 rather than a refusal but is
+#: kept here so the one vocabulary covers every reason a drive can fail.
+#: Anything unrecognised is shown raw, never dressed up as something known.
+_ROBOT_REFUSALS = {
+    "low_battery": "The robot's battery is too low to drive. Put it on charge.",
+    "demo_running": "A built-in demo is driving the robot. Stop the demo first.",
+    "turbopi_unreachable": "The robot's own software is not answering. Turn it off and on.",
+}
+
+
+def robot_refusal(reason: str) -> str:
+    return _ROBOT_REFUSALS.get(reason, reason)
+
+
 def walk_context(
     snapshot: FiSnapshot | None, walk_id: str, configured: bool
 ) -> dict[str, Any] | None:

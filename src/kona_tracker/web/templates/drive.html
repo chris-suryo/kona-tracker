@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Kona · driving {{ robot_name }}{% endblock %}
+{% block pageclass %}drive-page{% endblock %}
+{% block body %}
+{# Portrait says what to do rather than showing a squeezed version of it.
+   iOS Safari does not implement screen.orientation.lock(), so the phone
+   cannot be turned from here -- only asked. #}
+<div class="drive-turn">
+  <div class="d">Turn sideways</div>
+  <p>Driving {{ robot_name }} needs the long edge of the screen and both thumbs. Turn your phone and this becomes the drive view.</p>
+  <p><a href="/robot">Back to {{ robot_name }}</a></p>
+</div>
+
+<div class="drive" id="drive" data-interval="{{ drive_interval_ms }}">
+  {# poll.js owns the picture and needs these four ids; the caption doubles
+     as the camera's own line in the telemetry strip. #}
+  <figure class="cam">
+    <img id="cam" class="unavailable" alt="Live view from {{ robot_name }}">
+    <div class="cam-connecting" aria-hidden="true"><span>Connecting…</span></div>
+  </figure>
+  <div class="drive-hud">
+    <div>
+      <div class="drive-top">
+        <a class="drive-exit" href="/robot">Done</a>
+        <div class="drive-tele" id="tele">
+          <span class="live"><span class="dot" id="dot"></span><span id="livetxt">CONNECTING</span></span>
+          <span>Battery <b class="v unknown" id="volts">—</b></span>
+          <span>Ahead <b class="v unknown" id="sonar">—</b></span>
+          <span class="v unknown" id="cap">Reaching the robot…</span>
+        </div>
+      </div>
+      {# Never blank when something is wrong, and never reassuring when the
+         robot has not answered: both lines are filled in by drive.js from
+         the gateway's own telemetry, and hidden only when there is nothing
+         true to say. #}
+      <p class="drive-note" id="note" hidden></p>
+    </div>
+
+    <div class="drive-shout" id="shout" hidden role="alert">
+      <span>⚠</span><span id="shout-text">The stop did not reach the robot.</span>
+    </div>
+
+    <div class="drive-pads">
+      {# Holonomic: this robot strafes. Sideways on the stick is a genuine
+         sideways move, not a turn -- turning is the two buttons. #}
+      <div class="stick" id="stick" role="application" aria-label="Drive {{ robot_name }}: push to move, let go to stop">
+        <div class="knob" id="knob"></div>
+      </div>
+      <div class="drive-right">
+        <button class="spin" id="rot-left" type="button" aria-label="Rotate left">↺</button>
+        <button class="spin" id="rot-right" type="button" aria-label="Rotate right">↻</button>
+        <button class="estop" id="estop" type="button" aria-label="Stop the robot now">STOP</button>
+      </div>
+    </div>
+    <button class="drive-speed" id="speed" type="button" aria-pressed="false" aria-label="Speed limit">Slow</button>
+  </div>
+</div>
+<script src="{{ asset('poll.js') }}" defer></script>
+<script src="{{ asset('drive.js') }}" defer></script>
+{% endblock %}

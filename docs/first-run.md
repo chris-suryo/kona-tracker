@@ -234,6 +234,67 @@ to reach the robot. Two checks, then two lines.
    robot first. `KONA_ROBOT_CONTROL_URL` and `KONA_ROBOT_TOKEN` are for that
    day.
 
+## 4c. When you want to drive the robot (do these in order)
+
+Driving is gated on a small safety service -- the *gateway* -- running on the
+Pi itself. It exists because **nothing in the robot's own software ever
+expires a motor command**: a duty value is held until another arrives, so a
+"drive forward" whose matching "stop" got lost is a robot that keeps going
+until it hits something. The watchdog that fixes that cannot live in this
+app, because the thing it protects against is this app becoming unreachable.
+
+1. **Install it on the Pi**, over SSH:
+
+   ```
+   bash install_gateway.sh
+   python3 patch_getrunningfunc.py && sudo systemctl restart turbopi turbopi-gateway
+   ```
+
+   The second line is **required, not optional**. Stock robot software has a
+   bug that makes "is a built-in demo running?" fail every time, and the
+   guard that stops manual driving from fighting a demo depends on it. The
+   drive screen says out loud when that guard is off, so you will know if
+   this step was skipped -- but skipping it removes a real protection.
+
+   The installer prints the shared secret at the end. Keep it for step 4.
+
+2. **Prove the watchdog, with the robot on a stand** -- wheels off the
+   ground, nothing it can drive off:
+
+   ```
+   bash gateway_watchdog_proof.sh
+   ```
+
+   It sends exactly one drive command and no stop, then shows whether the
+   wheels stopped by themselves. **If this does not pass, stop here.**
+   Everything below assumes it did.
+
+3. **From the PC** (PowerShell), confirm the machine can reach the gateway:
+
+   ```
+   Test-NetConnection 10.0.0.3 -Port 9031
+   ```
+
+4. **Then, and only then, edit `.env`:**
+
+   ```
+   KONA_ROBOT_CONTROL_URL=http://10.0.0.3:9031
+   KONA_ROBOT_TOKEN=<the secret the installer printed>
+   ```
+
+   Restart `kona serve`. A **Drive** link appears on the Robot tab. Turn the
+   phone sideways; push the stick to move, let go and it stops.
+
+5. **First drive on the stand, not on the floor.** Nobody has yet measured
+   which way this robot physically moves: "push left, go left" rests on how
+   the mecanum rollers are oriented, and "pan left, look left" on how the
+   servo horn was mounted. Neither was checked. Push each direction once and
+   watch. If an axis is mirrored it is a sign flip on the Pi side, and it is
+   much better found on a stand than at the edge of a table.
+
+   The speed limiter starts on **Slow** for this reason. Leave it there until
+   the directions are confirmed.
+
 ## 5. When the Fi collar arrives (anywhere, any machine)
 
 Fi's API is a normal internet service, so this does **not** need the home

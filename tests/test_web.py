@@ -1,3 +1,5 @@
+import re
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -413,13 +415,32 @@ def test_zoom_is_off_page_wide_but_the_map_still_pinches():
     assert js.count("overTheMap(e.target)") == 2, "both paths must exempt the map"
     assert "WCAG 1.4.4" in js, "the trade stays written down where it is made"
 
-    # Double-tap zoom on a control was the other half of the complaint.
+    # Double-tap zoom on a control was the other half of the complaint. The
+    # rule is read as a set of covered selectors rather than pinned as one
+    # frozen string: it has grown since (the robot's Drive link and its
+    # e-stop, 2026-09-14), and a string match breaks on every addition,
+    # which teaches whoever adds the next control to edit this line rather
+    # than to ask whether their control needs covering.
     css = (HERE / "static" / "app.css").read_text(encoding="utf-8")
-    assert (
-        ".seg a, .avatar, .shutter, .pill, .settings-link, .login button, .logout "
-        "{ touch-action: manipulation; }"
-    ) in css
-    assert "touch-action: none" in css.split(".nub {")[1].split("}")[0], "press-and-hold"
+    manipulation = " ".join(
+        match.group(1)
+        for match in re.finditer(r"([^{}]+)\{[^{}]*touch-action:\s*manipulation[^{}]*\}", css)
+    )
+    for control in (
+        ".seg a",
+        ".avatar",
+        ".shutter",
+        ".pill",
+        ".settings-link",
+        ".login button",
+        ".logout",
+        ".drive-exit",
+        ".drive-link",
+    ):
+        assert control in manipulation, control
+    # Press-and-hold must not scroll, on the camera pad or the robot's stick.
+    for held in (".nub {", ".stick {", ".spin {"):
+        assert "touch-action: none" in css.split(held)[1].split("}")[0], held
     for line in css.splitlines():
         if "touch-action" in line:
             assert "kona-map" not in line and "leaflet" not in line and ".map" not in line

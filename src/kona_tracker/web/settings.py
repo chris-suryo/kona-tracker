@@ -114,6 +114,13 @@ class Settings:
         return bool(self.robot_snapshot_url)
 
     @property
+    def robot_drive_configured(self) -> bool:
+        """Both halves, or neither -- and separate from `robot_configured`
+        on purpose. A robot can be watchable and not drivable, and that is
+        the normal state until the safety gateway is installed on the Pi."""
+        return bool(self.robot_control_url and self.robot_token)
+
+    @property
     def fi_configured(self) -> bool:
         """Both halves, or none: half a login only produces a 401 later."""
         return bool(self.fi_email and self.fi_password)
