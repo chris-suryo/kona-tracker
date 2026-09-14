@@ -16,6 +16,10 @@
   --t5:#27512A; --on:#F3F1EA;
   --warn:#8A5510;   /* was #C9862B, 2.68:1 -- the colour that carries bad news */
   --bad:#B8472E;
+  /* A label that has to read on WHITE, so it does not follow --bad into
+     the dark theme's lighter #FF6B57 (which would be 2.80:1). One value
+     serves both themes because its background is white in both. */
+  --stop-ink:#B8472E;
   /* Three values that are not colours but still differ by theme. Kept as
      tokens so the component rules below stay theme-agnostic, which is the
      discipline the rest of this file already follows. */
@@ -643,7 +647,9 @@ body.activity-page { overscroll-behavior-y: contain; }
   background: rgba(0,0,0,.55); color: #F0D9A8; font-size: 11px; line-height: 1.4; }
 .drive-note.gone { color: #FFB3A3; }
 /* A stop that did not land is the most dangerous state this app has, so it
-   is the loudest thing on the screen and it does not wait to be dismissed. */
+   is the loudest thing on the screen and it does not wait to be dismissed.
+   It is fixed to the viewport rather than laid out inside `.drive-hud`,
+   because it has to survive that container not being rendered at all. */
 /* Fourth time this has bitten (the pull banner, the zoom badge, the map
    panels, the live-map stats): any display other than the initial one
    outranks the browser's own [hidden] rule, and the element stays on
@@ -651,10 +657,45 @@ body.activity-page { overscroll-behavior-y: contain; }
    permanently on a page where nothing was wrong -- the worst possible
    place to cry wolf. Caught by a screenshot, not by a test: the harness
    asserts the `hidden` property, which was correct all along. */
-.drive-shout[hidden] { display: none; }
-.drive-shout { align-self: center; display: flex; align-items: center; gap: 10px;
-  padding: 12px 18px; border-radius: 14px; background: var(--bad); color: #fff;
-  font-size: 14px; font-weight: 700; box-shadow: 0 6px 24px rgba(0,0,0,.4); }
+.drive-alarm[hidden] { display: none; }
+/* Seventh instance of the same family, and the first that was a safety
+   fault rather than a cosmetic one: this alarm used to live inside `.drive`,
+   which the portrait rule below sets to `display: none`. Rotating the phone
+   upright calls stopNow(), so the gesture most likely to produce a failed
+   stop was also the gesture that hid the alarm reporting it. The element is
+   now a sibling of both `.drive` and `.drive-turn`; do not move it back
+   inside either one. A test pins that it is not a descendant of `.drive`. */
+.drive-alarm { position: fixed; left: 50%; top: 50%; z-index: 30;
+  transform: translate(-50%, -50%); display: flex; align-items: center; gap: 14px;
+  width: max-content; max-width: min(92vw, 520px);
+  padding: 14px 14px 14px 18px; border-radius: 16px;
+  background: var(--bad); color: #fff; font-size: 14px; font-weight: 700;
+  line-height: 1.35; box-shadow: 0 6px 24px rgba(0,0,0,.4); }
+/* The message takes the room; the button never shrinks. Without `min-width: 0`
+   a flex item refuses to shrink below its longest word, and the first build of
+   this wrapped "The stop did not reach the robot" into a seven-line column
+   beside the button at 390px. */
+.drive-alarm .msg { flex: 1 1 auto; min-width: 0; }
+/* White on the panel's own red, not red on red. The alarm's background is
+   already `--bad`, so an `.estop` inside it would be the same colour as the
+   thing it sits on, separated only by its ring -- which is how the first
+   version of this looked, and a screenshot is what showed it.
+   Reversed, it is the highest-contrast element on the loudest surface in the
+   app: `--stop-ink` on white is 5.28:1 in BOTH themes, because the label does
+   not follow `--bad` into the dark theme's lighter red. The main STOP still
+   uses white on `--bad`, which is 2.80:1 in dark; that one is Pass B's. */
+/* Descendant selector, not `.estop-small` alone: `.estop` is declared later
+   in this file and would win on source order at equal specificity. The first
+   attempt was a plain class, and the button rendered red-on-red exactly as
+   before -- a screenshot caught it, again. */
+.drive-alarm .estop { flex: none; width: 66px; height: 66px; border: 2px solid #fff;
+  background: #fff; color: var(--stop-ink); font-size: 13px; }
+/* Portrait seats it at the top instead of the middle, where centring put it
+   straight through the "Turn sideways" heading. Position only -- never
+   `display`, which is the whole reason this element was moved out here. */
+@media (orientation: portrait) {
+  .drive-alarm { top: max(16px, env(safe-area-inset-top)); transform: translateX(-50%); }
+}
 .drive-pads { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; }
 .stick { position: relative; width: 128px; height: 128px; flex: none; border-radius: 50%;
   background: rgba(0,0,0,.42); border: 1px solid rgba(255,255,255,.35); touch-action: none; }

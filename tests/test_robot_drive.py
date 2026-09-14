@@ -369,3 +369,94 @@ def test_a_reason_nobody_has_seen_is_shown_raw_rather_than_invented():
     client.__exit__(None, None, None)
     app.state.hub.stop()
     app.state.robot_hub.stop()
+
+
+def _ancestor_classes(html: str, element_id: str) -> list[set[str]]:
+    """Classes of every open ancestor at the moment `element_id` appears.
+
+    A containment assertion needs a parser rather than a regex, and this is
+    the stdlib one -- pulling in BeautifulSoup for a single test would be a
+    new dependency for a question `html.parser` already answers.
+    """
+    from html.parser import HTMLParser  # noqa: PLC0415 - test-only
+
+    void = {
+        "area",
+        "base",
+        "br",
+        "col",
+        "embed",
+        "hr",
+        "img",
+        "input",
+        "link",
+        "meta",
+        "param",
+        "source",
+        "track",
+        "wbr",
+    }
+
+    class Walk(HTMLParser):
+        def __init__(self):
+            super().__init__(convert_charrefs=True)
+            self.stack: list[set[str]] = []
+            self.found: list[set[str]] | None = None
+
+        def _maybe(self, attrs):
+            got = dict(attrs)
+            if self.found is None and got.get("id") == element_id:
+                self.found = [set(c) for c in self.stack]
+            return got
+
+        def handle_starttag(self, tag, attrs):
+            got = self._maybe(attrs)
+            if tag not in void:
+                self.stack.append(set((got.get("class") or "").split()))
+
+        def handle_startendtag(self, tag, attrs):
+            self._maybe(attrs)
+
+        def handle_endtag(self, tag):
+            if self.stack:
+                self.stack.pop()
+
+    walk = Walk()
+    walk.feed(html)
+    assert walk.found is not None, f"no element with id={element_id!r}"
+    return walk.found
+
+
+def test_the_stop_alarm_is_not_inside_the_half_that_portrait_hides():
+    """The seventh instance of the display-outranks-[hidden] family, and the
+    first that was dangerous rather than merely ugly.
+
+    `.drive { display: none }` outside landscape. The "the stop did not reach
+    the robot" alarm used to live inside `.drive` -- and drive.js calls
+    `stopNow()` on the orientation change, so rotating the phone upright was
+    both the likeliest way to produce a failed stop and the thing that hid the
+    alarm reporting it. What the operator saw was "Turn sideways", over a robot
+    that might still have been moving.
+
+    Neither a `[hidden]` guard nor the Node harness can catch this: the
+    property was correct, and the element was simply inside a subtree nobody
+    was rendering. So this asserts containment, which is what was wrong.
+
+    Found by ChatGPT's 2026-09-14 audit, by reading rather than by looking.
+    """
+    html = signed_in(make()).get("/drive").text
+    seen = set().union(*_ancestor_classes(html, "shout"))
+    assert "drive" not in seen, (
+        "the stop alarm is inside .drive, which portrait sets to display:none"
+    )
+    assert "drive-turn" not in seen, "the stop alarm is inside .drive-turn, which landscape hides"
+    # And it carries its own way to stop, because portrait has no other one.
+    assert 'id="estop-alarm"' in html
+
+
+def test_the_portrait_prompt_is_still_the_only_thing_portrait_normally_shows():
+    """The fix must not turn the alarm into permanent furniture: it is a
+    sibling of both halves now, so nothing but `hidden` keeps it off screen."""
+    html = signed_in(make()).get("/drive").text
+    alarm = html[html.index('id="shout"') - 200 : html.index('id="shout"') + 40]
+    assert "hidden" in alarm, "the stop alarm no longer starts hidden"

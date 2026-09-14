@@ -25,6 +25,10 @@
 
   var stick = document.getElementById('stick'), knob = document.getElementById('knob');
   var estop = document.getElementById('estop'), speed = document.getElementById('speed');
+  // The alarm's own STOP. It lives outside `.drive`, so it is the only
+  // control that exists in portrait -- which is exactly the orientation the
+  // alarm is most likely to be raised in, since rotating upright is a stop.
+  var estopAlarm = document.getElementById('estop-alarm');
   var rotL = document.getElementById('rot-left'), rotR = document.getElementById('rot-right');
   var shout = document.getElementById('shout'), shoutText = document.getElementById('shout-text');
   var note = document.getElementById('note');
@@ -234,6 +238,7 @@
   });
 
   estop.addEventListener('click', function () { stopNow('e-stop'); });
+  if (estopAlarm) { estopAlarm.addEventListener('click', function () { stopNow('e-stop'); }); }
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape') { stopNow('escape'); }
   });

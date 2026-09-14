@@ -46,7 +46,7 @@ function element() {
 
 function setup(script, preview = false) {
   const names = ['cam', 'cap', 'dot', 'livetxt', 'capture', 'capture-hint', 'activity-body', 'pull', 'zoom-level',
-    'drive', 'stick', 'knob', 'estop', 'speed', 'rot-left', 'rot-right', 'shout', 'shout-text', 'note',
+    'drive', 'stick', 'knob', 'estop', 'estop-alarm', 'speed', 'rot-left', 'rot-right', 'shout', 'shout-text', 'note',
     'volts', 'sonar', 'picture'];
   const nodes = Object.fromEntries(names.map(name => [name, element()]));
   const page = element(), label = element(), note = element(), freshness = element(), camFrame = element();
@@ -636,7 +636,12 @@ for (const [name, fire] of [
   ['the page being hidden', x => { x.document.hidden = true; x.document.events.visibilitychange(); }],
   ['the phone being turned back to portrait', x => x.window.events.orientationchange()],
   ['Escape', x => x.document.events.keydown({key: 'Escape'})],
-  ['the STOP button', x => x.nodes.estop.events.click()]
+  ['the STOP button', x => x.nodes.estop.events.click()],
+  // The alarm carries its own STOP because it is the only control that
+  // exists in portrait, where `.drive` is display:none -- and portrait is
+  // where the alarm is likeliest to be raised, since rotating upright is
+  // itself a stop. A dead button there would be the worst of both.
+  ['the alarm\u2019s own STOP', x => x.nodes['estop-alarm'].events.click()]
 ]) {
   test(`${name} stops the robot`, async () => {
     const x = await ready();
