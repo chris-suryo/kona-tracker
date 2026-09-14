@@ -96,6 +96,17 @@ def test_velocities_are_clamped_before_they_leave_this_machine(sent, expected):
     assert body_of(seen[0])["vx"] == expected
 
 
+@pytest.mark.parametrize("sent", ["inf", "-inf", "1e999", "-1e999", float("inf")])
+def test_an_infinity_clamps_to_full_tilt_rather_than_reaching_a_motor(sent):
+    """Float coercion accepts "inf" and "1e999" quite happily, and an
+    infinity on a motor duty is nonsense the gateway would have to reject.
+    min/max clamp it to exactly full deflection, which is a real command."""
+    handler, seen = recorder()
+    robot = gateway(handler)
+    robot.drive(sent, 0, 0)
+    assert body_of(seen[0])["vx"] in (1.0, -1.0)
+
+
 @pytest.mark.parametrize("bad", ["fast", None, [1], {"vx": 1}, float("nan")])
 def test_a_value_that_is_not_a_number_is_refused_rather_than_sent_as_zero(bad):
     """A zero that looks deliberate is worse than an error: it would read
