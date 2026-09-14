@@ -18,28 +18,44 @@ function element() {
   const events = {}, classes = new Set(), attrs = {};
   return {
     events, textContent: '', hidden: false, naturalWidth: 640, style: {},
+    dataset: {}, disabled: false,
     classList: {
       add: (...xs) => xs.forEach(x => classes.add(x)),
       remove: (...xs) => xs.forEach(x => classes.delete(x)),
       contains: x => classes.has(x),
       toggle: (x, on) => on ? classes.add(x) : classes.delete(x)
     },
-    addEventListener: (name, fn) => { events[name] = fn; },
+    // Chained, not overwritten: the drive page and poll.js both listen for
+    // visibilitychange and pagehide, and a stub that kept only the last one
+    // would hide whichever script was loaded first.
+    addEventListener: (name, fn) => {
+      const prev = events[name];
+      events[name] = prev ? (e) => { prev(e); fn(e); } : fn;
+    },
     removeAttribute(name) { delete attrs[name]; if (name === 'src') this.naturalWidth = 0; },
     getAttribute: name => attrs[name] || null,
+    setAttribute(name, value) { attrs[name] = String(value); },
+    // A joystick needs a box to measure the thumb against, and pointer
+    // capture so a thumb sliding off the pad still belongs to it.
+    getBoundingClientRect: () => ({left: 0, top: 0, width: 128, height: 128}),
+    setPointerCapture() {}, releasePointerCapture() {},
     appendChild() {}, querySelectorAll() { return []; }, querySelector() { return null; },
     closest() { return null; }, click() {}
   };
 }
 
 function setup(script, preview = false) {
-  const names = ['cam', 'cap', 'dot', 'livetxt', 'capture', 'capture-hint', 'activity-body', 'pull', 'zoom-level'];
+  const names = ['cam', 'cap', 'dot', 'livetxt', 'capture', 'capture-hint', 'activity-body', 'pull', 'zoom-level',
+    'drive', 'stick', 'knob', 'estop', 'speed', 'rot-left', 'rot-right', 'shout', 'shout-text', 'note', 'volts', 'sonar'];
   const nodes = Object.fromEntries(names.map(name => [name, element()]));
   const page = element(), label = element(), note = element(), freshness = element(), camFrame = element();
   // A 400x225 frame at the page origin, so the zoom maths can be checked in px.
   camFrame.clientWidth = 400; camFrame.clientHeight = 225;
   camFrame.getBoundingClientRect = () => ({left: 0, top: 0});
   nodes.pull.querySelector = () => label;
+  // The drive page reads its send interval from the server, so the loop and
+  // the gateway's TTL can never drift apart.
+  nodes.drive.dataset.interval = '200';
   nodes['activity-body'].querySelector = selector => ({
     '.preview-banner': preview ? element() : null, '.freshness': freshness, 'p.note': note
   })[selector] || null;
@@ -48,11 +64,19 @@ function setup(script, preview = false) {
     querySelector: s => s === 'main.activity-page' ? page : s === '.cam' ? camFrame : null,
     createElement: element, createTextNode: text => ({textContent: text})
   };
-  const timers = new Map(), intervals = new Map(), requests = [], created = [], revoked = [];
+  const timers = new Map(), intervals = new Map(), requests = [], created = [], revoked = [], beacons = [];
+  // Timers are fired by hand here, so the wall clock never moves and code
+  // that asks "how long since the last answer?" would always say "no time".
+  // `advance()` is how a test says that time passed.
+  const clock = {offset: 0};
+  const RealDate = Date;
+  function StoppedDate(...args) { return new RealDate(...args); }
+  StoppedDate.now = () => RealDate.now() + clock.offset;
+  StoppedDate.prototype = RealDate.prototype;
   const window = {...element(), location: {href: ''}};
   let nextTimer = 0, files = 0;
   const env = {
-    document, window, AbortController, Date, console,
+    document, window, AbortController, Date: StoppedDate, console,
     setTimeout: (fn, delay) => { timers.set(++nextTimer, {fn, delay}); return nextTimer; },
     clearTimeout: id => timers.delete(id),
     // Intervals are kept apart from timeouts so `fire(delay)` cannot reach
@@ -69,15 +93,25 @@ function setup(script, preview = false) {
       createObjectURL: () => { const u = 'blob:' + (created.length + 1); created.push(u); return u; },
       revokeObjectURL: u => { revoked.push(u); }
     },
-    File: class { constructor() { files++; } }, navigator: {},
+    File: class { constructor() { files++; } },
+    Blob: class { constructor(parts) { this.parts = parts; } },
+    navigator: {sendBeacon: (url) => { beacons.push(url); return true; }},
     DOMParser: class { parseFromString() { return {getElementById: () => ({innerHTML:'new render'}), querySelector: () => null}; } }
   };
   // The two picture pages load poll.js first, as their templates do; the
   // loop lives there and camera.js / robot.js call window.KonaPoll.
-  const scripts = script === 'camera.js' || script === 'robot.js' ? ['poll.js', script] : [script];
+  const scripts = ['camera.js', 'robot.js', 'drive.js'].includes(script) ? ['poll.js', script] : [script];
   scripts.forEach(s => vm.runInNewContext(fs.readFileSync(path.join(staticDir, s), 'utf8'), env));
-  return {nodes, page, label, note, document, window, requests, timers, intervals, created, revoked, camFrame,
+  return {nodes, page, label, note, document, window, requests, timers, intervals, created, revoked, camFrame, beacons,
     files: () => files,
+    advance(ms) { clock.offset += ms; },
+    // `tick()` fires whichever interval is first; a page with three of them
+    // needs to name the one it means.
+    tickEvery(delay) {
+      const entry = [...intervals].find(([, t]) => t.delay === delay);
+      assert.ok(entry, `missing interval ${delay}`);
+      entry[1].fn();
+    },
     tick() {
       const entry = [...intervals][0];
       assert.ok(entry, 'no interval installed');
@@ -513,4 +547,199 @@ test('a touch on the shutter is a button press, not a zoom gesture', () => {
   };
   tap(); tap();
   assert.equal(x.window.KonaZoom.get().s, 1);
+});
+
+// ---------------------------------------------------------------------------
+// Landscape drive mode. The robot holds a motor duty until another arrives,
+// so what matters most here is not that the stick drives -- it is that every
+// way of letting go ends in a stop, and that a stop which did not land is
+// impossible to miss.
+
+function telemetry(x, extra = {}) {
+  const poll = x.requests.filter(q => q.url === '/robot/telemetry').pop();
+  assert.ok(poll, 'no telemetry poll in flight');
+  poll.resolve(response({
+    battery_v: 8.01, sonar_mm: 412, driving: false, demo: null,
+    last_command_age_ms: null, low_battery: false, battery_age_ms: 300,
+    demo_detection: true, ...extra
+  }));
+  return settle();
+}
+const drives = x => x.requests.filter(q => q.url === '/robot/drive');
+// The drive loop is an interval; a stop clears it. Its absence is the proof
+// that nothing is still being sent, and is stronger than a request count.
+const looping = x => [...x.intervals.values()].some(t => t.delay === 200);
+const stops = x => x.requests.filter(q => q.url === '/robot/stop');
+
+async function ready(extra = {}) {
+  const x = setup('drive.js');
+  await telemetry(x, extra);
+  return x;
+}
+function press(x, clientX, clientY) {
+  x.nodes.stick.events.pointerdown({pointerId: 1, clientX, clientY, preventDefault() {}});
+}
+
+test('nothing can drive until the robot has actually answered', async () => {
+  const x = setup('drive.js');
+  assert.equal(x.nodes.stick.getAttribute('aria-disabled'), 'true');
+  assert.equal(x.nodes['rot-left'].disabled, true);
+  press(x, 64, 8);
+  assert.equal(drives(x).length, 0, 'a disabled stick sends nothing');
+  await telemetry(x);
+  assert.equal(x.nodes.stick.getAttribute('aria-disabled'), 'false');
+  assert.equal(x.nodes['rot-left'].disabled, false);
+});
+
+test('the stick drives while a thumb is down and stops the moment it lifts', async () => {
+  const x = await ready();
+  press(x, 64, 8);  // centre is (64,64) and the radius is 56: full forward
+  assert.equal(drives(x).length, 1);
+  // Slow is the default until the directions have been checked on a stand,
+  // so full deflection asks for 0.4, and sideways is strafe, not turn.
+  assert.equal(drives(x)[0].options.body, 'vx=0.400&vy=0.000&omega=0.000');
+  drives(x)[0].resolve(response({ok: true})); await settle();
+  // It keeps refreshing on its own while held -- that is what stops the
+  // gateway's watchdog from firing mid-drive.
+  x.tickEvery(200);
+  assert.equal(drives(x).length, 2);
+  drives(x)[1].resolve(response({ok: true})); await settle();
+  assert.equal(looping(x), true, 'the refresh loop is running while held');
+  x.nodes.stick.events.pointerup({pointerId: 1});
+  assert.equal(stops(x).length, 1, 'letting go is an explicit stop, not just silence');
+  assert.equal(looping(x), false, 'and the loop is gone, not merely idle');
+});
+
+test('a thumb pushed into a corner asks for a direction, not for 1.41x', async () => {
+  const x = await ready();
+  press(x, 64 + 56, 64 - 56);  // hard diagonal
+  const body = drives(x)[0].options.body;
+  const [vx, vy] = [/vx=(-?[\d.]+)/, /vy=(-?[\d.]+)/].map(re => parseFloat(body.match(re)[1]));
+  assert.ok(Math.abs(Math.hypot(vx, vy) - 0.4) < 0.002, `clamped to the disk, got ${body}`);
+  assert.ok(vx > 0 && vy < 0, 'forward and to the right');
+});
+
+test('only one command is ever in flight, however fast the ticks come', async () => {
+  const x = await ready();
+  press(x, 64, 8);
+  x.tickEvery(200); x.tickEvery(200); x.tickEvery(200);
+  assert.equal(drives(x).length, 1, 'the tick skips while one is pending');
+  drives(x)[0].resolve(response({ok: true})); await settle();
+  x.tickEvery(200);
+  assert.equal(drives(x).length, 2);
+});
+
+for (const [name, fire] of [
+  ['a lost pointer', x => x.nodes.stick.events.pointercancel({pointerId: 1})],
+  ['the window losing focus', x => x.window.events.blur()],
+  ['the page being hidden', x => { x.document.hidden = true; x.document.events.visibilitychange(); }],
+  ['the phone being turned back to portrait', x => x.window.events.orientationchange()],
+  ['Escape', x => x.document.events.keydown({key: 'Escape'})],
+  ['the STOP button', x => x.nodes.estop.events.click()]
+]) {
+  test(`${name} stops the robot`, async () => {
+    const x = await ready();
+    press(x, 64, 8);
+    assert.equal(drives(x).length, 1);
+    fire(x);
+    assert.equal(stops(x).length, 1, `${name} did not send a stop`);
+    assert.equal(looping(x), false, 'and nothing is still being sent');
+  });
+}
+
+test('the page being torn down sends a stop that outlives the fetch', async () => {
+  const x = await ready();
+  press(x, 64, 8);
+  x.window.events.pagehide();
+  // A fetch dies with the page; a beacon does not. The watchdog on the Pi
+  // is the backstop if even this fails to land.
+  assert.deepEqual(x.beacons, ['/robot/stop']);
+});
+
+test('a stop that did not land is shouted about and retried, never swallowed', async () => {
+  const x = await ready();
+  press(x, 64, 8);
+  x.nodes.estop.events.click();
+  stops(x)[0].resolve(response({error: 'The robot did not answer.'}, {ok: false, status: 503}));
+  await settle();
+  assert.equal(x.nodes.shout.hidden, false);
+  assert.match(x.nodes['shout-text'].textContent, /did not reach the robot/);
+  x.fire(700);
+  assert.equal(stops(x).length, 2, 'it keeps trying: the robot may still be moving');
+  stops(x)[1].resolve(response({ok: true})); await settle();
+  assert.equal(x.nodes.shout.hidden, true, 'and goes quiet once one lands');
+});
+
+test('a battery nobody could read is unknown, not flat, and does not block driving', async () => {
+  // The gateway's own reads come back empty routinely. Refusing on a missed
+  // read would look identical to a dead cell and make the robot unusable.
+  const x = await ready({battery_v: null, sonar_mm: null});
+  assert.equal(x.nodes.volts.textContent, 'unknown');
+  assert.equal(x.nodes.sonar.textContent, 'unknown');
+  assert.equal(x.nodes.stick.getAttribute('aria-disabled'), 'false');
+  press(x, 64, 8);
+  assert.equal(drives(x).length, 1);
+});
+
+test('a flat battery greys the controls out and says why', async () => {
+  const x = await ready({battery_v: 6.8, low_battery: true});
+  assert.equal(x.nodes.volts.textContent, '6.80 V');
+  assert.equal(x.nodes.stick.getAttribute('aria-disabled'), 'true');
+  press(x, 64, 8);
+  assert.equal(drives(x).length, 0);
+});
+
+test('a guard the robot cannot run is said out loud, not assumed', async () => {
+  // demo_detection false means the robot's own GetRunningFunc is unpatched,
+  // so the gateway cannot tell whether a built-in demo is driving.
+  const x = await ready({demo_detection: false});
+  assert.equal(x.nodes.note.hidden, false);
+  assert.match(x.nodes.note.textContent, /cannot tell whether a built-in demo/);
+});
+
+test('the strip stops claiming a reading once the robot goes quiet', async () => {
+  const x = await ready();
+  assert.equal(x.nodes.volts.textContent, '8.01 V');
+  x.tickEvery(1000);
+  x.requests.filter(q => q.url === '/robot/telemetry').pop()
+    .reject(new Error('network'));
+  await settle();
+  // One unlucky poll is not a verdict, so the reading still stands.
+  assert.equal(x.nodes.volts.textContent, '8.01 V');
+  // Seconds of silence are.
+  x.advance(4000);
+  x.tickEvery(3000);
+  assert.equal(x.nodes.volts.textContent, 'unknown');
+  assert.equal(x.nodes.stick.getAttribute('aria-disabled'), 'true');
+});
+
+test('the speed limiter is on by default and releases full range when asked', async () => {
+  const x = await ready();
+  assert.equal(x.nodes.speed.textContent, '');  // the template's own word stands
+  x.nodes.speed.events.click();
+  assert.equal(x.nodes.speed.getAttribute('aria-pressed'), 'true');
+  assert.equal(x.nodes.speed.textContent, 'Full');
+  press(x, 64, 8);
+  assert.equal(drives(x)[0].options.body, 'vx=1.000&vy=0.000&omega=0.000');
+});
+
+test('rotating is a turn on the spot, and releasing it stops too', async () => {
+  const x = await ready();
+  x.nodes['rot-left'].events.pointerdown({preventDefault() {}});
+  assert.equal(drives(x)[0].options.body, 'vx=0.000&vy=0.000&omega=-0.400');
+  x.nodes['rot-left'].events.pointerup({});
+  assert.equal(stops(x).length, 1);
+});
+
+test('a drive the server refused lets go rather than hammering the robot', async () => {
+  const x = await ready();
+  press(x, 64, 8);
+  drives(x)[0].resolve(response(
+    {error: "A built-in demo is driving the robot. Stop the demo first.", reason: 'demo_running'},
+    {ok: false, status: 409}
+  ));
+  await settle();
+  assert.equal(x.nodes.shout.hidden, false);
+  assert.match(x.nodes['shout-text'].textContent, /demo/);
+  assert.equal(looping(x), false, 'the watchdog stops it; we do not hammer the robot');
 });

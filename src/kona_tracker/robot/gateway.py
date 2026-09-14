@@ -246,6 +246,12 @@ class RobotGateway:
         except RobotError as e:
             log.warning("robot stop failed: %s", self._scrub(str(e)))
             return False
+        except Exception as e:
+            # Deliberately broader than RobotError. This runs from the
+            # lifespan's `finally`; anything raised here would mask whatever
+            # was already being handled and could take the shutdown with it.
+            log.warning("robot stop failed: %s", type(e).__name__)
+            return False
         return True
 
     def look_at(self, pan_deg: Any, tilt_deg: Any) -> dict[str, Any]:
