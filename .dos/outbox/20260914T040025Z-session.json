@@ -1,0 +1,90 @@
+{
+  "goal": "Build the robot into kona-tracker end to end: the TurboPi as a second camera, then driving it, then an overnight pass making the two new screens honest while Chris slept.",
+  "completed": [
+    "PR #38 merged: TurboPi as a second camera on its own Robot tab. Second CameraHub, ?cam=robot on /snapshot.jpg and /status.json (a query, not a path prefix, because the gate's bare-401-for-an-img rule is keyed on the path), shared poll.js extracted from camera.js, ROBOT OFF placeholder.",
+    "PR #39 merged: driving. robot/gateway.py client, POST /robot/drive|stop|look, GET /robot/telemetry, landscape drive mode at /drive with a thumb stick, rotate buttons, always-live STOP and a telemetry strip.",
+    "PR #40 merged: overnight honesty pass. stop_owed alarm, every gateway reason token translated to English, drive-mode picture staleness at 600ms, three [hidden] guards, bring-up doc, refreshed ChatGPT brief.",
+    "Cloned chris-suryo/turbopi (it is public) and verified the gateway contract against their actual source instead of their summary.",
+    "Fixed the Robot tab cropping its 640x480 feed to 16/9, which was cutting off the floor directly in front of the wheels.",
+    "docs/robot-bringup.md plus a published checklist artifact for Chris's phone, with the watchdog proof stated as a hold point rather than a step.",
+    "Screenshots of every previously-unseen state in docs/screenshots/2026-09-14/ and 2026-09-15/."
+  ],
+  "discovered": [
+    "The other session's repo is PUBLIC. Two whole phases were spent relaying questions through Chris and taking answers on trust when the source was readable the entire time.",
+    "Their /telemetry exposes stop_owed - 'the board may be holding non-zero duty and we have not had a zero acknowledged'. It is TRUE all through a normal drive, so the alarm condition is stop_owed AND NOT driving. Our screen showed nothing for it. Found by reading their source; it was in no message.",
+    "They also return 503 no_token_configured, a status never mentioned in any summary, which our client mapped to 'unreachable' - so a misconfigured gateway would have been reported as a robot that needs turning off and on.",
+    "Their gateway does NOT reject out-of-range values. {'vx': 5} is clamped and accepted, returning 200. A UI built to wait for a rejection would wait forever.",
+    "The robot's RPC server handles one request at a time (run_simple with threading off), which is what set our 200ms send interval rather than 100ms.",
+    "Every layer of stop on both sides reaches the motors through port 9030. If TurboPi.py itself dies mid-drive, nothing can zero them until systemd restarts it. Uncovered failure mode, documented on both sides.",
+    "Playwright with waitUntil:'load' hangs for ~30-60s per page in this sandbox because fonts.googleapis.com is unreachable. domcontentloaded is the fix; this cost two timed-out screenshot runs before I noticed."
+  ],
+  "decisions": [
+    "Driving is gated by configuration, not by discipline: no joystick renders until KONA_ROBOT_CONTROL_URL and KONA_ROBOT_TOKEN are both set, and those go in .env only after the watchdog proof passes on real hardware. The hardware evidence is the literal switch.",
+    "The browser never chooses the TTL. drive() takes no ttl argument at all - a page that could ask for the gateway's maximum and then crash would leave the robot driving for two seconds with nobody holding it.",
+    "A failed or refused drive LETS GO rather than retrying, because the watchdog stops the robot within one TTL either way. A failed STOP does the opposite: it shouts and retries. A refusal must especially not send a stop, since demo_running means a demo is driving and a stop would kill it.",
+    "An unknown battery does not block driving. The gateway's reads come back empty routinely and refusing on a missed read would look identical to a flat cell.",
+    "An unrecognised gateway reason is shown raw rather than given an invented sentence: a token can be searched for, a guess presented as fact cannot be undone.",
+    "Live gating, not startup-pinned: the drive UI reveals itself from telemetry polling, because a startup health check against a robot that is off most of the time would never recover.",
+    "Landscape drive mode with a portrait 'turn sideways' prompt, because iOS Safari does not implement screen.orientation.lock()."
+  ],
+  "lessons": [
+    "Check whether a collaborating repo is readable before building a relay through a human. Two phases of round-trips were avoidable, and reading their source immediately found two things their summaries had not mentioned - one of which was the single most important sentence the drive screen can say.",
+    "The Node harness asserts DOM properties, so a CSS bug where display:flex outranks [hidden] is structurally invisible to it. Only a screenshot catches that class of bug. It has now bitten this repo six times.",
+    "Screenshots catch meaning regressions that tests cannot. Once gateway reasons became sentences, the stop-failure banner started saying 'the robot's software is not answering' INSTEAD of 'the stop did not reach the robot' - both correct English, the assertion was on hidden, nothing failed. Only looking at the picture found it.",
+    "Do not string-match serialized JSON in tests. httpx serializes compactly ({\"vx\":1.0}, no space), which broke seven assertions written against pretty-printed shapes. Parse the body.",
+    "A pinning test that freezes an exact selector string teaches the next person to edit the test rather than to ask whether their new control needs covering. Assert the property, not the literal."
+  ],
+  "files_changed": [
+    "src/kona_tracker/robot/__init__.py",
+    "src/kona_tracker/robot/gateway.py",
+    "src/kona_tracker/camera/source.py",
+    "src/kona_tracker/camera/hub.py",
+    "src/kona_tracker/camera/placeholder.py",
+    "src/kona_tracker/web/app.py",
+    "src/kona_tracker/web/settings.py",
+    "src/kona_tracker/web/views.py",
+    "src/kona_tracker/web/static/poll.js",
+    "src/kona_tracker/web/static/drive.js",
+    "src/kona_tracker/web/static/robot.js",
+    "src/kona_tracker/web/static/camera.js",
+    "src/kona_tracker/web/static/app.css",
+    "src/kona_tracker/web/templates/drive.html",
+    "src/kona_tracker/web/templates/robot.html",
+    "src/kona_tracker/web/templates/base.html",
+    "src/kona_tracker/web/templates/camera.html",
+    "src/kona_tracker/web/templates/settings.html",
+    "tests/test_robot_gateway.py",
+    "tests/test_robot_drive.py",
+    "tests/test_robot_camera.py",
+    "tests/test_snapshot_source.py",
+    "tests/test_audit_regressions.py",
+    "tests/test_web.py",
+    "tests/browser_runtime.test.cjs",
+    "docs/robot-bringup.md",
+    "docs/chatgpt-handoff.md",
+    "docs/device-capabilities.md",
+    "docs/first-run.md",
+    ".env.example",
+    "PROJECT.md"
+  ],
+  "open_questions": [
+    "Which way does the robot physically move? 'Positive vy goes left' rests on mecanum roller orientation and 'positive pan_deg looks left' on how the servo horn was mounted. Neither has been measured on this robot.",
+    "Should a badly stale picture also grey out the stick, or only say so? Blocking is safer and also annoying when a hiccup stops the robot. Left for Chris.",
+    "Is the alarm hierarchy right? Three things can shout - may-still-be-moving, stop-did-not-land, picture-behind - and the third currently sits quietly in the top strip.",
+    "Is 200ms of drive plus 1Hz telemetry comfortably inside what the single-threaded RPC server sustains? Neither side has measured it.",
+    "Robot battery runtime is unmeasured. Two 18650 cells, no low-voltage alarm.",
+    "Camera latency on the robot feed is unmeasured, and it is what you steer by."
+  ],
+  "intent": "Chris went to bed and explicitly asked what could be done autonomously overnight, choosing 'fix what is objectively wrong, report taste calls' scoped to drive mode and the Robot tab. The session ended with all that work merged and a checklist waiting for him, because everything remaining needs hardware he has and this session does not.",
+  "next_task": "Chris runs the four verification tiers in order - pull and restart, then the five long-unverified camera and Fi checks, then the robot as a camera, then docs/robot-bringup.md for driving with the watchdog proof as a hard gate.",
+  "blockers": "Seven things are built and have never been verified against hardware: camera lag after the drain fix, the three Tapo switches, the hourly rest and step pages, the walk log, the live map and Start-walk button, the Robot tab, and driving. Nothing about the robot has run against real hardware on either side - not the gateway, and not which way the robot actually moves. The Pi-side gateway is built and tested but NOT INSTALLED.",
+  "resume_minutes": 15,
+  "dont_retry": [
+    "Do not relay questions to the turbopi session through Chris before checking whether the repo is readable - it is public, and clone plus read answers most of them directly.",
+    "Do not use Playwright waitUntil:'load' in this sandbox. fonts.googleapis.com is unreachable and every page hangs 30-60s; two screenshot batches timed out before I switched to domcontentloaded.",
+    "Do not assert against serialized JSON substrings in tests - httpx emits compact JSON and the assertions break for a reason that has nothing to do with the behaviour under test.",
+    "Do not plan 'send a stop when a drive fails'. It was in the approved plan and was wrong: the watchdog already covers it within one TTL, and a second failing call only delays the truth reaching the screen.",
+    "Do not trust the Node harness to catch a [hidden] bug. It asserts the property, which stays correct while the element is visible on screen."
+  ],
+  "session_id": "session_01KgmQrVuaAGmKyaioEr7d7t"
+}
