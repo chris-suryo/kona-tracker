@@ -193,6 +193,11 @@ anyone.
 
 Attach the PNGs from `docs/screenshots/2026-09-15/` and `2026-09-14/`.
 
+**Before pasting, re-pin.** The SHA below is the tip of `main` as this was
+last written; every merge moves it. A pin that has drifted reintroduces the
+exact failure the echo-the-SHA line exists to catch, so replace it with
+`git rev-parse main` and paste in the same sitting.
+
 ## ✂️ ——— START ———
 
 I need a UI/UX critique of a private, phone-first web app. **Give me a report
@@ -202,7 +207,7 @@ writing code here cost a whole session in reconciliation once already.
 ### Read this exact commit
 
 `chris-suryo/kona-tracker`, commit
-**`1523d362b7768f1953e2a2d43883a39da05dc50e`**.
+**`45346af56b9cacea6d361174aa1ab22f8f9a2cda`**.
 
 **Begin your report with the commit SHA you actually read.** If you cannot
 fetch that one, say so and stop rather than auditing whatever tip you get — a
