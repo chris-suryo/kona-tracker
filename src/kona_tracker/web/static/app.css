@@ -88,10 +88,19 @@ body.activity-page { overscroll-behavior-y: contain; }
                          border-right-color: transparent; border-radius: 50%; animation: refresh-spin .8s linear infinite; }
 @keyframes refresh-spin { to { transform: rotate(405deg); } }
 
-.seg { display: flex; padding: 3px; border-radius: 999px; background: var(--bg2); }
-.seg a { padding: 8px 18px; border-radius: 999px; font-size: 13px; font-weight: 600; color: var(--ink2); text-decoration: none; }
+/* The three tabs are the only elastic thing in the header. The avatar is a
+   fixed 44px and the battery cannot usefully be narrower than its own text,
+   so if anything has to give, it is the padding either side of "Activity".
+   Without `min-width: 0` a flex item will not shrink below its content, and
+   the header ran to 410px on a 390px screen -- the battery clipped off the
+   right edge, which is exactly what it did on Chris's phone. The clamp keeps
+   the tap targets comfortable on a wide phone and merely snug on a narrow
+   one; a test measures the real thing at 320px and 390px. */
+.seg { display: flex; min-width: 0; padding: 3px; border-radius: 999px; background: var(--bg2); }
+.seg a { padding: 8px clamp(9px, 3.4vw, 18px); border-radius: 999px; font-size: 13px;
+  font-weight: 600; color: var(--ink2); text-decoration: none; white-space: nowrap; }
 .seg a.on { background: var(--ink); color: var(--bg); font-weight: 700; }
-.hdr .right { min-width: 52px; text-align: right; font-size: 12px; font-weight: 600; color: var(--ink2); }
+.hdr .right { flex: none; min-width: 52px; text-align: right; font-size: 12px; font-weight: 600; color: var(--ink2); }
 .battery { display: inline-flex; align-items: center; justify-content: flex-end; gap: 4px; white-space: nowrap; }
 .battery svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
 
@@ -119,14 +128,28 @@ body.activity-page { overscroll-behavior-y: contain; }
 .warn-dot { background: var(--warn); }
 .bad-dot { background: var(--bad); }
 
-.location-card { margin: 18px 0 0; overflow: hidden; border: 1px solid var(--line); border-radius: 18px; background: var(--bg2); }
+/* ONE rule owns the horizontal gutter for everything in this card.
+   Before, each child inset itself and they disagreed: the heading padded
+   16px, the notes margined 16px, `.map-empty` padded 24px -- and
+   `.location-actions` had no inset at all, so "Open full map" and "Start
+   walk" sat flush against the border while the line beneath them started
+   16px in. Two adjacent rows, two different left edges, on the front page.
+   The misalignment was the symptom; children insetting themselves was the
+   defect, because the next child added would have missed it too.
+   The map is the deliberate exception and reaches the border on purpose. */
+.location-card { margin: 18px 0 0; padding: 0 16px; overflow: hidden;
+  border: 1px solid var(--line); border-radius: 18px; background: var(--bg2); }
+.location-card > .map, .location-card > .map-empty { margin-inline: -16px; width: auto; }
 .location-card.urgent { border-color: color-mix(in srgb, var(--warn) 48%, transparent); }
-.location-heading { min-height: 62px; padding: 16px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; }
+.location-heading { min-height: 62px; padding: 16px 0; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; }
 .location-heading > div { display: flex; flex-direction: column; gap: 3px; }
 .location-heading strong { font-size: 16px; letter-spacing: -.025em; }
 .location-heading > span { color: var(--ink2); font-size: 11px; white-space: nowrap; }
-.map { height: 214px; width: 100%; background: var(--t1); }
-.location-note { margin: -4px 16px 14px; color: var(--ink2); font-size: 12px; line-height: 1.5; }
+/* Raised from 214px on 2026-09-14: Chris's words were "too much space, I
+   want to see more map". At 390px wide this is close to square, which is
+   what a street map wants -- a letterbox shows you two streets. */
+.map { height: 300px; width: 100%; background: var(--t1); }
+.location-note { margin: -4px 0 14px; color: var(--ink2); font-size: 12px; line-height: 1.5; }
 .location-note.warn { color: var(--warn); }
 .map-empty { min-height: 144px; padding: 24px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
              border-top: 1px solid var(--line); color: var(--ink2); text-align: center; font-size: 13px; line-height: 1.5; }
@@ -135,7 +158,14 @@ body.activity-page { overscroll-behavior-y: contain; }
 .kona-map-marker { border: 0; background: none; }
 .kona-map-marker span { width: 34px; height: 34px; display: grid; place-items: center; border: 3px solid #fff; border-radius: 50%;
                         background: var(--t4); color: var(--on); box-shadow: 0 4px 14px rgba(0,0,0,.3); font: 800 13px var(--body); }
-.leaflet-control-attribution { font: 9px/1.2 system-ui, sans-serif !important; }
+/* Required by Stadia and OSM, so it stays -- but it was a near-white strip
+   across the foot of every map. Toned to sit in the picture rather than on
+   top of it. Do not hide it: the tiles are licensed on the condition it is
+   shown. */
+.leaflet-control-attribution { font: 9px/1.2 system-ui, sans-serif !important;
+  background: color-mix(in srgb, var(--bg2) 72%, transparent) !important;
+  color: var(--ink2) !important; padding: 1px 5px !important; }
+.leaflet-control-attribution a { color: var(--ink2) !important; }
 .leaflet-control-zoom a { color: #171A15 !important; }
 @media (prefers-color-scheme: dark) {
   /* Fakes a dark basemap out of light OSM raster tiles. `.tiles-dark` is set
@@ -162,7 +192,11 @@ body.activity-page { overscroll-behavior-y: contain; }
 
 .rest-grid { display: grid; grid-template-columns: 1fr 1fr; padding: 22px 0; border-bottom: 1px solid var(--line); }
 .metric { min-width: 0; display: flex; flex-direction: column; }
+/* Symmetrical: the right metric's text starts as far from the divider as
+   the left metric's ends from it. With the inset on one side only, the
+   rule sat left of the page's centre and the two columns read as unequal. */
 .metric + .metric { padding-left: 20px; border-left: 1px solid var(--line); }
+.metric:first-child { padding-right: 20px; }
 .metric-value { margin-top: 9px; font-size: 34px; }
 .metric-value small { margin-left: 3px; color: var(--ink2); font-size: 14px; font-weight: 500; letter-spacing: 0; }
 .metric > span:last-child { min-height: 2.8em; margin-top: 8px; color: var(--ink2); font-size: 11px; line-height: 1.35; }
@@ -253,6 +287,10 @@ body.activity-page { overscroll-behavior-y: contain; }
 .login .fine { font-size: 12px; color: var(--ink3); text-align: center; }
 .error { color: var(--bad); margin: 0; font-size: 14px; }
 .logout { font-size: 12px; color: var(--ink3); background: none; border: 0; padding: 20px 0 0; font: inherit; text-align: center; }
+/* The build stamp. Deliberately the quietest text on the page: it is for
+   the two minutes after a pull, not for daily reading. */
+.build { margin: 14px 0 0; font-size: 11px; color: var(--ink3); text-align: center;
+  font-variant-numeric: tabular-nums; }
 
 /* profile + settings: personal actions live behind the photo, not in the feed.
    No tab bar: the page is pushed from the avatar and popped by the back link,
@@ -351,6 +389,13 @@ body.activity-page { overscroll-behavior-y: contain; }
 .date-switch > a, .date-switch > span { width: 44px; height: 44px; display: grid; place-items: center; font-size: 26px; text-decoration: none; color: var(--t4); }
 .date-switch > span { opacity: .25; }
 .date-switch strong { font-size: 13px; font-weight: 500; }
+/* The date range, left-aligned with everything else on the page. It used
+   to borrow `.date-switch` from the sample-data page, which has real
+   previous/next arrows -- so on a real page it rendered two empty 44px
+   boxes either side of a centred label, and was the only centred line on
+   the screen. */
+.page-range { margin: 14px 0 0; padding-bottom: 12px; border-bottom: 1px solid var(--line);
+  font-size: 13px; color: var(--ink2); }
 .history-total { padding: 26px 0 22px; }
 .history-total > strong { display: block; margin: 12px 0; font-size: clamp(40px, 13vw, 56px); }
 .history-total p { font-size: 12px; color: var(--ink2); margin: 0; }
@@ -384,9 +429,15 @@ body.activity-page { overscroll-behavior-y: contain; }
 .timeline-now { stroke: var(--ink2); stroke-dasharray: 2 2; }
 .history-readings li { padding: 6px 0; color: var(--ink2); }
 .chart-footnote { font-size: 11px; line-height: 1.5; color: var(--ink2); }
-.rest-key { display: flex; gap: 20px; margin-top: 20px; font-size: 12px; color: var(--ink2); }
-.rest-key strong { display: block; margin: 6px 0 0 14px; color: var(--ink); font-weight: 500; }
-.rest-key i { display: inline-block; width: 7px; height: 7px; margin-right: 5px; border-radius: 50%; }
+/* Label over value, both starting at the same x. The value used to be
+   indented 14px past its own label -- enough to read as a mistake rather
+   than as a hanging indent, and the two pairs then formed four ragged
+   columns. The dot hangs outside the text instead, so the words line up. */
+.rest-key { display: flex; gap: 28px; margin-top: 20px; font-size: 12px; color: var(--ink2); }
+.rest-key > span { display: flex; flex-direction: column; gap: 6px; padding-left: 12px; }
+.rest-key strong { color: var(--ink); font-weight: 500; }
+.rest-key i { position: absolute; margin-left: -12px; margin-top: .42em;
+  width: 7px; height: 7px; border-radius: 50%; }
 .history-readings { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); margin-top: 20px; font-size: 12px; }
 .history-readings summary { padding: 16px 0; cursor: pointer; color: var(--t4); }
 .history-readings table { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
@@ -446,12 +497,14 @@ body.activity-page { overscroll-behavior-y: contain; }
   color: var(--ink2); text-decoration: none; font-size: 22px; }
 .metric-open::after { content: none; }
 .activity-page .metric-open, .rest-open { width: 100%; height: 100%; align-self: auto; z-index: 2; }
-.rest-grid { position: relative; padding-right: 24px; }
+/* The 24px was reserved for a chevron this section stopped drawing. It
+   pushed both columns left of the page's own gutter and nothing filled it. */
+.rest-grid { position: relative; }
 .activity-page .rest-grid { padding-top: 28px; padding-bottom: 28px; }
 .location-card .connection { padding-bottom: 12px; }
 .rest-grid:focus-within { outline: 2px solid var(--t4); outline-offset: 4px; }
-.activity-page .steps-hero { padding-bottom: 58px; }
-.activity-page .rest-grid { padding-bottom: 54px; }
+.activity-page .steps-hero { padding-bottom: 44px; }
+.activity-page .rest-grid { padding-bottom: 44px; }
 .activity-page .metric-open, .rest-open { align-items: flex-end; justify-content: flex-start;
   padding-bottom: 20px; color: var(--t4); font-size: 12px; font-weight: 600; }
 
@@ -470,7 +523,15 @@ body.activity-page { overscroll-behavior-y: contain; }
 .walk-when span small, .walk-stats small { font-size: 10px; }
 .walk-stats { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .walk-stats strong { color: var(--ink); font-weight: 600; }
-.walk-chevron { color: var(--t4); font-size: 22px; line-height: 1; }
+/* `flex: none` and a reserved width. Without it the glyph shrank against
+   the nowrap stats column and was clipped at the right edge of the page --
+   visible on Chris's phone, 2026-09-14. The same width is reserved for car
+   rides, which are not links, so every distance ends on one line; the
+   reserved column stays empty rather than showing a chevron that does
+   nothing, which is the dead-button rule. */
+.walk-chevron { flex: none; width: 16px; text-align: center; color: var(--t4);
+  font-size: 22px; line-height: 1; }
+.walk-row.travel::after { content: ''; flex: none; width: 16px; }
 .walk-row.travel .walk-when strong { color: var(--ink2); font-weight: 500; }
 .walk-empty { margin: 14px 0 6px; font-size: 13px; color: var(--ink2); }
 /* The walk page: totals in the history layout, the route in the location
@@ -581,7 +642,8 @@ body.activity-page { overscroll-behavior-y: contain; }
 
 /* The "Start walk" control. Present on the Activity card and the full map,
    because both are places you stand holding a lead. */
-.location-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 10px; }
+.location-actions { display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap; margin: 14px 0 0; }
 .location-actions .map-expand { margin-top: 0; }
 .walk-toggle { font: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
                color: var(--t5); background: var(--t1); border: 1px solid var(--t3);

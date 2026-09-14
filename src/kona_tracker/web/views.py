@@ -370,6 +370,33 @@ OSM_ATTRIBUTION = (
 )
 
 
+def scale_label(minutes: int | float | None, unit: str) -> str:
+    """A chart's top gridline, said the way a person would.
+
+    This is the number beside a chart heading, and it is a *scale* -- the
+    height of the top gridline -- not a summary of anything. For steps that
+    is fine as a count. For rest it was four digits of minutes: "1,080 min"
+    makes a reader divide by sixty to learn the chart tops out at eighteen
+    hours, and next to "Average daily rest 15h 34m" it reads like a rival
+    total rather than an axis.
+    """
+    if minutes is None:
+        return ""
+    if unit != "min":
+        return f"{minutes:,.0f} {unit}"
+    # Below two hours, minutes are the clearer unit: the hourly chart's
+    # ceiling is 60, and "1 h" for a bar that measures minutes within an hour
+    # is a conversion the reader did not ask for. The daily chart tops out in
+    # the hundreds, where "1,080 min" is the conversion instead.
+    if minutes < 120:
+        return f"{minutes:,.0f} min"
+    hours = minutes / 60.0
+    # A whole number of hours needs no decimal; 90 minutes is "1.5 h" rather
+    # than "2 h", because rounding an axis away from its data is how a bar
+    # comes to touch a ceiling it does not reach.
+    return f"{hours:.0f} h" if minutes % 60 == 0 else f"{hours:.1f} h"
+
+
 def map_tile_config(map_tiles: str, stadia_api_key: str = "") -> dict[str, Any]:
     """Tile layer settings for `map.js`, rendered as a JSON data block.
 
@@ -724,6 +751,7 @@ def rest_history_context(
         "average_sleep": _avg("sleep"),
         "average_nap": _avg("nap"),
         "maximum": maximum,
+        "maximum_label": scale_label(maximum, "min"),
         "selected": selected,
         "chosen": chosen,
         # Today by the hour, from restFeed(period: DAY) -- the Fi app's Day
@@ -1128,6 +1156,7 @@ def hourly_context(
     return {
         "hours": buckets,
         "hours_maximum": maximum,
+        "hours_maximum_label": scale_label(maximum, "min" if metric == "rest" else "steps"),
         "hours_through": (f"Through {_clock(now, zone):%H:%M}" if buckets and now else None),
         "hour": hour,
         "hour_chosen": chosen,

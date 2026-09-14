@@ -52,5 +52,10 @@
 
 <div class="settings-actions">
   <form method="post" action="/logout"><button class="logout" type="submit">Sign out on this phone</button></form>
+  {# Which build this is. Quiet, because nobody checking on a dog needs it,
+     and present, because without it the only way to tell whether a pull had
+     taken was to hunt for a visible change -- which fails precisely when the
+     change is invisible. #}
+  <p class="build">{{ build }}</p>
 </div>
 {% endblock %}

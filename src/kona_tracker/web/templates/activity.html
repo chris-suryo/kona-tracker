@@ -94,7 +94,8 @@
 <section class="location-card {{ 'urgent' if escaped or lost else '' }}" aria-labelledby="location-title">
   <div class="location-heading">
     <div>
-      <span class="eyebrow">Location</span>
+      {# No "Location" eyebrow: every branch of the title below already says
+         where she is, and the line it saved is map. #}
       <strong id="location-title">
         {% if map_kind == 'current' %}Current walk
         {% elif map_kind == 'rest' %}Resting{% if area_name %} at {{ area_name }}{% endif %}

@@ -381,7 +381,10 @@ def test_activity_page_renders_real_numbers():
         assert "password" not in json.dumps(data).lower()
 
         assert body.index("Steps today") < body.index("Naps today")
-        assert body.index("Steps today") < body.index("Naps today") < body.index("Location")
+        # Keyed on the card, not on the word "Location" -- that eyebrow was
+        # deleted on 2026-09-14 (the title below it already names the place,
+        # and the line it cost was map). The ordering is what this pins.
+        assert body.index("Steps today") < body.index("Naps today") < body.index("location-card")
         assert 'id="kona-map"' in body and "Home" in body
 
 

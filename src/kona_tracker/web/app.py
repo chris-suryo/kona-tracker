@@ -44,6 +44,7 @@ from kona_tracker.store import Recorder
 from kona_tracker.web.assets import asset_url, asset_versions
 from kona_tracker.web.auth import COOKIE_NAME, Lockout, PasscodeAuth, client_key
 from kona_tracker.web.awake import allow_sleep, keep_awake
+from kona_tracker.web.build import read_build
 from kona_tracker.web.heartbeat import Heartbeat
 from kona_tracker.web.history_preview import history_preview
 from kona_tracker.web.logs import attach_file_logging, detach_file_logging
@@ -272,6 +273,9 @@ def create_app(
     # The header grows a Robot tab only when there is a robot to show. Set
     # once here rather than threaded through every page's context.
     templates.env.globals["robot_configured"] = settings.robot_configured
+    # Read once here rather than per request: it shells out to git, and the
+    # answer cannot change while the process is running.
+    build = read_build()
 
     auth = PasscodeAuth(
         settings.passcode,
@@ -695,6 +699,7 @@ def create_app(
         )
         context["robot_name"] = settings.robot_name
         context["from_preview"] = from_preview
+        context["build"] = build.label
         return templates.TemplateResponse(request, "settings.html", context)
 
     @app.get("/avatar.jpg")

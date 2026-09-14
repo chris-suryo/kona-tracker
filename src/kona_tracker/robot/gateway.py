@@ -156,8 +156,14 @@ class RobotGateway:
         except httpx.HTTPError as e:
             # Only the exception's class name: its message can carry the URL
             # and, on some transports, the request headers with it.
+            # A sentence, not a fragment. This string is shown to a person --
+            # drive.js prefixes it with "The stop did not reach the robot. "
+            # and the result was "...robot. could not reach the robot gateway:
+            # ConnectTimeout", seen on Chris's phone 2026-09-14. The class
+            # name stays because ConnectTimeout and ReadTimeout mean different
+            # things to whoever is debugging; only the shape changes.
             raise RobotUnreachable(
-                f"could not reach the robot gateway: {type(e).__name__}"
+                f"The robot's gateway is not answering ({type(e).__name__})."
             ) from None
         if response.status_code == 401:
             # Worth its own words: this is a wrong KONA_ROBOT_TOKEN, which

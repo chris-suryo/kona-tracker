@@ -95,3 +95,23 @@ def test_no_cutoff_means_no_day_is_marked_a_partial_first_day():
     days = rest_history(MEASURED, NOW, None)
     assert [d.partial_first_day for d in days] == [False] * 5
     assert [d.window.start.date().day for d in days if d.complete] == [7, 8, 9, 10]
+
+
+def test_a_chart_ceiling_is_said_in_the_unit_that_needs_no_arithmetic():
+    """The number beside a chart heading is the top gridline, not a summary.
+
+    "1,080 min" made a reader divide by sixty to learn the daily chart tops
+    out at eighteen hours -- and sitting next to "Average daily rest 15h 34m"
+    it read like a rival total. Hours above two, minutes below, because an
+    hourly chart's ceiling is 60 and "1 h" for a bar measuring minutes within
+    an hour is a conversion nobody asked for.
+    """
+    from kona_tracker.web.views import scale_label  # noqa: PLC0415
+
+    assert scale_label(60, "min") == "60 min"  # the hourly chart's ceiling
+    assert scale_label(90, "min") == "90 min"
+    assert scale_label(1080, "min") == "18 h"  # the daily chart's
+    assert scale_label(900, "min") == "15 h"
+    assert scale_label(870, "min") == "14.5 h"  # never rounded away from data
+    assert scale_label(28000, "steps") == "28,000 steps"
+    assert scale_label(None, "min") == ""
