@@ -2,29 +2,37 @@
 
 Paste the block at the bottom into ChatGPT. This page is the long version, and
 it stays here: `PROJECT.md` is the project, this is the brief for a visiting
-assistant. Written 2026-09-11; reshaped 2026-09-14 around a fact that had been
-quietly breaking every round before it.
+assistant. Written 2026-09-11; rewritten 2026-09-14, twice in one day, because
+the premise under it moved.
 
-**The repository is private.** A visiting assistant cannot clone it, cannot
-fetch a commit, and cannot read one line of it. Two rounds were run as though
-it could — the second even asked the reviewer to echo the commit SHA it had
-read — and what came back was inference dressed as reading, which is why
-several findings described code that had already been rewritten. **Evidence
-has to travel with the question.** `docs/screenshots/current-ui/` is that
-evidence: every page, both themes, captured from the real app. Regenerate it
-(`docs/screenshots/README.md`) and attach all of it.
+**The repository is public as of 2026-09-14.** For its first five days it was
+private, and two rounds of outside audit were run as though it were not —
+the second even asked the reviewer to echo the commit SHA it had read, a check
+on something that could not happen. What came back was inference in the
+register of reading, which is why findings arrived describing code that had
+been rewritten weeks earlier. Nobody was lying; the prompt asked for something
+unobtainable and left no graceful way to say so.
 
-**The job is an audit, not a branch.** Claude Code has several branches open
-at once, so a second assistant writing code produces exactly the
-reconciliation PR #7 cost a whole session. Ask for a report with specific
-proposals; the implementation comes back here.
+That is fixed at the source now: a visiting assistant can read the code. So
+the brief asks for both halves of the evidence —
+
+- **the source**, pinned to a commit, with the SHA echoed back, which is now a
+  check that can actually pass; and
+- **the screenshots** in `docs/screenshots/current-ui/`, because reading the
+  templates is not the same as seeing what they render, and nobody outside can
+  run this app. Regenerate them (`docs/screenshots/README.md`) before asking.
+
+**The job is an audit, not a branch.** Claude Code has several branches open at
+once, so a second assistant writing code produces exactly the reconciliation
+PR #7 cost a whole session. Ask for a report with specific proposals; the
+implementation comes back here.
 
 ---
 
 ## The project in a paragraph
 
-A private, passcode-gated, iPhone-first web app so Chris and his sister can
-check on Kona, a Labrador. Three tabs: **Activity** from her Fi collar,
+A public-source, passcode-gated, iPhone-first web app so Chris and his sister
+can check on Kona, a Labrador. Three tabs: **Activity** from her Fi collar,
 **Camera** from a Tapo C120 over RTSP in the house, and **Robot** — a Hiwonder
 TurboPi rover with its own camera, which they can drive around the house from
 a landscape-only page. Python, FastAPI, Jinja templates, plain CSS, no build
@@ -32,10 +40,16 @@ step, no JavaScript framework, no npm. It runs on a Windows PC at home because
 the video originates there. `docs/design-brief.md` explains why it is HTML and
 not React, and is the block to paste into a design session.
 
+**The code being public does not make the deployment public.** Secrets live in
+`.env`, which is gitignored and has never been committed; every token, key and
+password in the tests is a visible fake. The app itself is passcode-gated and
+reachable only over the home network or Tailscale.
+
 ## Where the code is
 
-**`main`**, as of 2026-09-14 (`38afbeb`). Everything through PR #43 is
-merged; nothing is stacked or waiting. CI green on ubuntu and windows.
+**`main`**, as of 2026-09-14 (`86727a6`). Everything through PR #44 is
+merged; nothing is stacked or waiting, and every branch on the remote is fully
+contained in `main`. CI green on ubuntu and windows.
 
 ## The five rules that matter most here
 
@@ -191,72 +205,47 @@ Then, still open from the last pass:
 
 ## The paste-able block
 
-Rewritten **2026-09-14**, and the shape changed: this is now a
-**screenshot-driven** audit rather than a source-driven one.
+Rewritten **2026-09-14**, second revision of the day: the repository went
+public between the two, so the reviewer can now read the code as well as see
+it. Both halves are asked for, and the tagging separates them — `[READ]` cites
+a path, `[OBSERVED]` cites a screenshot, and neither may be used for the other.
 
-**Why.** `chris-suryo/kona-tracker` is a *private* repository. A visiting
-assistant cannot clone it, cannot fetch a commit, and cannot read a line of it
-— which means the previous round's "I audited commit 493c412" was not a thing
-that could have happened, and the pin-and-echo-the-SHA mechanism written for
-it was solving a problem it could never reach. What the last round actually
-had was whatever Chris pasted into the chat, plus inference. That explains the
-findings that had already been built: they were not stale readings of the
-code, they were guesses about code nobody outside had seen.
-
-So the evidence now travels with the prompt. `docs/screenshots/current-ui/`
-holds a complete set captured from the **real application** — the actual
-Jinja templates, the actual stylesheet, the actual JavaScript — running
-against fictional fixtures at 390×844 with a 2× pixel ratio, in both themes.
-Regenerate it before each audit (`docs/screenshots/README.md`), attach all of
-it, and the reviewer is looking at the same pixels the phone would draw.
-
-The evidence tagging stays, adapted: `[MEASURED]` is not available to someone
-who cannot run anything, and asking for it invites a reviewer to dress up a
-guess. `[OBSERVED]` must name the file it came from.
+`[MEASURED]` is still not offered. A reviewer who can read the source and see
+the output still cannot *run* the app, and a tag that invites someone to
+report a measurement they did not take is worse than no tag at all.
 
 ## ✂️ ——— START ———
 
 I need a professional UI/UX critique of a phone-first web app. **Give me a
-report with specific, concrete proposals — not code, and not a branch.** A
-second assistant writing code here cost a whole session in reconciliation
+report with specific, concrete proposals — not code, and not a pull request.**
+A second assistant writing code here cost a whole session in reconciliation
 once already.
 
-### What you can see, and what you cannot
+### Read this exact commit
 
-You are looking at screenshots of build `38afbeb`, captured from the real
-running application at **390×844 logical pixels, 2× device pixel ratio**
-(iPhone 14/15), full-page, in **both light and dark**.
+**`chris-suryo/kona-tracker`** is a public GitHub repository. Read it at commit
+**`86727a692b9070551c49a7e7d4d6ed7757ba29ce`** (tip of `main`).
 
-**The repository is private. You cannot read the source and you must not
-claim to have.** Every statement in your report has to trace back to a
-screenshot I gave you or to something written in this prompt. If you need a
-file to answer something properly, **ask me for it by name** — I will paste
-it and you can revise.
+**Begin your report with the commit SHA you actually read.** If you cannot
+fetch that one, say so and stop rather than auditing whatever tip you get. An
+earlier round audited a three-day-old commit and most of its findings had
+already been built; one line at the top would have caught it in seconds.
 
-### How to mark every claim
+Useful entry points:
 
-- **[OBSERVED]** — visible in a screenshot. **Name the file.**
-- **[INFERRED]** — you believe it from how it looks; you did not see it happen.
-- **[ASK]** — you need a file or a state you were not given. Say which.
+- `src/kona_tracker/web/templates/` — every page
+- `src/kona_tracker/web/static/app.css` — the entire stylesheet, hand-written
+- `src/kona_tracker/web/static/app.js`, `drive.js`, `camera.js`, `map*.js`
+- `src/kona_tracker/web/views.py` — where most user-facing strings are built
+- `PROJECT.md`, `docs/design-brief.md`, `docs/device-capabilities.md`
 
-Never round an unknown up to a known. A still frame cannot show motion,
-gesture feel, timing, haptics, or what happens on tap — so anything about
-those is `[INFERRED]` at best, and should say what would confirm it. If the
-most important thing is still unknown when you finish, **lead with that.**
+### Also look at the screenshots I attached
 
-### The app
-
-A passcode-gated site two people — a man and his sister — use to check on
-their dog, Kona, a Labrador. Three tabs: **Activity** from her Fi collar,
-**Camera** (a Tapo C120 in the house), and **Robot** (a small Raspberry Pi
-rover they drive around the house, with its own camera). It is used on
-iPhones, one-handed, usually for about ten seconds at a time, often while
-doing something else. Nobody else will ever see it.
-
-Python, FastAPI, Jinja templates, plain ES5 JavaScript, one hand-written
-stylesheet. **No build step, no framework, no CDN, no inline script.**
-
-### The screenshots
+Reading a template is not seeing what it renders, and you cannot run this app.
+The screenshots are captured from the **real running application** at
+**390×844 logical pixels, 2× device pixel ratio** (iPhone 14/15), full-page, in
+**both light and dark**. They are in `docs/screenshots/current-ui/` in the repo
+as well, if you would rather fetch them.
 
 Every file below exists twice, `-light` and `-dark`:
 
@@ -275,107 +264,154 @@ Every file below exists twice, `-light` and `-dark`:
 | `drive-landscape` | **drive mode**, 844×390 |
 | `drive-portrait-prompt` | drive mode held upright |
 
+### How to mark every claim
+
+- **[READ]** — the source says so. **Cite the path, and the line if you can.**
+- **[OBSERVED]** — visible in a screenshot. **Name the file.**
+- **[INFERRED]** — you reasoned your way there; you did not read it or see it.
+- **[ASK]** — you need something you could not get. Say what.
+
+These are not interchangeable. Reading `RESISTANCE = 0.5` is `[READ]`; saying
+the gesture therefore *feels* sluggish is `[INFERRED]`. Neither a still frame
+nor the source shows motion, gesture feel, timing on a real device, or
+haptics — claims about those are `[INFERRED]` at best and should say what
+would confirm them.
+
+Never round an unknown up to a known. If the most important thing is still
+unknown when you finish, **lead with that.**
+
+### The app
+
+A passcode-gated site two people — a man and his sister — use to check on
+their dog, Kona, a Labrador. Three tabs: **Activity** from her Fi collar,
+**Camera** (a Tapo C120 in the house), and **Robot** (a small Raspberry Pi
+rover they drive around the house, with its own camera). It is used on
+iPhones, one-handed, usually for about ten seconds at a time, often while
+doing something else. Two users, ever.
+
+Python, FastAPI, Jinja templates, plain ES5 JavaScript, one hand-written
+stylesheet. **No build step, no framework, no CDN, no inline script.**
+
+You can run it yourself if you want to — `uv run kona serve --fake-camera`
+needs no hardware, and `scripts/audit_server.py` is what produced the attached
+screenshots. But **do not report anything as measured unless you genuinely ran
+it and are quoting the output.**
+
 ### What I want, in priority order
 
-**1. Hierarchy and rhythm.** What earns its place above the fold on each
-page? What is repeated, what is decorative, what would a person checking on
-their dog for ten seconds actually need? Be willing to say "delete this."
+**1. Hierarchy and rhythm.** What earns its place above the fold on each page?
+What is repeated, what is decorative, what would a person checking on their dog
+for ten seconds actually need? Be willing to say "delete this."
 
 **2. Alignment, spacing, and the grid.** The owner's words: *"the text not
 aligning right."* He is not a designer and cannot name what is wrong, so name
-it for him — baselines, optical alignment, inconsistent gutters, ragged
-right edges, things that are nearly-but-not aligned, anything that overflows
-or clips at 390 px. Be pedantic here; this is the complaint that started it.
+it for him — baselines, optical alignment, inconsistent gutters, ragged right
+edges, things that are nearly-but-not aligned, anything that overflows or clips
+at 390 px. You have the stylesheet **and** the rendered output, so this is the
+section where you can be most useful and most exact. Be pedantic; this is the
+complaint that started it.
 
-**3. Every string, audited.** The house rule is that a line either tells you
-something about **Kona** or about something **you can do**. Anything that
-describes the server, the polling interval, the API, or the app's own
-internals is a bug. Go line by line and flag what fails that test, what is
+**3. Every string, audited.** The house rule: a line either tells you something
+about **Kona** or about something **you can do**. Anything describing the
+server, the polling interval, the API, or the app's own internals is a bug.
+Most of them are built in `views.py` and the templates, so you can go through
+them exhaustively rather than sampling. Flag what fails that test, what is
 jargon, what is redundant, what is longer than it needs to be, and what is
 missing. The owner's standard: it should not *"seem AI-generated."*
 
 **4. Light and dark as equals.** Dark is not a filter over light. Compare the
-pairs and flag anything that only works in one.
+pairs, and check the token definitions in `app.css` against what actually
+renders.
 
-**5. The Drive page — a real open design question, not a critique.** See
-below; this is where I most want you to design rather than review.
+**5. The Drive page — a real open design question, not a critique.** See below;
+this is where I most want you to design rather than review.
 
-**6. Anything that reads as decoration where it should read as an
-instrument.** This app's one hard rule is that the screen never says
-something it does not know. Flag anything that looks more confident than the
-data behind it could justify.
+**6. Anything that reads as decoration where it should read as an instrument.**
+This app's one hard rule is that the screen never says something it does not
+know. Flag anything that looks more confident than the data behind it could
+justify.
 
 ### The Drive page — the question I actually want designed
 
-Today it is: one thumb stick bottom-left for movement, rotate buttons, an
-always-live **STOP**, a speed-cap toggle, and a telemetry strip. The robot
-has **mecanum wheels**, so it strafes sideways as well as driving and
-rotating. Its camera sits on a **pan/tilt servo that is not yet wired to
-anything on screen** — that is what this question is for.
+Read `templates/drive.html`, `static/drive.js` and the `.drive-*` rules in
+`app.css`, and look at `drive-landscape-*.png`.
+
+Today: one thumb stick bottom-left for movement, rotate buttons, an always-live
+**STOP**, a speed-cap toggle, and a telemetry strip. The robot has **mecanum
+wheels**, so it strafes sideways as well as driving and rotating. Its camera
+sits on a **pan/tilt servo that is not yet wired to anything on screen** — that
+is what this question is for.
 
 The owner's instinct: **two sticks, like a game controller.** Left drives the
 body, right aims the camera. Answer concretely:
 
-- Does that work with two thumbs on an 844×390 landscape phone, when the
-  thing you are actually watching is the camera picture filling the
-  background? Where does each stick sit, how big, how far from which edge?
+- Does that work with two thumbs on an 844×390 landscape phone, when the thing
+  you are actually watching is the camera picture filling the background? Where
+  does each stick sit, how big, how far from which edge?
 - The left stick is **relative** (thumb position = velocity, springs back to
-  centre). A camera stick would most naturally be **absolute** (thumb
-  position *is* the camera angle, ±45°, and it stays where you put it). Is
-  mixing those two grammars on one screen confusing? If so, what beats it?
-- Where does STOP go so it is never more than a thumb-flick away but cannot
-  be hit by accident — including by a palm resting on a phone held in
-  landscape?
-- The controls sit on top of a live photograph that could be any colour.
-  How do they stay legible without covering the thing being steered?
-- **Nobody has yet measured which way the robot physically moves.** If an
-  axis turns out mirrored, does your layout survive a sign flip, or does it
-  bake the wrong assumption into muscle memory?
+  centre). A camera stick would most naturally be **absolute** (thumb position
+  *is* the camera angle, ±45°, and it stays where you put it). Is mixing those
+  two grammars on one screen confusing? If so, what beats it?
+- Where does STOP go so it is never more than a thumb-flick away but cannot be
+  hit by accident — including by a palm resting on a phone held in landscape?
+- The controls sit on top of a live photograph that could be any colour. How do
+  they stay legible without covering the thing being steered?
+- **Nobody has yet measured which way the robot physically moves.** If an axis
+  turns out mirrored, does your layout survive a sign flip, or does it bake the
+  wrong assumption into muscle memory?
 
-### In these screenshots but NOT bugs — please don't spend the report on them
+### In the screenshots but NOT bugs — please don't spend the report on them
 
-- **"Map unavailable"** on every map: the capture machine has no network
-  route to the tile server. On a real phone a map renders there.
+- **"Map unavailable"** on every map: the capture machine has no network route
+  to the tile server. On a real phone a map renders there.
 - **The camera pictures are a synthetic test pattern** from the fake camera
   driver. Judge the frame, the controls and the overlays around it; not the
   image.
-- **Every number, walk, time and place is a fixture.** Judge the formatting
-  and the layout, not the values.
+- **Every number, walk, time and place is a fixture** (`scripts/audit_server.py`
+  if you want to see exactly which). Judge the formatting and layout, not the
+  values.
 - **The avatar is a "K" monogram** because the fixture carries no photo.
 - The robot is named **"Rover"** in the fixture.
-- Settings says the camera source is **"Webcam on this computer"**. The
-  capture uses the fake camera driver; the real one is a network camera. The
-  row is real, the value is a fixture.
+- Settings says the camera source is **"Webcam on this computer"** — the
+  capture uses the fake driver; the real one is a network camera. The row is
+  real, the value is a fixture.
 
 ### Constraints that will fail silently if you design around them
 
-- No build step, no framework, no CDN, **no inline `<script>` or `<style>`**
-  — the page carries a Content-Security-Policy with `script-src 'self'`.
+- No build step, no framework, no CDN, **no inline `<script>` or `<style>`** —
+  the page carries a Content-Security-Policy with `script-src 'self'`.
 - Plain ES5 JavaScript (no arrow functions, no `const`), Jinja templates, one
   hand-written stylesheet. **No new dependencies.**
 - Both themes must work. Colours are tokens defined once and swapped.
 - **Page zoom is deliberately off** everywhere except the map and the camera
   picture. The owner asked for it, was told it is a WCAG 1.4.4 failure, and
-  reaffirmed it. Don't re-litigate the decision; do flag anything that makes
+  reaffirmed it; it is recorded as a decision in `docs/device-capabilities.md`
+  with its one-line revert. Don't re-litigate it; do flag anything that makes
   its cost worse.
 - Two users, both on iPhones, in Safari. No desktop, no tablet, no Android.
-- Leaflet is vendored into the repo, not loaded from a CDN.
+- Leaflet is vendored into `static/leaflet/` and a test pins its sha256.
+- There is a test suite (473 tests) that pins a lot of behaviour. If a proposal
+  breaks a test, say so — `tests/test_audit_regressions.py` in particular exists
+  to keep previous audit fixes from being undone.
 
 ### Already known — don't spend the report re-finding these
 
 - The pull-to-refresh gesture on Activity feels wrong and is being redesigned
-  separately. It is not in a screenshot; skip it.
+  separately. Read it if you like (`static/app.js`), but it is already queued.
 - "Updated" after a refresh reports that our own server answered, not that
   fresh data arrived. Known, being fixed.
-- "Ask Fi every 20 s while you are out" is exactly the kind of string rule 3
-  is about. Known — but tell me if you find others like it, because that is
-  the point.
+- "Ask Fi every 20 s while you are out" is exactly the kind of string rule 3 is
+  about. Known — but tell me if you find others like it, because that is the
+  point.
+- The collar battery in the Activity header clips at 390 px, and the Robot
+  tab's subtitle wraps to three ragged right-aligned lines. Both already spotted.
 
 ### What would help most
 
 A report I can hand to an engineer and have them know what to change. Ranked,
-most-worth-doing first. Concrete numbers rather than adjectives. If something
-is genuinely fine, say so in one line and move on — an audit that finds
-something wrong with everything is not useful to me.
+most-worth-doing first. Concrete numbers rather than adjectives. Cite the file
+you read or the screenshot you saw for each finding. If something is genuinely
+fine, say so in one line and move on — an audit that finds something wrong with
+everything is not useful to me.
 
 ## ✂️ ——— END ———
