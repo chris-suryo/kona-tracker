@@ -92,6 +92,8 @@ hardware) and open `http://localhost:8000`.
 | `/map` | The live map, full screen. Route, her dot, how old the fix is. Reached by "Open full map". |
 | `/camera` | The picture. Pinch or double-tap to zoom. Night vision, privacy and status light when the camera answers. |
 | `/settings` | Kona's profile, collar battery, camera health, sign out. Reached from the avatar. |
+| `/robot` | The TurboPi robot's camera, on its own tab. Appears only when `KONA_ROBOT_SNAPSHOT_URL` is set. Says **ROBOT OFF** when it cannot reach it, which is the robot's normal state. |
+| `/drive` | **Landscape** drive mode for the robot: a thumb stick, two rotate buttons, an always-live STOP, and a telemetry strip. Portrait deliberately shows "Turn sideways" rather than a squeezed version. Appears only when `KONA_ROBOT_CONTROL_URL` and `KONA_ROBOT_TOKEN` are both set. |
 | `/login` | The passcode gate. |
 | `/activity?preview=1` | Sample-data mode, fictional readings, for judging layout without a collar. |
 
@@ -113,6 +115,34 @@ hardware) and open `http://localhost:8000`.
 
 ## What is genuinely open, in the order that would help
 
+**Read this first, 2026-09-15:** the highest-value target has moved. `/drive`
+and `/robot` are the two newest screens and **no human has ever looked at
+either on a real phone.** `/drive` is also the only screen in this app where
+a design mistake has a physical cost — it moves a four-wheeled robot around a
+house. Screenshots of every state are in `docs/screenshots/2026-09-15/` and
+`docs/screenshots/2026-09-14/`, including the failure states: the robot may
+still be moving, the picture frozen mid-drive, a rejected token, a flat
+battery, a stop that did not land.
+
+What would help most on those two, in order:
+
+1. **Is the alarm hierarchy right?** Three things can shout at once — "the
+   robot may still be moving", "the stop did not reach the robot", "picture
+   1.4 s behind". Today the first outranks the second and the third lives
+   quietly in the top strip. Someone steering a robot has about one second of
+   attention; is that the right ordering, and is the third one loud enough?
+2. **Landscape ergonomics.** The stick sits bottom-left, rotate and STOP
+   bottom-right, telemetry across the top, and it has never been held. Are
+   the thumbs where they should be? Is STOP reachable without looking?
+3. **The telemetry strip's vocabulary.** "Battery 7.90 V" is the robot's own
+   number; "Ahead 0.41 m" is the sonar; "Picture live" is how far behind the
+   video is. Is volts the right unit for a person, or should it be a bar?
+4. **The Slow/Full limiter** is a small pill at the bottom centre and is the
+   one control that changes how fast a physical object moves. Is it findable,
+   and is its state obvious at a glance?
+
+Then, still open from the last pass:
+
 1. **Visual polish on what landed.** The new pieces were built for honesty
    first and never had a design eye on them: the camera-health rows on
    `/settings`, the map's empty state, the "Resting at Home" location card,
@@ -123,7 +153,8 @@ hardware) and open `http://localhost:8000`.
 3. **Copy pass.** The page's voice is plain and specific. Check the states
    nobody has seen: not configured, partial, stale, no GPS.
 4. Not for a visiting session: the Fi probe, the tunnel, the Raspberry Pi
-   migration. Those need Chris's machine or his decisions.
+   migration, and anything about the robot's own software. Those need Chris's
+   machine, his decisions, or the other session that owns the robot.
 
 ## What a visiting session cannot do
 
@@ -151,8 +182,61 @@ hardware) and open `http://localhost:8000`.
 
 ## The paste-able block
 
-See the "visual audit" prompt Claude Code hands Chris; it is reproduced in
-the session notes rather than here, because it changes with what has just
-been built. The standing rules it must always carry are the ones above:
-no inline script, no CDN, vendored Leaflet, zoom off by request, both
-themes, no new dependencies, and a report rather than a branch.
+Refreshed 2026-09-15 for the robot. Paste everything between the scissors,
+and attach the PNGs from `docs/screenshots/2026-09-15/` and
+`docs/screenshots/2026-09-14/`.
+
+## ✂️ ——— START ———
+
+I need a UI/UX critique of two screens in a private, phone-first web app. I
+will paste screenshots. **Give me a report with specific proposals — not
+code, and not a branch.** A second assistant writing code here cost a whole
+session in reconciliation once already.
+
+**The app**: a passcode-gated page two people use to check on their dog, and
+now also to drive a small four-wheeled robot around the house. Python,
+FastAPI, Jinja templates, plain ES5 JavaScript, one hand-written stylesheet.
+**No build step, no framework, no CDN, no inline script** (the page carries a
+Content-Security-Policy with `script-src 'self'`). Both light and dark themes
+follow the phone. Page zoom is off everywhere by the owner's explicit
+request. No new dependencies.
+
+**The two screens**:
+
+1. `/robot` — portrait. The robot's camera on its own tab, with a link into
+   drive mode. It says ROBOT OFF when the robot is off, which is most of the
+   time: it runs on two rechargeable cells.
+2. `/drive` — **landscape only**. Full-bleed camera picture with controls
+   over it: a thumb stick bottom-left for translate (this robot strafes
+   sideways, so the stick genuinely moves it sideways rather than turning
+   it), two rotate buttons and a big STOP bottom-right, a telemetry strip
+   across the top, and a Slow/Full speed limiter centre-bottom. Portrait
+   shows "Turn sideways" instead, because iOS Safari cannot be asked to
+   rotate the screen.
+
+**What matters here that would not matter on an ordinary screen**: this one
+moves a physical object that can fall off a table or hit someone. The robot
+holds its last motor command until something tells it otherwise. So the
+screen's job is not only to look good — it is to never be calm when the robot
+might be moving, and never to claim a reading it does not have.
+
+Three different alarms can appear:
+- "The robot may still be moving. The gateway has not had a stop confirmed."
+- "The stop did not reach the robot." (plus a reason)
+- "Picture 1.4 s behind" — the video has frozen while someone steers by it.
+
+**Please tell me:**
+1. Is the alarm hierarchy right? The first currently outranks the second, and
+   the third sits quietly in the top strip. Someone driving has about a
+   second of attention.
+2. Landscape ergonomics — thumbs, reach, whether STOP can be hit without
+   looking. It has never been held by a person.
+3. The telemetry strip: is "7.90 V" meaningful to a human, or should battery
+   be a bar? Is "Picture live" / "1.4 s behind" understandable?
+4. Is the Slow/Full limiter findable, and is its state obvious? It is the one
+   control that changes how fast a real object moves.
+5. Anything that reads as decoration where it should read as instrument.
+
+Be specific and concrete. If something is fine, say so and move on.
+
+## ✂️ ——— END ———
