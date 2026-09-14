@@ -324,6 +324,7 @@ class FiService:
         data_start: date | None = None,
         live_seconds: float = DEFAULT_LIVE_SECONDS,
         live_max_seconds: float = DEFAULT_LIVE_MAX_SECONDS,
+        recorder: Any | None = None,
     ):
         self._email = email
         self._password = password
@@ -342,6 +343,10 @@ class FiService:
         # of failures must not turn into a request-rate retry loop against
         # somebody else's private API, so the TTL is measured from here.
         self._attempted_at: datetime | None = None
+        #: Optional `store.Recorder`. Fi's hourly detail is today-only, so
+        #: what is not written down before midnight is gone. Duck-typed on
+        #: purpose: this module must not depend on storage existing.
+        self._recorder = recorder
 
     def _fetch(self) -> FiSnapshot:
         client = self._client_factory()
@@ -368,6 +373,9 @@ class FiService:
                 None,
                 f"Unexpected error talking to Fi: {type(e).__name__} (details omitted)",
             )
+        # The snapshot to record, decided under the lock and used after it.
+        # `fresh` is not that value: a walk's carried-over route replaces it.
+        recordable: FiSnapshot | None = None
         if fresh is None:
             log.warning("Fi refresh failed: %s", problem)
         elif fresh.problem:
@@ -396,6 +404,7 @@ class FiService:
                         ),
                     )
                 self._snapshot = fresh
+                recordable = fresh
             elif self._snapshot is not None:
                 # Keep the data, stamp the failure; `fetched_at` stays at the
                 # moment the data was true, which is what "as of" must mean.
@@ -408,6 +417,21 @@ class FiService:
                 )
             self._refreshing = False
             self._lock.notify_all()
+        # Outside the lock, and only for a reading that actually arrived. A
+        # stale snapshot is the *same* data annotated with a failure, and
+        # recording it again would invent an observation that never happened.
+        # Writing here rather than inside the lock keeps a disk hiccup from
+        # blocking every page waiting on this refresh; `record()` swallows its
+        # own failures, so nothing below can reach the caller.
+        if recordable is not None and self._recorder is not None:
+            # `Recorder.record` promises not to raise, and this does not rely
+            # on that promise. Anything duck-typed into this slot reaches the
+            # page load through here, and a history feature must never be able
+            # to take down the thing people actually open the app for.
+            try:
+                self._recorder.record(recordable)
+            except Exception as e:
+                log.warning("Recording failed: %s", type(e).__name__)
 
     # -- live mode ---------------------------------------------------------
     #

@@ -67,6 +67,12 @@ class Settings:
     secure_cookies: bool = False
     #: Directory for a rotating `kona.log`; blank = console only.
     log_dir: str = ""
+    #: SQLite file recording what each Fi refresh saw; blank = record nothing.
+    #: Off by default because starting a web server should not begin writing
+    #: files nobody asked for. It is worth turning on: Fi's hourly detail is
+    #: today-only and gone at midnight, so every day this stays blank is a day
+    #: that cannot be recovered. See `docs/recording.md`.
+    db_path: str = ""
     #: Hold off Windows sleep while serving, instead of disabling sleep in the
     #: power plan for good. Off by default: when this machine sleeps is the
     #: owner's business, not a side effect of starting a web server.
@@ -307,6 +313,7 @@ def load_settings(env_file: Path | None = Path(".env"), fake_camera: bool = Fals
         trusted_proxy_ips=trusted_proxy_ips,
         secure_cookies=secure_cookies,
         log_dir=get("KONA_LOG_DIR").strip(),
+        db_path=get("KONA_DB_PATH").strip(),
         keep_awake=keep_awake,
         heartbeat_url=get("KONA_HEARTBEAT_URL").strip(),
         heartbeat_seconds=float(get("KONA_HEARTBEAT_SECONDS", "300")),
