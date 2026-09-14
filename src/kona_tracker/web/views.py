@@ -939,8 +939,7 @@ _ROBOT_REFUSALS = {
     ),
     "invalid_body": "The robot's gateway did not understand that command.",
     "obstacle": (
-        "Something is right in front of the robot. Back up, strafe or turn "
-        "\u2014 those still work."
+        "Something is right in front of the robot. Back up, strafe or turn — those still work."
     ),
 }
 
