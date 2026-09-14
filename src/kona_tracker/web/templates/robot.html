@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Kona · {{ robot_name|lower }}{% endblock %}
+{% block pageclass %}cam-page{% endblock %}
+{% block body %}
+{# The Camera tab's frame, verbatim, pointed at the robot's hub. One .cam
+   per page keeps the kona-frame view-transition name unique. No shutter,
+   no zoom, no switches: the robot has none of those yet, and a control
+   that does nothing is never shown (docs/device-capabilities.md). #}
+<figure class="cam">
+  <img id="cam" class="unavailable" alt="Live view from {{ robot_name }}">
+  <div class="cam-connecting" aria-hidden="true"><span>Connecting…</span></div>
+  <div class="top">
+    <span class="live"><span class="dot" id="dot"></span><span id="livetxt">CONNECTING</span></span>
+  </div>
+</figure>
+<div class="cam-meta">
+  <div><div class="d">{{ robot_name }}</div><div class="s" id="cap">Reaching the robot…</div></div>
+  <span class="cam-hint">Turn the robot on and this picture follows on its own</span>
+</div>
+{# Driving lands only once the Pi-side safety service exists and answers;
+   until then `drive` is false and nothing that moves the robot is drawn. #}
+<script src="{{ asset('poll.js') }}" defer></script>
+<script src="{{ asset('robot.js') }}" defer></script>
+{% endblock %}

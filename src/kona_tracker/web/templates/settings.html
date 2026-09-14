@@ -32,6 +32,16 @@
   {% if camera.reconnects %}<div class="settings-row"><span>Reconnects</span><strong>{{ camera.reconnects }}</strong></div>{% endif %}
 </section>
 
+{% if robot %}
+<section class="settings-group" aria-labelledby="robot-settings-title">
+  <h2 id="robot-settings-title">{{ robot_name }}</h2>
+  <div class="settings-row camera-status"><span>Status</span><strong>{% if robot.live %}<i class="status-dot" aria-hidden="true"></i>{% endif %}{{ robot.state }}</strong></div>
+  {% if robot.last_frame %}<div class="settings-row"><span>Last frame</span><strong>{{ robot.last_frame }}</strong></div>{% endif %}
+  {% if robot.problem %}<div class="settings-row camera-problem"><span>Last problem</span><p>{{ robot.problem }}</p></div>{% endif %}
+  {% if robot.reconnects %}<div class="settings-row"><span>Reconnects</span><strong>{{ robot.reconnects }}</strong></div>{% endif %}
+</section>
+{% endif %}
+
 <section class="settings-group" aria-labelledby="display-settings-title">
   <h2 id="display-settings-title">Dashboard</h2>
   <a class="settings-link" href="/activity?preview=1">

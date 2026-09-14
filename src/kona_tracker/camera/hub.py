@@ -90,7 +90,12 @@ class CameraHub:
         backoff_base: float = 1.0,
         backoff_max: float = 30.0,
         placeholder: bytes = NO_SIGNAL_JPEG,
+        name: str = "camera",
     ):
+        # Two hubs (the house camera and the robot) log through the same
+        # logger; the name is what tells their lines and threads apart. The
+        # default keeps every existing line byte-identical.
+        self.name = name
         self._open_source = open_source
         self._idle_stop = idle_stop_seconds
         self._reopen_cooldown = reopen_cooldown_seconds
@@ -183,7 +188,7 @@ class CameraHub:
             self._stop.clear()
             self._backoff = self._backoff_base
             self._supervisor = threading.Thread(
-                target=self._supervise, name="kona-camera-supervisor", daemon=True
+                target=self._supervise, name=f"kona-{self.name}-supervisor", daemon=True
             )
             self._supervisor.start()
 
@@ -236,7 +241,7 @@ class CameraHub:
                     reader = threading.Thread(
                         target=self._reader_task,
                         args=(gen,),
-                        name=f"kona-camera-reader-{gen}",
+                        name=f"kona-{self.name}-reader-{gen}",
                         daemon=True,
                     )
                     self._readers.add(reader)
@@ -257,7 +262,7 @@ class CameraHub:
                             self._reader_alive = False  # abandon; reader sees gen != current
                             self.last_error = f"no frames for {self._hang_after:.0f}s; reconnecting"
                             self.last_error_kind = "hung"
-                            log.warning("camera hung: %s", self.last_error)
+                            log.warning("%s hung: %s", self.name, self.last_error)
                             self._fails += 1
                             self._lock.notify_all()
                         break
@@ -295,7 +300,7 @@ class CameraHub:
                 if gen == self._generation:
                     self.last_error = redact_url(f"{type(e).__name__}: {e}")
                     self.last_error_kind = "open"
-                    log.warning("camera open: %s", self.last_error)
+                    log.warning("%s open: %s", self.name, self.last_error)
                     self._reader_alive = False
                     self._fails += 1
                     self._lock.notify_all()
@@ -315,7 +320,7 @@ class CameraHub:
                         self.last_error_kind = (
                             "black_frame" if isinstance(e, CameraFrameError) else "read"
                         )
-                        log.warning("camera %s: %s", self.last_error_kind, self.last_error)
+                        log.warning("%s %s: %s", self.name, self.last_error_kind, self.last_error)
                     break
                 if jpeg:
                     misses = 0
@@ -335,7 +340,7 @@ class CameraHub:
                                 break
                             self.last_error = f"{misses} consecutive empty reads"
                             self.last_error_kind = "empty_frames"
-                            log.warning("camera empty_frames: %s", self.last_error)
+                            log.warning("%s empty_frames: %s", self.name, self.last_error)
                         break
                     time.sleep(0.05)
                 elapsed = time.monotonic() - started

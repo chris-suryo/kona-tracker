@@ -33,6 +33,7 @@
     <nav class="seg" aria-label="Sections">
       <a href="/activity" class="{{ 'on' if tab == 'activity' else '' }}">Activity</a>
       <a href="/camera" class="{{ 'on' if tab == 'camera' else '' }}">Camera</a>
+      {% if robot_configured %}<a href="/robot" class="{{ 'on' if tab == 'robot' else '' }}">Robot</a>{% endif %}
     </nav>
     <div class="right">{% block hdrright %}{% endblock %}</div>
   </header>

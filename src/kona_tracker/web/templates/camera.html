@@ -74,5 +74,8 @@
   <p class="setting-note" id="setting-note">Reading the camera's settings…</p>
 </section>
 {% endif %}
+{# poll.js is the picture loop shared with the Robot tab; camera.js is
+   everything only this camera has, and calls into it. #}
+<script src="{{ asset('poll.js') }}" defer></script>
 <script src="{{ asset('camera.js') }}" defer></script>
 {% endblock %}
