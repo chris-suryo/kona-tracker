@@ -103,6 +103,46 @@ API fail without it. It is step 2 in `docs/first-run.md`.
 
 ---
 
+## 1b. The robot: Hiwonder TurboPi (Raspberry Pi 5)
+
+Built and running as of 2026-09-13; everything below is from the session
+that built it, measured against the hardware unless marked otherwise.
+
+| What | Reading |
+|---|---|
+| Video | MJPEG on `http://10.0.0.3:8080/` (multipart), one JPEG at `?action=snapshot`. **No credentials.** Binds `0.0.0.0`, so anyone on the Wi-Fi can watch it |
+| Picture | 640×480, JPEG quality 70 on the stream and 100 on snapshots. **18.9 fps measured** against a ~20 fps ceiling |
+| Multi-reader | **Yes, measured**: two streams at 18.7 and 18.6 fps with `?action=snapshot` still answering. The app polling it never blocks a browser also watching |
+| `/dev/video0` | Held exclusively by `TurboPi.py` for its lifetime. Port 8080 is the only way to the picture, which is fine: it is the way we use |
+| Latency | **Not measured.** Expect 150–400 ms on the LAN plus the Tailscale hop |
+| Wi-Fi drop | The server survives; the client must reconnect. A dead MJPEG connection often just goes silent, no error. (Why the app polls one frame at a time and lets the hub's hang detection reconnect) |
+| Control | JSON-RPC 2.0 on port 9030, **no auth, no CORS**. Result envelope is `[success, data, method]` inside `result`; **HTTP 200 does not mean success** |
+| Stops on its own? | **No.** A motor duty is held indefinitely. A lost "stop" is a robot that keeps going |
+| Battery | Two 18650 cells, 8.01 V fresh. **No low-voltage alarm, no auto shutdown**; it browns out the Pi when the cells sag. Runtime unmeasured |
+| Address | `10.0.0.3`, `turbopi.local`. **Not yet DHCP-reserved.** Reachable from the Mac; **not yet tested from the Windows PC** |
+| Autostart | Done: a systemd unit starts `TurboPi.py` on boot and restarts it on crash. A one-line patch opens the camera at start (stock, it serves no frames until a demo loads, and fails silently) |
+
+**How the app uses it (2026-09-14).** As a second camera on its own Robot
+tab: `SnapshotSource` does one GET per frame, hands the JPEG on untouched,
+and a second `CameraHub` gives it the reconnect, backoff and ROBOT OFF
+behaviour the house camera already had. All robot traffic goes through the
+PC (the phone is on Tailscale and cannot see the LAN; the CSP would refuse
+anyway). `KONA_ROBOT_SNAPSHOT_URL` is the only switch.
+
+**What is deliberately not built.** Driving. Port 9030 is never spoken to
+by this app. Because nothing on the robot ever expires a motor command, the
+watchdog that zeroes the motors when commands stop has to live **on the
+Pi** -- the failure being guarded against is the PC or the phone becoming
+unreachable, and a watchdog on the far side of a broken link cannot fire.
+The other session is building that service to a contract (port 9031, a
+shared token, `/health`, `/telemetry`, `/drive` with a mandatory TTL and a
+background task that stops the motors when it lapses, `/stop`, `/look`
+clamped to ±45°, refusal below 7.0 V). Our side -- a proxy under `/robot/*`
+and a joystick -- starts only once that answers `/health`. Demos (line
+following and the rest) come after that again. Never a CORS patch to the
+robot's `RPCServer.py`: it would make the robot drivable by any web page on
+the LAN.
+
 ## 2. Fi collar
 
 Kona's collar was paired on 2026-09-10 and `kona probe` has now run against
