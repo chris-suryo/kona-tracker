@@ -633,6 +633,14 @@ body.activity-page { overscroll-behavior-y: contain; }
 .drive-note.gone { color: #FFB3A3; }
 /* A stop that did not land is the most dangerous state this app has, so it
    is the loudest thing on the screen and it does not wait to be dismissed. */
+/* Fourth time this has bitten (the pull banner, the zoom badge, the map
+   panels, the live-map stats): any display other than the initial one
+   outranks the browser's own [hidden] rule, and the element stays on
+   screen. Here it meant a "the stop did not reach the robot" alarm showing
+   permanently on a page where nothing was wrong -- the worst possible
+   place to cry wolf. Caught by a screenshot, not by a test: the harness
+   asserts the `hidden` property, which was correct all along. */
+.drive-shout[hidden] { display: none; }
 .drive-shout { align-self: center; display: flex; align-items: center; gap: 10px;
   padding: 12px 18px; border-radius: 14px; background: var(--bad); color: #fff;
   font-size: 14px; font-weight: 700; box-shadow: 0 6px 24px rgba(0,0,0,.4); }

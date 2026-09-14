@@ -78,6 +78,15 @@ every item; `docs/scaling-limits.md` is the standing list of ceilings;
   `docs/device-capabilities.md` §1b); the app never talks to the robot's
   raw port 9030. Chris still owes `Test-NetConnection 10.0.0.3 -Port 8080`
   from the PC and a DHCP reservation for the robot.
+- **Driving (2026-09-14):** built. A landscape drive mode at `/drive`, a
+  virtual stick for translate, two buttons for rotate, an always-live STOP,
+  and telemetry at 1 Hz. It appears only when `KONA_ROBOT_CONTROL_URL` and
+  `KONA_ROBOT_TOKEN` are both set, which is the gate: those go in `.env`
+  only after the Pi-side gateway's watchdog proof passes on a stand.
+  **Nothing about driving has run against real hardware** -- not the
+  gateway, and not which way the robot actually moves.
+  `docs/device-capabilities.md` section 1b has the four vendor-source
+  findings that shaped it and the one failure mode nothing covers.
 - **Windows PC:** `uv sync` is blocked by Application Control (error 4551)
   on Chris's machine. `uv run --no-sync kona serve` runs what is already
   installed; a new dependency needs `uv sync --no-build-isolation`, which
@@ -114,6 +123,11 @@ every item; `docs/scaling-limits.md` is the standing list of ceilings;
    then switch the robot off and confirm the tab says ROBOT OFF within
    about 15 s; then on again and confirm the picture returns without a
    restart. `docs/first-run.md` §4b.
+7. **Driving**, in the order in `docs/first-run.md` §4c and not out of it:
+   install the gateway on the Pi *including the `patch_getrunningfunc.py`
+   line*, run `gateway_watchdog_proof.sh` with the robot **on a stand**, and
+   only then put the two `KONA_ROBOT_*` lines in `.env`. First drive on the
+   stand, watching which way each direction actually goes.
 
 *Still owed, in order:*
 6. The ten-minute polling soak (`/status.json` holds `streams: 0`) and the
