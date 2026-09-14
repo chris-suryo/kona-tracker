@@ -11,6 +11,20 @@
   <p><a href="/robot">Back to {{ robot_name }}</a></p>
 </div>
 
+{# Outside `.drive` on purpose, and this is load-bearing rather than tidy.
+   `.drive` is `display: none` in portrait -- and rotating the phone upright
+   is itself a stop (drive.js calls stopNow on the orientation change). So
+   the one gesture most likely to produce a failed stop was also the gesture
+   that hid the alarm saying so: "Turn sideways" over a robot that may still
+   be moving. A sibling of both halves is visible in either orientation, and
+   carries its own STOP because portrait otherwise has no control at all. #}
+<div class="drive-alarm" id="shout" hidden role="alert">
+  <span aria-hidden="true">⚠</span>
+  <span class="msg" id="shout-text">The stop did not reach the robot.</span>
+  <button class="estop" id="estop-alarm" type="button"
+          aria-label="Stop {{ robot_name }} now">STOP</button>
+</div>
+
 <div class="drive" id="drive" data-interval="{{ drive_interval_ms }}">
   {# poll.js owns the picture and needs these four ids; the caption doubles
      as the camera's own line in the telemetry strip. #}
@@ -35,10 +49,6 @@
          the gateway's own telemetry, and hidden only when there is nothing
          true to say. #}
       <p class="drive-note" id="note" hidden></p>
-    </div>
-
-    <div class="drive-shout" id="shout" hidden role="alert">
-      <span>⚠</span><span id="shout-text">The stop did not reach the robot.</span>
     </div>
 
     <div class="drive-pads">

@@ -86,7 +86,11 @@ def test_the_live_map_panels_obey_the_hidden_attribute():
         "live-walk",
         "live-recentre",
         "live-note",
-        "drive-shout",
+        "drive-alarm",
+        # The alarm's own containment -- which is what actually failed, and
+        # which a [hidden] guard cannot express -- is pinned next to the
+        # gateway fixture it needs, in
+        # test_robot_drive.py::test_the_stop_alarm_is_not_inside_the_half_that_portrait_hides
         # Added 2026-09-15. `.live-map` was the dangerous one: `.map[hidden]`
         # reads as if it covers it and does not, and the element is already
         # position:absolute inset:0 -- one `display:` away from covering the
