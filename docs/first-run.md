@@ -377,8 +377,18 @@ command.
   Point pytest somewhere else, once:
 
   ```powershell
-  [Environment]::SetEnvironmentVariable('PYTEST_ADDOPTS', "--basetemp=$env:USERPROFILE\.pytest-tmp", 'User')
+  [Environment]::SetEnvironmentVariable('PYTEST_ADDOPTS', "--basetemp=$($env:USERPROFILE -replace '\\','/')/.pytest-tmp", 'User')
   ```
+
+  **Forward slashes are load-bearing, and this line used to get it wrong.**
+  pytest parses `PYTEST_ADDOPTS` with `shlex.split()`, which treats a
+  backslash as an escape character, so the obvious
+  `--basetemp=$env:USERPROFILE\.pytest-tmp` arrives as
+  `C:Usersharim.pytest-tmp` — a path with no separators, which Windows reads
+  as *relative to the current directory*. Combined with the warning below,
+  that pointed a wipe-on-every-run flag at a folder inside the repo. Seen for
+  real on Chris's machine, 2026-09-16, as a stray `Usersharim.pytest-tmp/` in
+  `git status`. If you have one, it is safe to delete.
 
   Reopen PowerShell; `uv run pytest -q` then works normally. Note that pytest
   **wipes whatever `--basetemp` points at** on every run, so give it a folder

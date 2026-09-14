@@ -562,7 +562,7 @@ function telemetry(x, extra = {}) {
   poll.resolve(response({
     battery_v: 8.01, sonar_mm: 412, driving: false, demo: null,
     last_command_age_ms: null, low_battery: false, battery_age_ms: 300,
-    demo_detection: true, ...extra
+    demo_detection: true, sonar_usable: true, min_duty: 25, max_duty: 55, ...extra
   }));
   return settle();
 }
@@ -770,14 +770,41 @@ test('the strip stops claiming a reading once the robot goes quiet', async () =>
   assert.equal(x.nodes.stick.getAttribute('aria-disabled'), 'true');
 });
 
-test('the speed limiter is on by default and releases full range when asked', async () => {
+test('the speed control says what it caps, not how fast the robot feels', async () => {
+  // It used to say "Slow". The gateway then began lifting every command above
+  // the motors' stiction floor, so a 0.4 stick asks for duty 37 on this robot
+  // -- above what used to be full throttle. The word stopped being true.
   const x = await ready();
-  assert.equal(x.nodes.speed.textContent, '');  // the template's own word stands
+  assert.equal(x.nodes.speed.textContent, 'Speed 40%');
+  assert.match(x.nodes.speed.getAttribute('aria-label'), /motor duty 37/,
+    "the duty is the robot's own number, read from telemetry, never hardcoded");
   x.nodes.speed.events.click();
   assert.equal(x.nodes.speed.getAttribute('aria-pressed'), 'true');
-  assert.equal(x.nodes.speed.textContent, 'Full');
+  assert.equal(x.nodes.speed.textContent, 'Speed 100%');
+  assert.match(x.nodes.speed.getAttribute('aria-label'), /motor duty 55/);
   press(x, 64, 8);
   assert.equal(drives(x)[0].options.body, 'vx=1.000&vy=0.000&omega=0.000');
+});
+
+test('a duty range this page has not been told is not invented', async () => {
+  // min_duty/max_duty are environment variables on the Pi, different per
+  // robot. Absent them the pill still states its own cap and claims nothing
+  // about motors.
+  const x = setup('drive.js');
+  await telemetry(x, {min_duty: undefined, max_duty: undefined});
+  assert.equal(x.nodes.speed.getAttribute('aria-label'), null,
+    'no duty claim before the robot has reported its range');
+});
+
+test('a distance sensor that cannot be read is said out loud', async () => {
+  // Same family as demo_detection: a guard that cannot run must not look like
+  // a guard that is running and finding nothing in the way.
+  const x = await ready({sonar_usable: false});
+  assert.equal(x.nodes.note.hidden, false);
+  assert.match(x.nodes.note.textContent, /obstacle guard is off/);
+  // And it does not block driving -- reverse, strafe and rotate are how you
+  // get out of a corner, which is the gateway's own reasoning.
+  assert.equal(x.nodes.stick.getAttribute('aria-disabled'), 'false');
 });
 
 test('rotating is a turn on the spot, and releasing it stops too', async () => {

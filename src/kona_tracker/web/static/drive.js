@@ -44,7 +44,18 @@
   var PICTURE_STALE_MS = 600;
   var PICTURE_TICK_MS = 250;
   var RADIUS = 56;          // px of travel before the stick is at full tilt
-  var SLOW = 0.4;           // until Chris has confirmed which way it goes
+  // The speed control caps the *velocity command*, not a pace. It used to be
+  // labelled "Slow", which stopped being true on 2026-09-14: the gateway now
+  // lifts every command above the motors' static-friction floor
+  // (span = min_duty + (max_duty - min_duty) * peak), so with that robot's
+  // 25/55 range a 0.4 stick asks for duty 37 -- Hiwonder's own cruising
+  // speed, and above what used to be full throttle. The button said Slow and
+  // the robot was not going slowly. It now says what it actually does.
+  //
+  // The duty range is a per-deployment environment variable on the Pi, which
+  // is why min_duty/max_duty arrive in telemetry: this page must never
+  // hardcode them, and does not.
+  var SPEED_CAP = 0.4;
   var STOP_RETRY_MS = 700;
 
   var stickVec = { x: 0, y: 0 };   // -1..1, screen axes
@@ -52,13 +63,15 @@
   var pointer = null;              // the pointerId driving the stick
   var sending = false;             // exactly one command in flight
   var driving = false;             // a thumb is down somewhere
-  var slow = true;
+  var capped = true;
   var ticker = null, stopRetry = null;
   var lastTelemetry = 0, telemetryEverOk = false;
   // Two independent reasons to shout, kept apart so neither can erase the
   // other: `owed` is the gateway telling us the board may still hold duty,
   // `failure` is our own last stop or drive that did not land.
   var owed = false, failure = '';
+  // Set once telemetry reports the robot's duty range; null until then.
+  var dutyAt = null;
 
   function post(path, body) {
     return fetch(path, {
@@ -129,7 +142,7 @@
   }
 
   // -- driving -------------------------------------------------------------
-  function scale() { return slow ? SLOW : 1; }
+  function scale() { return capped ? SPEED_CAP : 1; }
 
   function tick() {
     if (sending || !driving) { return; }
@@ -225,10 +238,19 @@
     if (e.key === 'Escape') { stopNow('escape'); }
   });
 
+  function drawSpeed() {
+    var percent = Math.round((capped ? SPEED_CAP : 1) * 100);
+    speed.textContent = 'Speed ' + percent + '%';
+    speed.setAttribute('aria-pressed', String(!capped));
+    // The duty is the robot's own number and only arrives with telemetry, so
+    // it is an aria detail rather than something the pill claims on its own.
+    speed.setAttribute('aria-label', 'Speed limit ' + percent + ' percent' + (dutyAt
+      ? ', motor duty ' + dutyAt(capped ? SPEED_CAP : 1)
+      : ''));
+  }
   speed.addEventListener('click', function () {
-    slow = !slow;
-    speed.setAttribute('aria-pressed', String(!slow));
-    speed.textContent = slow ? 'Slow' : 'Full';
+    capped = !capped;
+    drawSpeed();
   });
 
   // Anything that takes the operator's attention away stops the robot. The
@@ -285,6 +307,16 @@
     owed = data.stop_owed === true && data.driving !== true;
     renderShout();
 
+    // The gateway lifts commands above the motors' stiction floor, and the
+    // range is deployment-specific. Once it has told us, we can say what a
+    // speed setting really asks the motors for instead of guessing.
+    if (typeof data.min_duty === 'number' && typeof data.max_duty === 'number') {
+      dutyAt = function (v) {
+        return Math.round(data.min_duty + (data.max_duty - data.min_duty) * v);
+      };
+      drawSpeed();
+    }
+
     var words = [];
     // False means the robot's own GetRunningFunc is unpatched, so the
     // gateway cannot tell whether a built-in demo is driving. Saying
@@ -293,6 +325,11 @@
       words.push('The robot cannot tell whether a built-in demo is running, so that guard is off.');
     }
     if (data.demo) { words.push('A built-in demo is driving: manual control is refused until it stops.'); }
+    // Same family as demo_detection: a guard that cannot run must be said out
+    // loud, not left to look like a guard that is running and finding nothing.
+    if (data.sonar_usable === false) {
+      words.push('The robot cannot read its distance sensor, so the obstacle guard is off.');
+    }
     note.textContent = words.join(' ');
     note.hidden = words.length === 0;
     note.className = 'drive-note';
