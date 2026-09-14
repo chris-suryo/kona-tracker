@@ -143,6 +143,7 @@ def test_driving_is_behind_the_same_passcode_as_everything_else():
         assert client.get("/drive", follow_redirects=False).status_code == 303
         assert client.post("/robot/drive", follow_redirects=False).status_code == 303
         assert client.post("/robot/stop", follow_redirects=False).status_code == 303
+        assert client.post("/robot/look", follow_redirects=False).status_code == 303
         assert client.get("/robot/telemetry", follow_redirects=False).status_code == 303
     app.state.hub.stop()
     app.state.robot_hub.stop()
