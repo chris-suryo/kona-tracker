@@ -182,60 +182,117 @@ Then, still open from the last pass:
 
 ## The paste-able block
 
-Refreshed 2026-09-15 for the robot. Paste everything between the scissors,
-and attach the PNGs from `docs/screenshots/2026-09-15/` and
-`docs/screenshots/2026-09-14/`.
+Refreshed 2026-09-16. **Two things in it are load-bearing and were missing
+before.** The commit is pinned, and the report is asked to echo the SHA it
+actually read as its first line — because the previous round audited a
+three-day-old tip of `main` and nobody could tell until five of its seven
+findings were cross-checked by hand against the code. One line would have
+caught it. The other is the evidence tagging, copied from the robot session's
+post-drive reply, which is the best handoff this project has received from
+anyone.
+
+Attach the PNGs from `docs/screenshots/2026-09-15/` and `2026-09-14/`.
 
 ## ✂️ ——— START ———
 
-I need a UI/UX critique of two screens in a private, phone-first web app. I
-will paste screenshots. **Give me a report with specific proposals — not
-code, and not a branch.** A second assistant writing code here cost a whole
-session in reconciliation once already.
+I need a UI/UX critique of a private, phone-first web app. **Give me a report
+with specific proposals — not code, and not a branch.** A second assistant
+writing code here cost a whole session in reconciliation once already.
 
-**The app**: a passcode-gated page two people use to check on their dog, and
-now also to drive a small four-wheeled robot around the house. Python,
-FastAPI, Jinja templates, plain ES5 JavaScript, one hand-written stylesheet.
-**No build step, no framework, no CDN, no inline script** (the page carries a
-Content-Security-Policy with `script-src 'self'`). Both light and dark themes
-follow the phone. Page zoom is off everywhere by the owner's explicit
+### Read this exact commit
+
+`chris-suryo/kona-tracker`, commit
+**`1523d362b7768f1953e2a2d43883a39da05dc50e`**.
+
+**Begin your report with the commit SHA you actually read.** If you cannot
+fetch that one, say so and stop rather than auditing whatever tip you get — a
+previous round audited a three-day-old commit and most of its findings had
+already been built.
+
+### How to mark every claim
+
+Tag each finding:
+
+- **[MEASURED]** — I ran it and this is the output.
+- **[OBSERVED]** — I saw it on screen; screenshot attached or described.
+- **[INFERRED]** — the source says so; I did not see it happen.
+
+Never round an unknown up to a known. Quote captured output rather than
+remembered output. If something is a guess, say it is a guess. If the most
+important thing is still unknown at the end of your work, lead with that.
+
+### The app
+
+A passcode-gated page two people use to check on their dog, Kona, from a Fi
+collar, plus a camera at home and a small robot they drive around the house.
+Python, FastAPI, Jinja templates, plain ES5 JavaScript, one hand-written
+stylesheet. **No build step, no framework, no CDN, no inline script** (the
+page carries a Content-Security-Policy with `script-src 'self'`). Light and
+dark follow the phone. Page zoom is off everywhere by the owner's explicit
 request. No new dependencies.
 
-**The two screens**:
+Run it with `uv run --no-sync kona serve --fake-camera`; no hardware needed.
+`/activity?preview=1` renders the layout against fictional readings.
 
-1. `/robot` — portrait. The robot's camera on its own tab, with a link into
-   drive mode. It says ROBOT OFF when the robot is off, which is most of the
-   time: it runs on two rechargeable cells.
-2. `/drive` — **landscape only**. Full-bleed camera picture with controls
-   over it: a thumb stick bottom-left for translate (this robot strafes
-   sideways, so the stick genuinely moves it sideways rather than turning
-   it), two rotate buttons and a big STOP bottom-right, a telemetry strip
-   across the top, and a Slow/Full speed limiter centre-bottom. Portrait
-   shows "Turn sideways" instead, because iOS Safari cannot be asked to
-   rotate the screen.
+### What I want looked at
 
-**What matters here that would not matter on an ordinary screen**: this one
-moves a physical object that can fall off a table or hit someone. The robot
-holds its last motor command until something tells it otherwise. So the
-screen's job is not only to look good — it is to never be calm when the robot
-might be moving, and never to claim a reading it does not have.
+**Pull-to-refresh on `/activity`, and the Activity tab as a whole.** The
+owner's words: it "needs a little bit more of a tasteful, professional eye,
+just so the mechanics and everything don't seem AI-generated."
 
-Three different alarms can appear:
-- "The robot may still be moving. The gateway has not had a stop confirmed."
-- "The stop did not reach the robot." (plus a reason)
-- "Picture 1.4 s behind" — the video has frozen while someone steers by it.
+**I already know why it feels wrong. I want a design, not a diagnosis** — so
+here is the diagnosis, to argue with rather than rediscover
+(`src/kona_tracker/web/static/app.js`):
 
-**Please tell me:**
-1. Is the alarm hierarchy right? The first currently outranks the second, and
-   the third sits quietly in the top strip. Someone driving has about a
-   second of attention.
-2. Landscape ergonomics — thumbs, reach, whether STOP can be hit without
-   looking. It has never been held by a person.
-3. The telemetry strip: is "7.90 V" meaningful to a human, or should battery
-   be a bar? Is "Picture live" / "1.4 s behind" understandable?
-4. Is the Slow/Full limiter findable, and is its state obvious? It is the one
-   control that changes how fast a real object moves.
-5. Anything that reads as decoration where it should read as instrument.
+- `RESISTANCE = 0.5` is a flat linear multiplier. No curve, no damping, no
+  asymptote. The finger travels 120 px to cross a 60 px threshold.
+- The indicator **hard-stops** at 88 px of travel while the finger keeps
+  going, so past that point the gesture has no feedback at all.
+- Opacity maxes out at 72 px — *before* the threshold — so the last half of
+  the pull is visually inert.
+- The real tell: `overscroll-behavior: contain` stops iOS's own reload but
+  **not** its elastic scroll. So during a pull the page content rubber-bands
+  at 1:1 while the pill slides at 0.5x. Two surfaces moving at different
+  speeds is what reads as unconsidered.
+- There are no haptics at any stage.
+- Returning to the app plays the full "Refreshing…" → "Updated" sequence
+  unprompted, with no gesture.
+
+### Constraints that fail silently here
+
+Vendored Leaflet (not a CDN copy); `img-src blob:` in the CSP is load-bearing
+for the camera; the map and the camera picture are the only two deliberate
+exceptions to the no-zoom rule; both themes must work; no new dependencies.
+
+**Behaviour pinned by tests — a proposal that breaks one of these needs to say
+so explicitly:** the 60 s quiet refresh tick; the `?fresh=1` versus plain
+`/activity` split; the 20 s request timeout; the 650 ms "Updated" hold; the
+220 ms dismissal; and that 150 px of finger travel must still arm the gesture.
+
+### Already fixed — please do not re-report
+
+From the 13 September round, all built and pinned by tests: preview no longer
+links into the real-data map; hidden map panels now respect `[hidden]`; an
+unknown step goal shows `–` and "Goal progress unavailable" rather than `0%`;
+camera health says "Idle · opens when viewed" and its failure advice is
+source-aware rather than assuming USB; the reduced-motion block is last in the
+stylesheet again.
+
+Still open and known, so no need to find them: the refresh says "Updated"
+regardless of whether the data came back stale or partial; several strings
+describe the server rather than the dog (including one that prints our polling
+interval on screen); `.env` variable names appear on user-facing pages.
+
+### What would help most
+
+1. The pull gesture's **feel**: the curve, what the indicator should show
+   between rest and threshold, how it should settle, and what — if anything —
+   should mark completion. Concrete numbers, not adjectives.
+2. The Activity tab's **rhythm**: what earns its place above the fold, what is
+   repeated, what a person checking on their dog for ten seconds needs.
+3. **Copy**: the page should tell someone about Kona or about something they
+   can do. Flag anything that is about us instead.
+4. Anything that reads as decoration where it should read as instrument.
 
 Be specific and concrete. If something is fine, say so and move on.
 
