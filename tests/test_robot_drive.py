@@ -172,7 +172,11 @@ def answers(status: int, body: dict):
 
 @pytest.mark.parametrize(
     ("reason", "expected_words"),
-    [("low_battery", "too low"), ("demo_running", "demo")],
+    [
+        ("low_battery", "too low"),
+        ("demo_running", "demo"),
+        ("obstacle", "in front of the robot"),
+    ],
 )
 def test_a_refusal_is_409_with_words_that_name_what_to_do(reason, expected_words):
     app = make(answers(409, {"ok": False, "reason": reason}))
@@ -329,6 +333,7 @@ def test_a_failing_stop_at_shutdown_does_not_take_the_app_down_with_it():
         (401, "unauthorized", "KONA_ROBOT_TOKEN"),
         (400, "invalid_body", "did not understand"),
         (409, "low_battery", "too low"),
+        (409, "obstacle", "in front of the robot"),
     ],
 )
 def test_no_machine_token_from_the_gateway_ever_reaches_a_person(status, reason, expect):
