@@ -714,6 +714,19 @@ test('drive mode calls the picture stale far sooner than the dog camera does', a
   assert.equal(x.nodes.picture.className, 'v bad');
 });
 
+test('a stop failure leads with the fact and keeps the reason after it', async () => {
+  const x = await ready();
+  x.nodes.estop.events.click();
+  stops(x)[0].resolve(response(
+    {error: "The robot's own software is not answering. Turn it off and on.", reason: 'unreachable'},
+    {ok: false, status: 503}
+  ));
+  await settle();
+  const said = x.nodes['shout-text'].textContent;
+  assert.match(said, /did not reach the robot/, 'the danger must not be replaced by the diagnosis');
+  assert.match(said, /not answering/, 'and the reason still comes with it');
+});
+
 test('a battery nobody could read is unknown, not flat, and does not block driving', async () => {
   // The gateway's own reads come back empty routinely. Refusing on a missed
   // read would look identical to a dead cell and make the robot unusable.

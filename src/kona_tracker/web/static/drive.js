@@ -104,9 +104,13 @@
       quiet();
     }).catch(function (e) {
       if (e.message === 'signed out') { return; }
-      shoutAt(e.message === 'The robot did not answer.'
-        ? 'The stop did not reach the robot. Retrying…'
-        : e.message);
+      // Always lead with the fact, then the reason. Once gateway reasons
+      // became sentences, this branch started showing "the robot's software
+      // is not answering" *instead of* "the stop did not reach the robot" --
+      // a true sentence that buries the only part that matters, which is
+      // that the wheels may still be turning. Caught in a screenshot.
+      shoutAt('The stop did not reach the robot. ' +
+        (e.message === 'The robot did not answer.' ? 'Retrying…' : e.message));
       stopRetry = setTimeout(function () { stopNow(why); }, STOP_RETRY_MS);
     });
   }
