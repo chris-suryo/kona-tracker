@@ -319,3 +319,48 @@ def test_a_failing_stop_at_shutdown_does_not_take_the_app_down_with_it():
         client.post("/login", data={"passcode": "4242"})
     app.state.hub.stop()
     app.state.robot_hub.stop()
+
+
+@pytest.mark.parametrize(
+    ("status", "reason", "expect"),
+    [
+        (503, "turbopi_unreachable", "not answering"),
+        (503, "no_token_configured", "secret file on the Pi"),
+        (401, "unauthorized", "KONA_ROBOT_TOKEN"),
+        (400, "invalid_body", "did not understand"),
+        (409, "low_battery", "too low"),
+    ],
+)
+def test_no_machine_token_from_the_gateway_ever_reaches_a_person(status, reason, expect):
+    """Their gateway speaks in tokens -- `turbopi_unreachable`, `invalid_body`
+    -- and those are for us, not for whoever is holding the joystick. Only
+    refusals were being translated, so a 503 and a 502 arrived on screen as
+    raw identifiers.
+
+    `no_token_configured` is in this list because reading their source turned
+    it up (gateway/robot_gateway.py, `require_token`); it was in no summary we
+    were sent, and it is a 503 that means the *gateway* is misconfigured, not
+    that the robot is unreachable -- so it would have arrived under a sentence
+    telling Chris to turn the robot off and on.
+    """
+    app = make(answers(status, {"ok": False, "reason": reason}))
+    client = signed_in(app)
+    r = client.post("/robot/drive", data={"vx": 0.3, "vy": 0, "omega": 0})
+    assert r.status_code in (409, 502, 503)
+    assert expect in r.json()["error"], r.json()
+    assert reason not in r.json()["error"], "the token itself must not be the sentence"
+    client.__exit__(None, None, None)
+    app.state.hub.stop()
+    app.state.robot_hub.stop()
+
+
+def test_a_reason_nobody_has_seen_is_shown_raw_rather_than_invented():
+    """An unknown token is at least searchable. A sentence we made up for it
+    would be a guess presented as knowledge."""
+    app = make(answers(502, {"ok": False, "reason": "e17_flux_capacitor"}))
+    client = signed_in(app)
+    r = client.post("/robot/stop")
+    assert r.json()["error"] == "e17_flux_capacitor"
+    client.__exit__(None, None, None)
+    app.state.hub.stop()
+    app.state.robot_hub.stop()
