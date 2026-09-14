@@ -938,6 +938,9 @@ _ROBOT_REFUSALS = {
         "The robot's gateway has no access token set up. Check the secret file on the Pi."
     ),
     "invalid_body": "The robot's gateway did not understand that command.",
+    "obstacle": (
+        "Something is right in front of the robot. Back up, strafe or turn — those still work."
+    ),
 }
 
 
