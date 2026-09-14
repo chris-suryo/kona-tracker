@@ -4,10 +4,15 @@ Two kinds of directory live here.
 
 **`current-ui/` is the audit set.** It is a complete capture of every page in
 both themes at the current build, and it is **regenerated and overwritten**
-rather than added to. It exists because `chris-suryo/kona-tracker` is private:
-a visiting reviewer cannot clone the repo, cannot fetch a commit, and cannot
-read a line of the source. Screenshots are the only evidence that can travel
-with the question, so they have to be complete and they have to be current.
+rather than added to.
+
+It was first built when this repository was private, when screenshots were the
+only evidence that could travel with a question. The repo went public on
+2026-09-14 and the set stayed, because the original reason was never the whole
+reason: **reading a template is not seeing what it renders.** A reviewer can
+now read `app.css` and still not know that the collar battery clips off the
+right edge at 390 px. Source answers "what did we write"; the capture answers
+"what does a phone draw". An audit wants both.
 (`docs/chatgpt-handoff.md` is the brief they go with.)
 
 **The dated directories** (`2026-09-13/`, `2026-09-14/`, …) are the opposite:
