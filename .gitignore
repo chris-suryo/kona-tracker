@@ -15,3 +15,9 @@ dist/
 
 # Fi probe output: contains account data (redacted, but still private).
 probe-out/
+# The recorder's database: where Kona actually was, hour by hour, for as long
+# as the collar has existed. Never commit it -- this repository is public, and
+# a year of a dog's GPS history is a year of her owners' movements.
+*.db
+*.db-wal
+*.db-shm

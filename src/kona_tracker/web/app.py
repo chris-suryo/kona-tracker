@@ -40,6 +40,7 @@ from kona_tracker.robot.gateway import (
     RobotRefused,
     RobotUnreachable,
 )
+from kona_tracker.store import Recorder
 from kona_tracker.web.assets import asset_url, asset_versions
 from kona_tracker.web.auth import COOKIE_NAME, Lockout, PasscodeAuth, client_key
 from kona_tracker.web.awake import allow_sleep, keep_awake
@@ -168,6 +169,11 @@ def default_fi_service(s: Settings) -> FiService | None:
     """
     if not s.fi_configured:
         return None
+    # Recording is opt-in via KONA_DB_PATH. Building the Recorder cannot fail
+    # and does not touch the disk: it opens the file on the first refresh, so
+    # a bad path costs a log line then rather than a server that will not
+    # start. See docs/recording.md.
+    recorder = Recorder(s.db_path) if s.db_path else None
     return FiService(
         s.fi_email,
         s.fi_password,
@@ -175,6 +181,7 @@ def default_fi_service(s: Settings) -> FiService | None:
         live_seconds=s.fi_live_seconds,
         live_max_seconds=s.fi_live_max_seconds,
         data_start=s.fi_data_start,
+        recorder=recorder,
     )
 
 
