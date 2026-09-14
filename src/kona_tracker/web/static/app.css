@@ -509,6 +509,13 @@ body.activity-page { overscroll-behavior-y: contain; }
  * ---------------------------------------------------------------------- */
 .map-page { padding: 0; }
 .page.map-page { padding: 0; max-width: none; }
+/* Both of these are toggled by `hidden` in map_live.js, and neither was
+   covered: `.map[hidden]` (line 435) does NOT match `.live-map`, though the
+   name reads as though it does, and `.live-map-empty` was saved only by the
+   accident that it also carries `.map-empty`, whose guard happens to outrank
+   it on specificity. Either would have put a full-screen map on top of the
+   honest "map unavailable" message the moment anyone gave it a `display`. */
+.live-map[hidden], .live-map-empty[hidden] { display: none; }
 .live-map-frame { position: fixed; inset: 0; }
 .live-map { position: absolute; inset: 0; width: 100%; height: 100%; }
 .live-map-empty { position: absolute; inset: 0; display: grid; place-content: center;
@@ -628,6 +635,10 @@ body.activity-page { overscroll-behavior-y: contain; }
 .drive-tele .v { color: #fff; }
 .drive-tele .v.unknown { color: #C9CCC4; font-weight: 400; }
 .drive-tele .v.bad { color: #FF8B78; }
+/* The same guard the alarm above it got, for the same reason. This one is
+   the demo-guard warning: an unhideable "the robot cannot tell whether a demo
+   is running" is the same cry-wolf failure, just quieter. */
+.drive-note[hidden] { display: none; }
 .drive-note { margin: 8px 0 0; padding: 7px 12px; border-radius: 12px; max-width: 46ch;
   background: rgba(0,0,0,.55); color: #F0D9A8; font-size: 11px; line-height: 1.4; }
 .drive-note.gone { color: #FFB3A3; }

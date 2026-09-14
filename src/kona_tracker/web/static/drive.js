@@ -20,7 +20,8 @@
   // The picture: the same loop and the same hub as the Robot tab. It runs
   // in portrait too, where CSS hides the view, so rotating the phone shows
   // a live frame rather than a reconnect.
-  window.KonaPoll({ cam: 'robot' });
+  var lastFrameAt = 0;
+  window.KonaPoll({ cam: 'robot', onFrame: function () { lastFrameAt = Date.now(); } });
 
   var stick = document.getElementById('stick'), knob = document.getElementById('knob');
   var estop = document.getElementById('estop'), speed = document.getElementById('speed');
@@ -28,6 +29,7 @@
   var shout = document.getElementById('shout'), shoutText = document.getElementById('shout-text');
   var note = document.getElementById('note');
   var volts = document.getElementById('volts'), sonar = document.getElementById('sonar');
+  var picture = document.getElementById('picture');
 
   // The send interval comes from the server so it cannot drift away from
   // the TTL it has to stay under. Both live in robot/gateway.py.
@@ -36,6 +38,11 @@
   // No telemetry for this long and the page stops claiming the robot is
   // there. Three polls' grace: one may simply have been unlucky.
   var SILENT_MS = 3000;
+  // The robot hub calls a picture stale after KONA_STALE_SECONDS (3 s), which
+  // is right for watching a dog and far too slow for steering by it. This is
+  // drive mode's own, stricter opinion; it changes nothing for the Camera tab.
+  var PICTURE_STALE_MS = 600;
+  var PICTURE_TICK_MS = 250;
   var RADIUS = 56;          // px of travel before the stick is at full tilt
   var SLOW = 0.4;           // until Chris has confirmed which way it goes
   var STOP_RETRY_MS = 700;
@@ -48,6 +55,10 @@
   var slow = true;
   var ticker = null, stopRetry = null;
   var lastTelemetry = 0, telemetryEverOk = false;
+  // Two independent reasons to shout, kept apart so neither can erase the
+  // other: `owed` is the gateway telling us the board may still hold duty,
+  // `failure` is our own last stop or drive that did not land.
+  var owed = false, failure = '';
 
   function post(path, body) {
     return fetch(path, {
@@ -66,11 +77,17 @@
     });
   }
 
-  function shoutAt(message) {
-    shoutText.textContent = message;
-    shout.hidden = false;
+  function renderShout() {
+    // `owed` outranks our own failure: "it may still be moving" is the more
+    // urgent of the two, and clearing it is the gateway's call, not ours.
+    var message = owed
+      ? 'The robot may still be moving. The gateway has not had a stop confirmed.'
+      : failure;
+    if (message) { shoutText.textContent = message; }
+    shout.hidden = !message;
   }
-  function quiet() { shout.hidden = true; }
+  function shoutAt(message) { failure = message; renderShout(); }
+  function quiet() { failure = ''; renderShout(); }
 
   // -- stopping ------------------------------------------------------------
   // Every path that ends a drive comes through here. It keeps retrying on
@@ -87,9 +104,13 @@
       quiet();
     }).catch(function (e) {
       if (e.message === 'signed out') { return; }
-      shoutAt(e.message === 'The robot did not answer.'
-        ? 'The stop did not reach the robot. Retrying…'
-        : e.message);
+      // Always lead with the fact, then the reason. Once gateway reasons
+      // became sentences, this branch started showing "the robot's software
+      // is not answering" *instead of* "the stop did not reach the robot" --
+      // a true sentence that buries the only part that matters, which is
+      // that the wheels may still be turning. Caught in a screenshot.
+      shoutAt('The stop did not reach the robot. ' +
+        (e.message === 'The robot did not answer.' ? 'Retrying…' : e.message));
       stopRetry = setTimeout(function () { stopNow(why); }, STOP_RETRY_MS);
     });
   }
@@ -255,6 +276,15 @@
       sonar.className = 'v unknown';
     }
 
+    // `stop_owed` means the gateway has never had an all-zero acknowledged,
+    // so the board may still be holding duty. It is TRUE throughout normal
+    // driving -- that is its job -- so the alarm is stop_owed WITHOUT a live
+    // command: nothing is being asked for, and nothing has confirmed a stop.
+    // That is exactly the window their watchdog retries into, and until it
+    // wins, the wheels may still be turning.
+    owed = data.stop_owed === true && data.driving !== true;
+    renderShout();
+
     var words = [];
     // False means the robot's own GetRunningFunc is unpatched, so the
     // gateway cannot tell whether a built-in demo is driving. Saying
@@ -268,6 +298,24 @@
     note.className = 'drive-note';
 
     allow(!data.low_battery && !data.demo, 'refused');
+  }
+
+  function drawPicture() {
+    if (!lastFrameAt) {
+      picture.textContent = 'waiting';
+      picture.className = 'v unknown';
+      return;
+    }
+    var age = Date.now() - lastFrameAt;
+    if (age < PICTURE_STALE_MS) {
+      picture.textContent = 'live';
+      picture.className = 'v';
+      return;
+    }
+    // Said in seconds because that is how it is felt: at half a second you
+    // are steering something that is already somewhere else.
+    picture.textContent = (age / 1000).toFixed(1) + ' s behind';
+    picture.className = 'v bad';
   }
 
   function lost(message) {
@@ -295,6 +343,8 @@
   }
   poll();
   setInterval(poll, TELEMETRY_MS);
+  drawPicture();
+  setInterval(drawPicture, PICTURE_TICK_MS);
   // A poll that hangs rather than fails would leave the strip looking live.
   setInterval(function () {
     if (telemetryEverOk && Date.now() - lastTelemetry > SILENT_MS) {

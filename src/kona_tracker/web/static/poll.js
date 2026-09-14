@@ -129,7 +129,15 @@
         backoff = 0;
         if (state === 'live') {
           return r.blob().then(function (blob) {
-            if (run === epoch) { show(blob); }
+            if (run === epoch) {
+              show(blob);
+              // Optional, and only the Robot's drive mode uses it: the page
+              // needs to know a frame actually landed, not merely that the
+              // server has not yet called the picture stale. Watching a dog,
+              // three seconds of frozen frame is nothing; steering by it,
+              // three seconds is three seconds of driving blind.
+              if (opts && opts.onFrame) { opts.onFrame(); }
+            }
           });
         }
         var words = describe(state, r.headers.get('X-Kona-Error'), parseFloat(r.headers.get('X-Kona-Frame-Age')));

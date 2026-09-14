@@ -488,9 +488,13 @@ def create_app(
                 {"error": robot_refusal(e.reason), "reason": e.reason}, status_code=409
             )
         except RobotUnreachable as e:
-            return JSONResponse({"error": str(e), "reason": "unreachable"}, status_code=503)
+            return JSONResponse(
+                {"error": robot_refusal(str(e)), "reason": "unreachable"}, status_code=503
+            )
         except RobotFault as e:
-            return JSONResponse({"error": str(e), "reason": "fault"}, status_code=502)
+            return JSONResponse(
+                {"error": robot_refusal(str(e)), "reason": "fault"}, status_code=502
+            )
         except Exception as e:
             # Unexamined by definition, so its text is not shown: only the
             # class name, to the log on Chris's PC, the way Heartbeat does it.

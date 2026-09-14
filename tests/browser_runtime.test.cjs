@@ -46,7 +46,8 @@ function element() {
 
 function setup(script, preview = false) {
   const names = ['cam', 'cap', 'dot', 'livetxt', 'capture', 'capture-hint', 'activity-body', 'pull', 'zoom-level',
-    'drive', 'stick', 'knob', 'estop', 'speed', 'rot-left', 'rot-right', 'shout', 'shout-text', 'note', 'volts', 'sonar'];
+    'drive', 'stick', 'knob', 'estop', 'speed', 'rot-left', 'rot-right', 'shout', 'shout-text', 'note',
+    'volts', 'sonar', 'picture'];
   const nodes = Object.fromEntries(names.map(name => [name, element()]));
   const page = element(), label = element(), note = element(), freshness = element(), camFrame = element();
   // A 400x225 frame at the page origin, so the zoom maths can be checked in px.
@@ -668,6 +669,62 @@ test('a stop that did not land is shouted about and retried, never swallowed', a
   assert.equal(stops(x).length, 2, 'it keeps trying: the robot may still be moving');
   stops(x)[1].resolve(response({ok: true})); await settle();
   assert.equal(x.nodes.shout.hidden, true, 'and goes quiet once one lands');
+});
+
+test('the robot may still be moving, and the screen says so', async () => {
+  // stop_owed means the gateway has never had an all-zero acknowledged. It is
+  // TRUE all through a normal drive, so on its own it is not news.
+  const x = await ready({stop_owed: true, driving: true});
+  assert.equal(x.nodes.shout.hidden, true, 'driving with a live command is not an alarm');
+  // Nothing commanded, and still no confirmed stop: that is the runaway window.
+  x.tickEvery(1000);
+  await telemetry(x, {stop_owed: true, driving: false});
+  assert.equal(x.nodes.shout.hidden, false);
+  assert.match(x.nodes['shout-text'].textContent, /may still be moving/);
+  x.tickEvery(1000);
+  await telemetry(x, {stop_owed: false, driving: false});
+  assert.equal(x.nodes.shout.hidden, true, 'and it clears when the gateway says so');
+});
+
+test('a gateway alarm is not erased by our own stop succeeding', async () => {
+  const x = await ready({stop_owed: true, driving: false});
+  assert.match(x.nodes['shout-text'].textContent, /may still be moving/);
+  x.nodes.estop.events.click();
+  stops(x)[0].resolve(response({ok: true})); await settle();
+  // Our stop returned 200, but the gateway still has not confirmed a zero.
+  // Believing our own request over its telemetry is how you get a silent page
+  // and a moving robot.
+  assert.equal(x.nodes.shout.hidden, false);
+  assert.match(x.nodes['shout-text'].textContent, /may still be moving/);
+});
+
+test('drive mode calls the picture stale far sooner than the dog camera does', async () => {
+  const x = await ready();
+  assert.equal(x.nodes.picture.textContent, 'waiting', 'no frame has arrived yet');
+  // poll.js hands a live frame up through onFrame.
+  const shot = x.requests.filter(q => q.url.indexOf('/snapshot.jpg') === 0).pop();
+  shot.resolve(frame('live', 1)); await settle();
+  x.tickEvery(250);
+  assert.equal(x.nodes.picture.textContent, 'live');
+  // The hub would not call this stale for three seconds. Steering by it, the
+  // truth is due much sooner than that.
+  x.advance(900);
+  x.tickEvery(250);
+  assert.equal(x.nodes.picture.textContent, '0.9 s behind');
+  assert.equal(x.nodes.picture.className, 'v bad');
+});
+
+test('a stop failure leads with the fact and keeps the reason after it', async () => {
+  const x = await ready();
+  x.nodes.estop.events.click();
+  stops(x)[0].resolve(response(
+    {error: "The robot's own software is not answering. Turn it off and on.", reason: 'unreachable'},
+    {ok: false, status: 503}
+  ));
+  await settle();
+  const said = x.nodes['shout-text'].textContent;
+  assert.match(said, /did not reach the robot/, 'the danger must not be replaced by the diagnosis');
+  assert.match(said, /not answering/, 'and the reason still comes with it');
 });
 
 test('a battery nobody could read is unknown, not flat, and does not block driving', async () => {

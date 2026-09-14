@@ -123,24 +123,26 @@ every item; `docs/scaling-limits.md` is the standing list of ceilings;
    then switch the robot off and confirm the tab says ROBOT OFF within
    about 15 s; then on again and confirm the picture returns without a
    restart. `docs/first-run.md` §4b.
-7. **Driving**, in the order in `docs/first-run.md` §4c and not out of it:
+7. **Driving** — `docs/robot-bringup.md` is the whole procedure in order,
+   and its middle step is a gate rather than a step:
    install the gateway on the Pi *including the `patch_getrunningfunc.py`
    line*, run `gateway_watchdog_proof.sh` with the robot **on a stand**, and
    only then put the two `KONA_ROBOT_*` lines in `.env`. First drive on the
    stand, watching which way each direction actually goes.
 
-*Still owed, in order:*
-6. The ten-minute polling soak (`/status.json` holds `streams: 0`) and the
+*Still owed, in order (numbered apart from Chris's checks above, which is
+what the duplicate 6 and 7 used to collide with):*
+S1. The ten-minute polling soak (`/status.json` holds `streams: 0`) and the
    cellular data delta against `docs/scaling-limits.md` §1.
-7. Pan/tilt for a C225 if one is ever bought; the C120 has no motors.
+S2. Pan/tilt for a C225 if one is ever bought; the C120 has no motors.
    `KONA_CAMERA_MODEL` already gates the pad.
-8. `KONA_HEARTBEAT_URL` against healthchecks.io, not yet run. A domain and a
+S3. `KONA_HEARTBEAT_URL` against healthchecks.io, not yet run. A domain and a
    named tunnel (`docs/remote-access.md` 3a) so the URL survives a restart
    and the Stadia key can move to domain auth. Then the Pi as the real host.
-9. One lights-off evening for the camera's black-frame rule in a genuinely
+S4. One lights-off evening for the camera's black-frame rule in a genuinely
    dark room; with night vision now switchable this is also the check that
    "auto" actually kicks in.
-10. After a week of polling holding up, delete `/stream.mjpg` and the
+S5. After a week of polling holding up, delete `/stream.mjpg` and the
     containment that exists only for it.
 
 *Record, for the reasoning behind any of the above:* `docs/archive/`,

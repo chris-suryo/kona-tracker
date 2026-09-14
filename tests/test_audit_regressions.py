@@ -81,7 +81,20 @@ def test_the_reduced_motion_block_is_last_in_the_stylesheet():
 def test_the_live_map_panels_obey_the_hidden_attribute():
     """`display: grid` outranks the browser's own [hidden] rule, so panels
     the server had marked hidden still drew a dash on an empty map."""
-    for selector in ("live-stat", "live-walk", "live-recentre", "live-note", "drive-shout"):
+    for selector in (
+        "live-stat",
+        "live-walk",
+        "live-recentre",
+        "live-note",
+        "drive-shout",
+        # Added 2026-09-15. `.live-map` was the dangerous one: `.map[hidden]`
+        # reads as if it covers it and does not, and the element is already
+        # position:absolute inset:0 -- one `display:` away from covering the
+        # "map unavailable" message with a blank full-screen map.
+        "live-map",
+        "live-map-empty",
+        "drive-note",
+    ):
         assert re.search(rf"\.{selector}\[hidden\][^{{]*{{[^}}]*display:\s*none", CSS), selector
 
 

@@ -162,7 +162,7 @@ class RobotGateway:
         if response.status_code == 401:
             # Worth its own words: this is a wrong KONA_ROBOT_TOKEN, which
             # no amount of retrying fixes and which the page should say.
-            raise RobotFault("the robot gateway rejected our token")
+            raise RobotFault("The robot's gateway rejected our token. Check KONA_ROBOT_TOKEN.")
         if response.status_code == 409:
             raise RobotRefused(self._reason(response))
         if response.status_code == 503:
