@@ -209,7 +209,15 @@ def test_an_unreachable_gateway_is_503_rather_than_a_traceback():
     client = signed_in(app)
     r = client.post("/robot/drive", data={"vx": 0.2, "vy": 0, "omega": 0})
     assert r.status_code == 503
-    assert "could not reach" in r.json()["error"]
+    # A sentence, not a fragment: drive.js prefixes this with "The stop did
+    # not reach the robot. " and the old lowercase wording produced
+    # "...robot. could not reach the robot gateway: ConnectError" on Chris's
+    # phone. The class name stays -- ConnectError and ReadTimeout mean
+    # different things to whoever is debugging.
+    message = r.json()["error"]
+    assert "ConnectError" in message, message
+    assert message[0].isupper() and message.endswith("."), message
+    assert "Traceback" not in message
     client.__exit__(None, None, None)
     app.state.hub.stop()
     app.state.robot_hub.stop()

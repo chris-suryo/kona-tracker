@@ -42,6 +42,22 @@ and are not worth installing on the Windows PC — the cloud session has them,
 so ask it to regenerate the set rather than setting up a browser stack to take
 pictures of your own phone's app.
 
+## The overflow check
+
+`scripts/check_overflow.js` runs against the same server and measures whether
+any page scrolls sideways at 320, 375, 390 or 430 px. It exists because "the
+text isn't aligning right" turned out once to be literal -- the Activity
+header ran to 410 px on a 390 px screen and clipped the battery -- and nothing
+in the test suite can see that. pytest renders HTML without laying it out; the
+Node harness stubs the DOM. Only a browser measures.
+
+```bash
+NODE_PATH=/opt/node22/lib/node_modules node scripts/check_overflow.js
+```
+
+Not a CI gate: CI has no browser, for the same reason the Node harness is not
+one either.
+
 ## Two things about the capture that are not bugs in the app
 
 - **Maps say "Map unavailable."** The capture machine has no route to the

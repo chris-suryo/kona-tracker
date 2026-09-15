@@ -18,7 +18,7 @@
 </section>
 {% if hours %}
 <section class="history-chart" aria-labelledby="hours-title">
-  <div class="chart-heading"><h2 id="hours-title">Steps by hour</h2><span>{{ '{:,}'.format(hours_maximum) }} steps{% if hours_through %} · {{ hours_through }}{% endif %}</span></div>
+  <div class="chart-heading"><h2 id="hours-title">Steps by hour</h2><span>{{ hours_maximum_label }}{% if hours_through %} · {{ hours_through }}{% endif %}</span></div>
   <svg class="bar-chart steps" viewBox="0 0 340 178" role="group" aria-label="Today's steps by hour. Select an hour for its reading.">
     <path class="chart-rule" d="M0 12H340 M0 87H340 M0 162H340"/>
     {% for b in hours %}

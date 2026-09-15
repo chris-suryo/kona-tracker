@@ -17,11 +17,12 @@
   <p>{% if problem %}{{ problem }}{% else %}Fi has not returned any daily rest windows yet.{% endif %}</p>
 </section>
 {% else %}
-<div class="date-switch">
-  <span aria-hidden="true"></span>
-  <strong>{{ range_label }}</strong>
-  <span aria-hidden="true"></span>
-</div>
+{# `.date-switch` belongs to the sample-data page, which has real previous
+   and next arrows. Borrowed here it rendered two empty 44px boxes flanking
+   a centred label -- so the one centred line on an otherwise left-aligned
+   page, with 88px of dead space either side of it, reserved for controls
+   that do not exist. #}
+<p class="page-range">{{ range_label }}</p>
 <section class="history-total {{ 'dimmed' if stale else '' }}" aria-label="Average daily rest">
   <span class="eyebrow">Average daily rest</span>
   <strong class="d">{% if average is not none %}{{ minutes(average) }}{% else %}&ndash;{% endif %}</strong>
@@ -33,7 +34,7 @@
 </section>
 {% if hours %}
 <section class="history-chart" aria-labelledby="hours-title">
-  <div class="chart-heading"><h2 id="hours-title">Today by hour</h2><span>{{ hours_maximum }} min{% if hours_through %} · {{ hours_through }}{% endif %}</span></div>
+  <div class="chart-heading"><h2 id="hours-title">Today by hour</h2><span>{{ hours_maximum_label }}{% if hours_through %} · {{ hours_through }}{% endif %}</span></div>
   <svg class="bar-chart rest" viewBox="0 0 340 178" role="group" aria-label="Today's rest by hour. Select an hour for its reading.">
     <path class="chart-rule" d="M0 12H340 M0 87H340 M0 162H340"/>
     {% for b in hours %}
@@ -51,7 +52,7 @@
 {% endif %}
 
 <section class="history-chart" aria-labelledby="chart-title">
-  <div class="chart-heading"><h2 id="chart-title">Rest by day</h2><span>{{ '{:,}'.format(maximum) }} min</span></div>
+  <div class="chart-heading"><h2 id="chart-title">Rest by day</h2><span>{{ maximum_label }}</span></div>
   <svg class="bar-chart rest" viewBox="0 0 340 178" role="group" aria-label="Daily rest chart. Select a day for its reading.">
     <path class="chart-rule" d="M0 12H340 M0 87H340 M0 162H340"/>
     {% for bucket in buckets %}

@@ -190,8 +190,14 @@ def test_an_absent_gateway_is_unreachable_rather_than_an_httpx_traceback():
     sock.close()  # nothing is listening here now
     robot = RobotGateway(f"http://127.0.0.1:{port}", TOKEN, timeout=0.5)
     try:
-        with pytest.raises(RobotUnreachable, match="could not reach"):
+        with pytest.raises(RobotUnreachable) as caught:
             robot.telemetry()
+        # Names the transport failure, reads as a sentence, and carries no
+        # URL -- httpx puts the address in its own message and this must not.
+        message = str(caught.value)
+        assert message[0].isupper() and message.endswith("."), message
+        assert "Error" in message or "Timeout" in message, message
+        assert str(port) not in message and "127.0.0.1" not in message
     finally:
         robot.close()
 
