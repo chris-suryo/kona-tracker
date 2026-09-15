@@ -31,7 +31,9 @@ def test_preview_is_gated_and_never_queries_fi():
         def snapshot(self, **kwargs):
             raise AssertionError("A sample page must not fetch live data")
 
-    app = create_app(Settings(passcode="4242", secret="test"), fi_service=NoFi())
+    app = create_app(
+        Settings(passcode="4242", secret="test", preview_enabled=True), fi_service=NoFi()
+    )
     with TestClient(app) as client:
         assert client.get("/preview/steps", follow_redirects=False).status_code == 303
         client.post("/login", data={"passcode": "4242"}, follow_redirects=False)
@@ -75,7 +77,7 @@ def test_weekly_rest_average_excludes_missing_and_in_progress_days():
 
 
 def test_overview_charts_are_sample_only():
-    app = create_app(Settings(passcode="4242", secret="test"))
+    app = create_app(Settings(passcode="4242", secret="test", preview_enabled=True))
     with TestClient(app) as client:
         client.post("/login", data={"passcode": "4242"}, follow_redirects=False)
         sample = client.get("/activity?preview=1").text

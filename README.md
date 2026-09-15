@@ -111,8 +111,8 @@ flowchart LR
 | `/map` | The map, full screen, polling on its own clock -- for watching a walk as it happens. |
 | `/camera` | The picture. Pinch or double-tap to zoom. Night vision, privacy and the status light when the camera answers. |
 | `/robot` | The robot's camera and its front lights; `/drive` is landscape drive mode with two joysticks and a STOP that is a stop. |
-| `/settings` | Appearance, profile, build, sign out. |
-| `/preview/steps`, `/preview/rest` | Sample data, for judging layout without a collar. |
+| `/settings` | Profile, appearance, sign out, and which build this is. |
+| `/preview/steps`, `/preview/rest` | Sample data, for judging layout without a collar. Off unless `KONA_PREVIEW=1`. |
 | `/activity.json`, `/map.json`, `/status.json`, `/healthz` | The same facts as JSON, for a script or a watchdog. |
 
 ## Commands

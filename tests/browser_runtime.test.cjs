@@ -210,6 +210,29 @@ test('the robot page runs the same loop against its own camera and its own words
   assert.equal(x.requests.filter(q => q.options.method === 'POST').length, 0);
 });
 
+// The Settings page used to carry camera-doctor's verdicts for the same hub
+// state in a second vocabulary. That was retired; the advice it had that the
+// caption lacked lives here now, keyed on the kind of source the page says
+// it is, because "unplug it" is right for a webcam and nonsense for one on
+// the Wi-Fi.
+test('the caption gives advice for the kind of camera it is', async () => {
+  for (const [source, error, expect, forbid] of [
+    ['usb', 'open', /Another program/, /Wi-Fi/],
+    ['rtsp', 'open', /on the Wi-Fi/, /unplug|USB/i],
+    ['rtsp', 'black_frame', /privacy mode/, /unplug|USB/i],
+    ['rtsp', 'empty_frames', /Power-cycle/, /unplug|USB/i],
+    ['usb', 'empty_frames', /unplug/, /Wi-Fi/],
+    ['rtsp', 'reader_limit', /Power-cycle/, /USB/],
+  ]) {
+    const x = setup('camera.js');
+    x.camFrame.dataset.source = source;
+    x.requests[0].resolve(frame('disconnected', 1, {error})); await settle();
+    assert.match(x.nodes.cap.textContent, expect, `${source} ${error}`);
+    assert.doesNotMatch(x.nodes.cap.textContent, forbid, `${source} ${error}`);
+    assert.equal(x.nodes.livetxt.textContent, 'CHECK CAMERA');
+  }
+});
+
 test('a response the server did not call live stays masked and is described honestly', async () => {
   const x = setup('camera.js');
   x.requests[0].resolve(frame('stale', 3, {age: 4.2})); await settle();

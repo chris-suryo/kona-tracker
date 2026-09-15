@@ -17,36 +17,10 @@
 </section>
 {% if from_preview %}<p class="note">Preview ended. These are this server's actual settings.</p>{% endif %}
 
-<section class="settings-group" aria-labelledby="collar-settings-title">
-  <h2 id="collar-settings-title">Collar</h2>
-  <div class="settings-row"><span>Battery</span><strong>{{ battery ~ '%' if battery else 'Unavailable' }}</strong></div>
-  {# The same `connection_label()` the Activity card uses, not a second copy
-     of the logic. This row had its own version and it said "On charger" --
-     a claim Fi cannot support (`charging` is confirmed absent) and which
-     also skipped the freshness guard, so it could report a state from hours
-     earlier in the present tense. One function, one answer, both screens. #}
-  <div class="settings-row"><span>Connection</span><strong>{% if connection %}{{ connection.text }}{% elif configured %}Unknown{% else %}Not connected{% endif %}</strong></div>
-</section>
-
-<section class="settings-group" aria-labelledby="camera-settings-title">
-  <h2 id="camera-settings-title">Camera</h2>
-  <div class="settings-row"><span>Source</span><strong>{{ camera_description }}</strong></div>
-  <div class="settings-row camera-status"><span>Status</span><strong>{% if camera.live %}<i class="status-dot" aria-hidden="true"></i>{% endif %}{{ camera.state }}</strong></div>
-  {% if camera.last_frame %}<div class="settings-row"><span>Last frame</span><strong>{{ camera.last_frame }}</strong></div>{% endif %}
-  {% if camera.problem %}<div class="settings-row camera-problem"><span>Last problem</span><p>{{ camera.problem }}</p></div>{% endif %}
-  {% if camera.reconnects %}<div class="settings-row"><span>Reconnects</span><strong>{{ camera.reconnects }}</strong></div>{% endif %}
-</section>
-
-{% if robot %}
-<section class="settings-group" aria-labelledby="robot-settings-title">
-  <h2 id="robot-settings-title">{{ robot_name }}</h2>
-  <div class="settings-row camera-status"><span>Status</span><strong>{% if robot.live %}<i class="status-dot" aria-hidden="true"></i>{% endif %}{{ robot.state }}</strong></div>
-  {% if robot.last_frame %}<div class="settings-row"><span>Last frame</span><strong>{{ robot.last_frame }}</strong></div>{% endif %}
-  {% if robot.problem %}<div class="settings-row camera-problem"><span>Last problem</span><p>{{ robot.problem }}</p></div>{% endif %}
-  {% if robot.reconnects %}<div class="settings-row"><span>Reconnects</span><strong>{{ robot.reconnects }}</strong></div>{% endif %}
-</section>
-{% endif %}
-
+{# No status here. Collar battery and connection are on the Activity page,
+   the cameras' state is the badge and caption on their own tabs, in the
+   words poll.js chooses -- one vocabulary, one place. This page holds what
+   a person can change or do, and nothing they can only read. #}
 <section class="settings-group" aria-labelledby="appearance-title">
   <h2 id="appearance-title">Appearance</h2>
   {# Three choices, not a switch: "follow the phone" is the default and has
@@ -62,6 +36,10 @@
   <p class="settings-note">Automatic follows your phone's light and dark setting.</p>
 </section>
 
+{% if preview_enabled %}
+{# A development feature: fictional readings for judging layout. Off unless
+   KONA_PREVIEW=1, so the two people this app is for never see a button that
+   turns their dog's page into a made-up one. #}
 <section class="settings-group" aria-labelledby="display-settings-title">
   <h2 id="display-settings-title">Dashboard</h2>
   <a class="settings-link" href="/activity?preview=1">
@@ -69,6 +47,7 @@
     <span class="go" aria-hidden="true">{% include "_chevron.svg" %}</span>
   </a>
 </section>
+{% endif %}
 
 <div class="settings-actions">
   <form method="post" action="/logout"><button class="logout" type="submit">Sign out on this phone</button></form>

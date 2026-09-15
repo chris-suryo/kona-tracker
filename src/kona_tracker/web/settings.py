@@ -77,6 +77,11 @@ class Settings:
     #: power plan for good. Off by default: when this machine sleeps is the
     #: owner's business, not a side effect of starting a web server.
     keep_awake: bool = False
+    #: Offer "Preview sample data" on Settings and serve /preview/*. A
+    #: development feature for judging layout without a collar; off, so the
+    #: two people this app is for never see a button that turns their dog's
+    #: page into a made-up one. KONA_PREVIEW=1 turns it on.
+    preview_enabled: bool = False
     #: Dead-man's-switch ping URL. Treated as a secret: whoever holds it can
     #: forge this app's heartbeat and silence the alarm.
     heartbeat_url: str = ""
@@ -260,6 +265,7 @@ def load_settings(env_file: Path | None = Path(".env"), fake_camera: bool = Fals
     trusted_proxy_ips = tuple(ip for ip in trusted_proxy_ips if ip) or ("127.0.0.1", "::1")
     secure_cookies = parse_bool(get("KONA_SECURE_COOKIES"), "KONA_SECURE_COOKIES")
     keep_awake = parse_bool(get("KONA_KEEP_AWAKE"), "KONA_KEEP_AWAKE")
+    preview_enabled = parse_bool(get("KONA_PREVIEW"), "KONA_PREVIEW")
     map_tiles = get("KONA_MAP_TILES", "osm").strip().lower() or "osm"
     stadia_api_key = get("KONA_STADIA_API_KEY").strip()
     if map_tiles not in ("osm", "stadia"):
@@ -320,6 +326,7 @@ def load_settings(env_file: Path | None = Path(".env"), fake_camera: bool = Fals
         log_dir=get("KONA_LOG_DIR").strip(),
         db_path=get("KONA_DB_PATH").strip(),
         keep_awake=keep_awake,
+        preview_enabled=preview_enabled,
         heartbeat_url=get("KONA_HEARTBEAT_URL").strip(),
         heartbeat_seconds=float(get("KONA_HEARTBEAT_SECONDS", "300")),
         map_tiles=map_tiles,

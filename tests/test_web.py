@@ -12,7 +12,11 @@ from kona_tracker.web.settings import Settings
 @pytest.fixture
 def client():
     settings = Settings(
-        passcode="4242", secret="test-secret", lockout_attempts=3, lockout_seconds=60
+        passcode="4242",
+        secret="test-secret",
+        lockout_attempts=3,
+        lockout_seconds=60,
+        preview_enabled=True,
     )
     app = create_app(settings, source_factory=lambda: FakeSource(fps=100))
     with TestClient(app) as c:
@@ -664,16 +668,6 @@ def test_log_dir_writes_a_file_that_outlives_the_console(tmp_path):
     assert "after shutdown" not in (log_dir / "kona.log").read_text(encoding="utf-8")
 
 
-def test_settings_page_reports_camera_health_from_the_road(client):
-    """camera-doctor must be run at the machine, which is where Chris is not
-    when he needs it. The settings page reads the same hub statistics."""
-    login(client)
-    client.get("/snapshot.jpg")  # wakes the camera
-    page = client.get("/settings").text
-    assert 'id="camera-settings-title"' in page and "Webcam on this computer" in page
-    assert "Delivering frames" in page or "Opening the camera" in page
-
-
 def test_the_profile_page_is_a_destination_not_a_broken_tab(client):
     """From Chris's screenshot, 2026-09-11: two avatars on one screen, a
     "Profile" eyebrow over a huge "Kona", "Back to Activity" right under an
@@ -691,19 +685,43 @@ def test_the_profile_page_is_a_destination_not_a_broken_tab(client):
     assert 'class="seg"' in client.get("/activity").text
 
 
-def test_camera_health_words_are_the_doctors_verdicts():
-    from kona_tracker.web.views import camera_health
+def test_settings_holds_what_a_person_can_change_and_no_status(client):
+    """The page had one control and four sections of read-only status that
+    duplicated the tabs in a second vocabulary. Collar battery is on the
+    Activity header; the cameras' state is the badge on their own tabs.
+    What is left is what a person can change or do, plus which build this
+    is -- and the page still says so at the foot."""
+    login(client)
+    page = client.get("/settings").text
+    assert 'id="appearance-title"' in page and 'action="/logout"' in page
+    assert 'class="build"' in page
+    for gone in ("collar-settings-title", "camera-settings-title", "robot-settings-title"):
+        assert gone not in page
+    for word in ("Delivering frames", "Reconnects", "Last problem", "Battery"):
+        assert word not in page
 
-    wedged = camera_health(
-        {"state": "disconnected", "last_error_kind": "black_frame", "reconnects": 3}
-    )
-    assert wedged["state"] == "Not connected" and wedged["live"] is False
-    assert "unplug" in wedged["problem"] and wedged["reconnects"] == 3
-    live = camera_health({"state": "live", "last_frame_age": 0.4, "last_error_kind": None})
-    assert live["live"] and live["last_frame"] == "0 s ago" and live["problem"] is None
-    # Unknown words are shown raw, never dressed up as something known.
-    odd = camera_health({"state": "weird", "last_error_kind": "newkind"})
-    assert odd["state"] == "weird" and odd["problem"] == "newkind"
+
+def test_sample_data_is_off_unless_asked_for():
+    """A development feature. Off, the Settings page offers no way into it
+    and the /preview/* pages are 404s, the same rule as the robot routes
+    without a gateway: a feature that is off has no URL. A stale
+    ?preview=1 bookmark shows the real page rather than a made-up one."""
+    off = _app()
+    with TestClient(off) as c:
+        login(c)
+        assert "Preview sample data" not in c.get("/settings").text
+        assert c.get("/preview/steps").status_code == 404
+        assert c.get("/preview/rest").status_code == 404
+        real = c.get("/activity?preview=1").text
+        assert "Sample data" not in real and 'class="preview-banner"' not in real
+    off.state.hub.stop()
+    on = _app(preview_enabled=True)
+    with TestClient(on) as c:
+        login(c)
+        assert "Preview sample data" in c.get("/settings").text
+        assert c.get("/preview/steps").status_code == 200
+        assert 'class="preview-banner"' in c.get("/activity?preview=1").text
+    on.state.hub.stop()
 
 
 @pytest.mark.parametrize("kind", ["pending", "unavailable", "partial", "stale", "ok"])
@@ -853,7 +871,11 @@ def test_the_rendered_page_carries_the_tile_config_as_data_not_code():
     from kona_tracker.web.settings import Settings
 
     settings = Settings(
-        passcode="4242", secret="s", map_tiles="stadia", stadia_api_key="NOT-A-REAL-KEY"
+        passcode="4242",
+        secret="s",
+        map_tiles="stadia",
+        stadia_api_key="NOT-A-REAL-KEY",
+        preview_enabled=True,
     )
     app = create_app(settings, source_factory=lambda: FakeSource(fps=100))
     with TestClient(app) as c:
