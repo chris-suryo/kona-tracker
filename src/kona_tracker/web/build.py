@@ -48,7 +48,16 @@ class Build:
         """
         if not self.known:
             return "Build unknown"
-        when = f"{self.committed_at:%-d %b %H:%M}" if self.committed_at else "date unknown"
+        if self.committed_at is None:
+            when = "date unknown"
+        else:
+            # `.day` rather than a strftime directive. "%-d" is a glibc
+            # extension -- it raises ValueError on Windows, where the no-pad
+            # flag is "%#d" -- and this app's home is a Windows PC. Ubuntu CI
+            # was green and Windows CI was not; without that matrix the
+            # Settings page would simply have 500'd on the machine it runs on.
+            stamp = self.committed_at
+            when = f"{stamp.day} {stamp:%b} {stamp:%H:%M}"
         return f"{when} · {self.sha}{' · edited' if self.dirty else ''}"
 
 

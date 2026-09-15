@@ -105,3 +105,36 @@ def test_the_stamp_reaches_the_settings_page():
         client.post("/login", data={"passcode": "4242"})
         page = client.get("/settings").text
     assert 'class="build"' in page
+
+
+def test_the_label_uses_no_platform_specific_strftime_directives():
+    """Caught by the Windows half of CI, not by me.
+
+    `%-d` strips the leading zero on glibc and raises ValueError on Windows,
+    where the flag is `%#d`. This app's home is a Windows PC, so a directive
+    that works only on Linux would have 500'd the Settings page on the one
+    machine that actually serves it. The source is checked directly because
+    these tests run on Linux, where the bug is invisible.
+    """
+    import io  # noqa: PLC0415
+    import tokenize  # noqa: PLC0415
+    from pathlib import Path  # noqa: PLC0415
+
+    import kona_tracker.web.build as module  # noqa: PLC0415
+
+    # Comments are stripped first: this file explains *why* "%-d" is banned,
+    # and a naive substring scan flagged that explanation. Tokenising rather
+    # than regexing, so a "#" inside a string cannot fool it either.
+    source = Path(module.__file__).read_text()
+    code = "".join(
+        token.string
+        for token in tokenize.generate_tokens(io.StringIO(source).readline)
+        if token.type != tokenize.COMMENT
+    )
+    for bad in ("%-d", "%-m", "%-H", "%-I", "%-j", "%-M", "%-S", "%-y"):
+        assert bad not in code, f"{bad} is a glibc extension and raises on Windows"
+
+
+def test_a_single_digit_day_is_not_zero_padded():
+    build = Build(known=True, sha="abc1234", committed_at=dt.datetime(2026, 9, 3, 9, 5))
+    assert build.label.startswith("3 Sep 09:05"), build.label
