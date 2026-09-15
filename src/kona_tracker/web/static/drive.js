@@ -115,6 +115,7 @@
   // will not upgrade, or after the socket drops. Nothing below may become
   // load-bearing for stopping -- `stopNow` stays on HTTP, because a stop is
   // the one thing that has to be *watched* landing.
+
   // Says which transport is carrying commands right now. "polling" is not a
   // failure -- it is the original path and it works -- but it is 1.5 commands
   // a second on a 700 ms link against 4.5 on the socket, and knowing which
@@ -149,10 +150,24 @@
     // A closed socket is not an error worth showing -- the HTTP path picks
     // it straight back up, and the person is mid-drive. It is not reopened
     // on a timer either: a reconnect loop under a thumb would be a second
-    // command stream fighting the first.
+    // command stream fighting the first. Coming back to the page is when it
+    // is retried; see the visibilitychange handler below.
     socket.onclose = function () { if (wire === socket) { wire = null; showWire('polling'); } };
     socket.onerror = function () { if (wire === socket) { wire = null; showWire('polling'); } };
   }
+
+  // Lock the phone with drive mode open and iOS closes the socket. Without
+  // this the page would spend the rest of its life on the slow path, having
+  // silently downgraded at the moment nobody was looking -- which is the
+  // normal way this page gets used: open it, put the phone down, come back.
+  //
+  // Only while not driving. Opening a second socket under a held thumb would
+  // be two command streams into a robot, and the server's newest-wins rule
+  // would be arbitrating a race this page started.
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden || driving || wire) { return; }
+    openWire();
+  });
 
   // Both transports, one door. Returns true when the socket took it, so the
   // caller knows whether to expect a promise.
@@ -170,7 +185,7 @@
 
   function pushStop() {
     if (!wire || wire.readyState !== 1) { return; }
-    try { wire.send('{"stop":true}'); } catch (e) { wire = null; }
+    try { wire.send('{"stop":true}'); } catch (e) { wire = null; showWire('polling'); }
   }
 
   function renderShout() {

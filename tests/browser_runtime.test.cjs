@@ -1337,3 +1337,36 @@ test('a server that answers HTML does not put a JSON parse error on screen', asy
   assert.match(x.note.textContent, /robot/i);
   assert.equal(x.off.disabled, true);
 });
+
+test('coming back to the page reopens a socket that dropped while it was hidden', async () => {
+  // iOS closes the socket when the phone locks. Without this the page spends
+  // the rest of its life on the slow path, having downgraded silently at the
+  // one moment nobody was looking -- and open-it, put-it-down, come-back is
+  // the normal way drive mode gets used.
+  const x = await wired();
+  x.socket().readyState = 3;
+  x.socket().onclose();
+  assert.equal(x.nodes.wire.textContent, 'polling');
+  const before = x.socket();
+  x.document.events.visibilitychange();
+  assert.notEqual(x.socket(), before, 'no new socket was opened');
+  x.openSocket();
+  assert.equal(x.nodes.wire.textContent, 'socket');
+});
+
+test('it does not open a second socket under a held thumb', async () => {
+  // Two command streams into a robot, with the server's newest-wins rule
+  // arbitrating a race this page started.
+  const x = await wired();
+  press(x, 64, 8);
+  const before = x.socket();
+  x.document.events.visibilitychange();
+  assert.equal(x.socket(), before);
+});
+
+test('it does not stack sockets when one is already open', async () => {
+  const x = await wired();
+  const before = x.socket();
+  x.document.events.visibilitychange();
+  assert.equal(x.socket(), before);
+});
