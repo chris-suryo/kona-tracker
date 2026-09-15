@@ -15,7 +15,8 @@ from kona_tracker.web.deps import AppDeps
 
 def make_camera_router(deps: AppDeps) -> APIRouter:
     router = APIRouter()
-    templates, hub, robot_hub, control, capabilities = (
+    settings, templates, hub, robot_hub, control, capabilities = (
+        deps.settings,
         deps.templates,
         deps.hub,
         deps.robot_hub,
@@ -37,7 +38,12 @@ def make_camera_router(deps: AppDeps) -> APIRouter:
     @router.get("/camera", response_class=HTMLResponse)
     def camera(request: Request):
         return templates.TemplateResponse(
-            request, "camera.html", {"tab": "camera", "caps": capabilities}
+            request,
+            "camera.html",
+            # `source` lets poll.js pick advice for the kind of camera it
+            # is: "unplug it" is right for a webcam and nonsense for one on
+            # the Wi-Fi.
+            {"tab": "camera", "caps": capabilities, "source": settings.camera_source},
         )
 
     @router.get("/stream.mjpg")

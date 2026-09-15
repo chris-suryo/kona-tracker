@@ -341,6 +341,8 @@ settings = Settings(
     robot_control_url="http://127.0.0.1:9031",
     robot_token="t" * 20,
     robot_name="Rover",
+    # The sample-data pages are part of the audit set.
+    preview_enabled=True,
     # The Stadia basemap, with a key that is not one. Tile requests never leave
     # this machine during a capture -- the capture script fulfils them -- and
     # the point is to exercise the light/dark basemap *choice* that landed on

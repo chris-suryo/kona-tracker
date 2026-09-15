@@ -2,7 +2,7 @@
 {% block title %}Kona · camera{% endblock %}
 {% block pageclass %}cam-page{% endblock %}
 {% block body %}
-<figure class="cam">
+<figure class="cam" data-source="{{ source }}">
   {# No src: camera.js polls /snapshot.jpg and assigns each frame itself, so
      nothing starts on parse and no stream is ever held open from the phone. #}
   <img id="cam" class="unavailable" alt="Live view of Kona">

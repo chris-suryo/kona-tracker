@@ -139,7 +139,7 @@ def _service() -> FiService:
 
 
 def _client(fi_service) -> TestClient:
-    settings = Settings(passcode="4242", secret="s")
+    settings = Settings(passcode="4242", secret="s", preview_enabled=True)
     app = create_app(settings, source_factory=lambda: FakeSource(fps=100), fi_service=fi_service)
     c = TestClient(app)
     c.post("/login", data={"passcode": "4242"}, follow_redirects=False)

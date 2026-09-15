@@ -29,7 +29,7 @@ CSS = (HERE / "static" / "app.css").read_text(encoding="utf-8")
 
 def _client(fi=None) -> TestClient:
     app = create_app(
-        Settings(passcode="4242", secret="test-secret"),
+        Settings(passcode="4242", secret="test-secret", preview_enabled=True),
         source_factory=lambda: FakeSource(fps=100),
         fi_service=fi,
     )

@@ -23,11 +23,6 @@ from kona_tracker.web.views.activity import (
     overnight_labels,
     preview_activity_context,
 )
-from kona_tracker.web.views.camera import (
-    _CAMERA_PROBLEMS,
-    _CAMERA_STATES,
-    camera_health,
-)
 from kona_tracker.web.views.format import (
     DIAL_SCALE_HOURS,
     DISTANCE_NOTE,
@@ -106,8 +101,6 @@ __all__ = [
     "STADIA_LIGHT",
     "STADIA_TILES_QUERY",
     "TRACK",
-    "_CAMERA_PROBLEMS",
-    "_CAMERA_STATES",
     "_ROBOT_REFUSALS",
     "_age_seconds",
     "_clock",
@@ -122,7 +115,6 @@ __all__ = [
     "activity_context",
     "activity_json",
     "age_label",
-    "camera_health",
     "connection_label",
     "dial_offset",
     "distance_label",

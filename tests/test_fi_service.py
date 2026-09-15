@@ -353,7 +353,7 @@ def test_context_of_nothing_at_all_is_all_dashes():
 
 
 def web_client(fi_service=None, **kw) -> TestClient:
-    settings = Settings(passcode="4242", secret="test-secret", **kw)
+    settings = Settings(passcode="4242", secret="test-secret", preview_enabled=True, **kw)
     app = create_app(settings, source_factory=lambda: FakeSource(fps=100), fi_service=fi_service)
     client = TestClient(app)
     client.post("/login", data={"passcode": "4242"})
@@ -672,7 +672,9 @@ def test_profile_page_holds_personal_actions_and_real_collar_summary():
         profile = c.get("/settings").text
     assert 'href="/settings"' in activity
     assert "Sign out on this phone" not in activity
-    assert "Labrador Retriever" in profile and "Battery" in profile and "57%" in profile
+    assert "Labrador Retriever" in profile
+    # Battery moved to the Activity header; the profile does not repeat it.
+    assert "Battery" not in profile
     assert 'href="/activity?preview=1"' in profile
     assert 'action="/logout"' in profile
 

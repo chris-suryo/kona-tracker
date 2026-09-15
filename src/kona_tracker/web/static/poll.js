@@ -30,10 +30,20 @@
 // advice for a robot that is simply switched off.
 (function () {
   // The honest words for a response that is not a picture, from its headers.
+  // The caption under the badge is the one place the camera's state is put
+  // into words: the Settings page used to carry a second vocabulary for the
+  // same hub statistics (camera-doctor's verdicts) and it was retired in
+  // favour of this one. What it knew that this did not -- the wedged USB
+  // device, the network camera that is off the Wi-Fi -- is here now, keyed
+  // on the kind of source the page says it is (`data-source` on the frame),
+  // because "unplug it" is right for a webcam and nonsense for one on Wi-Fi.
   var WORDS = {
-    house: function (state, kind, age) {
-      if (state === 'disconnected' && kind === 'reader_limit') { return ['off', 'CHECK CAMERA', 'Camera recovery is stuck. Reconnect USB or restart the server.']; }
-      if (state === 'disconnected' && kind === 'black_frame') { return ['off', 'CHECK CAMERA', 'No usable picture. Check the lens cover; for USB, unplug and reconnect the camera.']; }
+    house: function (state, kind, age, source) {
+      var wifi = source === 'rtsp';
+      if (state === 'disconnected' && kind === 'reader_limit') { return ['off', 'CHECK CAMERA', wifi ? 'Camera recovery is stuck. Power-cycle the camera or restart the server.' : 'Camera recovery is stuck. Reconnect USB or restart the server.']; }
+      if (state === 'disconnected' && kind === 'black_frame') { return ['off', 'CHECK CAMERA', wifi ? 'No usable picture. Check the lens cover, and privacy mode in the camera\'s settings.' : 'No usable picture. Check the lens cover; for USB, unplug and reconnect the camera.']; }
+      if (state === 'disconnected' && kind === 'open') { return ['off', 'CHECK CAMERA', wifi ? 'Could not reach the camera at its address. Is it powered and on the Wi-Fi?' : 'Could not open the camera. Another program may be holding it.']; }
+      if (state === 'disconnected' && kind === 'empty_frames') { return ['off', 'CHECK CAMERA', wifi ? 'The camera connected but sent no frames. Power-cycle the camera.' : 'The camera opened but delivered no frames: unplug it and plug it back in.']; }
       if (state === 'stale') { return ['stale', 'STALE', 'No new frames for ' + Math.round(age || 0) + ' s']; }
       if (state === 'connecting' || state === 'idle') { return ['stale', 'CONNECTING', 'Opening the camera…']; }
       return ['off', 'OFFLINE', 'Camera disconnected, reconnecting…'];
@@ -44,6 +54,7 @@
     robot: function (state, kind, age) {
       if (state === 'disconnected' && kind === 'reader_limit') { return ['off', 'ROBOT OFF', 'Could not reach the robot for a while. Turn it on, or check it is on the Wi-Fi.']; }
       if (state === 'disconnected' && kind === 'black_frame') { return ['off', 'CHECK ROBOT', 'No usable picture from the robot. Is its lens covered?']; }
+      if (state === 'disconnected' && kind === 'empty_frames') { return ['off', 'CHECK ROBOT', 'The robot answered but sent no frames. Turn it off and on.']; }
       if (state === 'stale') { return ['stale', 'STALE', 'No new frames for ' + Math.round(age || 0) + ' s']; }
       if (state === 'connecting' || state === 'idle') { return ['stale', 'CONNECTING', 'Reaching the robot…']; }
       return ['off', 'ROBOT OFF', 'The robot is off or off the network. The picture follows when it is back.'];
@@ -140,7 +151,8 @@
             }
           });
         }
-        var words = describe(state, r.headers.get('X-Kona-Error'), parseFloat(r.headers.get('X-Kona-Frame-Age')));
+        var source = frame && frame.dataset ? frame.dataset.source : undefined;
+        var words = describe(state, r.headers.get('X-Kona-Error'), parseFloat(r.headers.get('X-Kona-Frame-Age')), source);
         set(words[0], words[1], words[2]);
         delay = NOT_LIVE_FLOOR;  // the server already waited; this is a guard, not the pacing
       }).catch(function () {

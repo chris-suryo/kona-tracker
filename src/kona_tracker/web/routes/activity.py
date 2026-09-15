@@ -31,7 +31,8 @@ WALK_ID = re.compile(r"[A-Za-z0-9_-]{1,64}")
 
 def make_activity_router(deps: AppDeps) -> APIRouter:
     router = APIRouter()
-    templates, fi, tile_config, avatar_fetch = (
+    settings, templates, fi, tile_config, avatar_fetch = (
+        deps.settings,
         deps.templates,
         deps.fi,
         deps.tile_config,
@@ -44,6 +45,9 @@ def make_activity_router(deps: AppDeps) -> APIRouter:
 
     @router.get("/activity", response_class=HTMLResponse)
     def activity(request: Request, preview: bool = False, fresh: bool = False):
+        # Sample data is a development feature and off unless KONA_PREVIEW=1;
+        # a stale ?preview=1 bookmark then simply shows the real page.
+        preview = preview and settings.preview_enabled
         # `fresh` is the pull-to-refresh gesture: ask Fi on this request,
         # within the floor FiService enforces, so the swap-in is current.
         snapshot = fi.snapshot(force=fresh) if fi and not preview else None
@@ -153,6 +157,10 @@ def make_activity_router(deps: AppDeps) -> APIRouter:
         day: int = Query(default=0, ge=0, le=6),
         selected: int | None = Query(default=None, ge=0, le=23),
     ):
+        # 404 rather than a disabled page: the same rule as the robot routes
+        # without a gateway. A feature that is off has no URL.
+        if not settings.preview_enabled:
+            raise HTTPException(status_code=404)
         if metric not in {"steps", "rest"} or period not in {"day", "week"}:
             raise HTTPException(status_code=404)
         return templates.TemplateResponse(

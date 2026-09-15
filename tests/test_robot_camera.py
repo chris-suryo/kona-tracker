@@ -190,36 +190,11 @@ def test_robot_log_lines_and_threads_say_which_camera_they_are(caplog):
     app.state.robot_hub.stop()
 
 
-def test_camera_health_speaks_for_the_kind_of_camera_it_describes():
-    """Three sources, three vocabularies. The webcam words are unchanged;
-    a network camera is never told to unplug a cable, and a robot that
-    is off is described as off, not as a fault (ChatGPT audit, 2026-09-13)."""
-    from kona_tracker.web.views import camera_health
-
-    off = {"state": "disconnected", "last_error_kind": "open", "reconnects": 2}
-    usb, rtsp, robot = (camera_health(off, kind=k) for k in ("usb", "rtsp", "robot"))
-    assert "Another program" in usb["problem"]
-    assert "Wi-Fi" in rtsp["problem"] and "unplug" not in rtsp["problem"].lower()
-    assert "robot" in robot["problem"].lower() and "off" in robot["problem"]
-    for kind in ("usb", "rtsp", "robot"):
-        for error in ("black_frame", "hung", "reader_limit", "read", "empty_frames"):
-            words = camera_health({"state": "disconnected", "last_error_kind": error}, kind=kind)
-            if kind != "usb":
-                assert "usb" not in words["problem"].lower(), (kind, error)
-                assert "unplug" not in words["problem"].lower(), (kind, error)
-    # An idle hub is not a problem, for any kind.
-    assert camera_health({"state": "idle"}, kind="robot")["state"] == "Idle · opens when viewed"
-    # An unknown kind falls back to the webcam words rather than to nothing.
-    assert camera_health(off, kind="weird")["problem"] == usb["problem"]
-
-
-def test_settings_page_shows_both_cameras_in_their_own_words(both):
-    c, _ = both
-    page = c.get("/settings").text
-    assert 'id="camera-settings-title"' in page and 'id="robot-settings-title"' in page
-    assert ">Robot<" in page
-
-
-def test_settings_page_has_no_robot_section_without_a_robot(house_only):
-    c, _ = house_only
-    assert 'id="robot-settings-title"' not in c.get("/settings").text
+def test_settings_page_describes_neither_camera_with_or_without_a_robot(both, house_only):
+    """The camera and robot status rows were retired from Settings: the tab
+    that shows the picture is where its state is put into words, in one
+    vocabulary (poll.js). Neither camera gets a section here now."""
+    for c, _ in (both, house_only):
+        page = c.get("/settings").text
+        assert 'id="camera-settings-title"' not in page
+        assert 'id="robot-settings-title"' not in page
