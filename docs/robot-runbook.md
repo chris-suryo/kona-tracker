@@ -96,11 +96,31 @@ since white is all three lit at once.
 
 ## Driving over Tailscale, from away
 
-It will stutter, and that is measured rather than guessed. At a 700 ms round
-trip the robot session recorded the watchdog firing **seven times in six
-seconds** with the stick held down, because the HTTP client can only send as
-fast as the round trip allows.
+**Built 2026-09-15, untested on real hardware.** Before that it stuttered, and
+that was measured rather than guessed: at a 700 ms round trip the robot session
+recorded the watchdog firing **seven times in six seconds** with the stick held
+down, because the HTTP client can only send as fast as the round trip allows.
 
-Watching from away is fine. Driving properly from away needs the WebSocket
-transport (`GET /ws/drive` already exists on their side; our client does not
-use it yet). Until then, drive on the home Wi-Fi.
+The fix is a WebSocket on the **phone → PC** leg, which is the slow one. The
+PC → Pi leg is wired Ethernet at about 1 ms and stays on plain HTTP at 200 ms
+against the 500 ms TTL, which is what the robot session asked us to keep; their
+own `/ws/drive` optimises a leg that is already fast and is deliberately unused.
+
+**How to tell which one you are on.** The telemetry strip in drive mode has a
+**Link** reading: `socket` or `polling`. That is not decoration — this app is
+served over `connect-src 'self'`, and whether a given Safari version will open
+a `ws:` connection under that policy is a question no test here can answer. If
+it says `polling` on your phone but `socket` on a laptop, the CSP is the first
+suspect, and the fallback means everything still works meanwhile.
+
+Two things the socket changes that are worth knowing:
+
+- **The server holds the last command and re-sends it** every 200 ms, so a
+  frame delayed by LTE jitter lands on a command that is still being refreshed
+  instead of a gap. The Pi sees one steady rate whatever the phone's connection
+  is doing.
+- **That hold expires after 600 ms of silence**, and then the server sends one
+  stop of its own. This is a safety number, not a tuning one: a watchdog that
+  fires when commands *stop* arriving is defeated by anything that keeps
+  sending on the operator's behalf. Worst case, a phone that dies mid-throttle
+  leaves the robot moving 600 ms rather than 500 ms.

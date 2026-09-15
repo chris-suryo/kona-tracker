@@ -34,6 +34,7 @@
   var note = document.getElementById('note');
   var volts = document.getElementById('volts'), sonar = document.getElementById('sonar');
   var picture = document.getElementById('picture');
+  var wireLabel = document.getElementById('wire');
 
   // The send interval comes from the server so it cannot drift away from
   // the TTL it has to stay under. Both live in robot/gateway.py.
@@ -70,6 +71,9 @@
   var capped = true;
   var ticker = null, stopRetry = null;
   var lastTelemetry = 0, telemetryEverOk = false;
+  // The drive socket, when one is open. Null means every command goes over
+  // HTTP, which is the original path and still the fallback.
+  var wire = null;
   // Two independent reasons to shout, kept apart so neither can erase the
   // other: `owed` is the gateway telling us the board may still hold duty,
   // `failure` is our own last stop or drive that did not land.
@@ -92,6 +96,81 @@
         return data;
       });
     });
+  }
+
+  // -- the fast path -------------------------------------------------------
+  //
+  // Over HTTP this page could only send as fast as the round trip allowed:
+  // `sending` holds one command in flight so they cannot pile up, which on
+  // Chris's 700 ms LTE link capped it near 1.5 commands a second against a
+  // 500 ms TTL. The robot session measured what that does -- the gateway's
+  // watchdog firing seven times in six seconds with the stick held down.
+  //
+  // A socket has no round trip in the send path. Frames go out back to back
+  // and the server pushes the latest one to the Pi on its own steady clock,
+  // so the robot sees one rate whatever the phone's connection is doing.
+  //
+  // It is strictly an optimisation: everything still works with `wire` null,
+  // which is what happens on a browser without WebSocket, behind a proxy that
+  // will not upgrade, or after the socket drops. Nothing below may become
+  // load-bearing for stopping -- `stopNow` stays on HTTP, because a stop is
+  // the one thing that has to be *watched* landing.
+  // Says which transport is carrying commands right now. "polling" is not a
+  // failure -- it is the original path and it works -- but it is 1.5 commands
+  // a second on a 700 ms link against 4.5 on the socket, and knowing which
+  // one you are on is the difference between diagnosing lag and guessing at it.
+  function showWire(state) {
+    if (!wireLabel) { return; }
+    wireLabel.textContent = state;
+    wireLabel.className = 'v' + (state === 'socket' ? '' : ' unknown');
+  }
+
+  function openWire() {
+    showWire('polling');
+    if (!window.WebSocket) { return; }
+    var url;
+    try {
+      url = (window.location.protocol === 'https:' ? 'wss://' : 'ws://') +
+        window.location.host + '/robot/ws/drive';
+    } catch (e) { return; }
+    var socket;
+    try { socket = new window.WebSocket(url); } catch (e) { return; }
+    socket.onopen = function () { wire = socket; showWire('socket'); };
+    socket.onmessage = function (event) {
+      var data;
+      try { data = JSON.parse(event.data); } catch (e) { return; }
+      if (data && data.ok === false) {
+        // Same handling as a failed POST: the watchdog stops the robot on
+        // its own within one TTL, so say so and let go rather than hammer.
+        shoutAt(data.error || 'The robot did not answer.');
+        letGo();
+      }
+    };
+    // A closed socket is not an error worth showing -- the HTTP path picks
+    // it straight back up, and the person is mid-drive. It is not reopened
+    // on a timer either: a reconnect loop under a thumb would be a second
+    // command stream fighting the first.
+    socket.onclose = function () { if (wire === socket) { wire = null; showWire('polling'); } };
+    socket.onerror = function () { if (wire === socket) { wire = null; showWire('polling'); } };
+  }
+
+  // Both transports, one door. Returns true when the socket took it, so the
+  // caller knows whether to expect a promise.
+  function pushDrive(vx, vy, omega) {
+    if (!wire || wire.readyState !== 1) { return false; }
+    try {
+      wire.send(JSON.stringify({ vx: +vx.toFixed(3), vy: +vy.toFixed(3), omega: +omega.toFixed(3) }));
+      return true;
+    } catch (e) {
+      wire = null;
+      showWire('polling');
+      return false;
+    }
+  }
+
+  function pushStop() {
+    if (!wire || wire.readyState !== 1) { return; }
+    try { wire.send('{"stop":true}'); } catch (e) { wire = null; }
   }
 
   function renderShout() {
@@ -117,6 +196,11 @@
     place(0, 0);
     clearInterval(ticker); ticker = null;
     clearTimeout(stopRetry); stopRetry = null;
+    // Down the socket too, where there is one: it arrives without waiting
+    // for a round trip. It does NOT replace the POST below -- this one
+    // cannot be watched landing, and a stop that was not confirmed is the
+    // most dangerous state this page can be in. Both, always.
+    pushStop();
     post('/robot/stop').then(function () {
       quiet();
     }).catch(function (e) {
@@ -148,24 +232,37 @@
   // -- driving -------------------------------------------------------------
   function scale() { return capped ? SPEED_CAP : 1; }
 
+  // Stop sending, without claiming a stop landed. The gateway's watchdog
+  // zeroes the motors within one TTL of commands ceasing, so the honest
+  // thing after a failure is to say so and let go -- not to keep hammering
+  // a robot that is not listening. Shared by both transports so the socket
+  // and the POST path cannot come to disagree about what a failure does.
+  function letGo() {
+    driving = false;
+    clearInterval(ticker); ticker = null;
+    place(0, 0);
+  }
+
   function tick() {
-    if (sending || !driving) { return; }
-    sending = true;
+    if (!driving) { return; }
     // Screen axes to body axes: up is forward, left is +vy (the gateway's
     // convention, and it owns the mecanum kinematics and the wiring).
     var vx = -stickVec.y * scale();
     var vy = -stickVec.x * scale();
     var omega = spin * scale();
+    // The socket first, and without the `sending` gate: that gate exists
+    // because an HTTP command in flight must not be joined by another, and
+    // a frame on an open socket is neither in flight nor cancellable. Errors
+    // arrive later, on the socket, and are handled there.
+    if (pushDrive(vx, vy, omega)) { quiet(); return; }
+    if (sending) { return; }
+    sending = true;
     post('/robot/drive', 'vx=' + vx.toFixed(3) + '&vy=' + vy.toFixed(3) + '&omega=' + omega.toFixed(3))
       .then(function () { quiet(); })
       .catch(function (e) {
         if (e.message === 'signed out') { return; }
-        // The watchdog stops the robot on its own within one TTL, so the
-        // honest thing is to say so and let go, not to keep hammering.
         shoutAt(e.message);
-        driving = false;
-        clearInterval(ticker); ticker = null;
-        place(0, 0);
+        letGo();
       })
       .then(function () { sending = false; }, function () { sending = false; });
   }
@@ -403,6 +500,10 @@
       lost('No answer from the robot for a few seconds.');
     }
   }, SILENT_MS);
+
+  // Opened last, once everything it can call into exists. Failing to open
+  // costs nothing: every command falls back to the HTTP path above.
+  openWire();
 
   allow(false, 'not yet known');
 })();

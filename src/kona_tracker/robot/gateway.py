@@ -41,6 +41,21 @@ DRIVE_TTL_MS = 500
 #: request does not stutter the robot.
 DRIVE_INTERVAL_MS = 200
 
+#: How long the server keeps refreshing the last command it was given after
+#: the phone goes quiet, on the WebSocket path.
+#:
+#: This is a safety number, not a tuning one. The server repeats the current
+#: command on a steady clock so LTE jitter cannot stutter the robot -- but
+#: repeating it forever would defeat the gateway's watchdog, which fires only
+#: when commands *stop* arriving. So the repeat has its own expiry, and the
+#: pump sends one stop when it passes.
+#:
+#: Worst case: the phone dies mid-throttle and the robot keeps moving for
+#: this long, against DRIVE_TTL_MS before. Three sends' grace over
+#: DRIVE_INTERVAL_MS, so an unlucky gap on a cell handover does not cut the
+#: throttle, and short enough that letting go is still immediate to a person.
+DRIVE_HOLD_MS = 600
+
 #: A drive command that has not landed within this is already past the TTL
 #: it was asking for -- the watchdog has fired and the robot has stopped.
 #: Failing fast beats a late command arriving after the operator let go.

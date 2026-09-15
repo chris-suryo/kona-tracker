@@ -44,10 +44,10 @@ function element() {
   };
 }
 
-function setup(script, preview = false) {
+function setup(script, preview = false, opts = {}) {
   const names = ['cam', 'cap', 'dot', 'livetxt', 'capture', 'capture-hint', 'activity-body', 'pull', 'zoom-level',
     'drive', 'stick', 'knob', 'estop', 'estop-alarm', 'speed', 'rot-left', 'rot-right', 'shout', 'shout-text', 'note',
-    'volts', 'sonar', 'picture'];
+    'volts', 'sonar', 'picture', 'wire'];
   const nodes = Object.fromEntries(names.map(name => [name, element()]));
   const page = element(), label = element(), note = element(), freshness = element(), camFrame = element();
   // A 400x225 frame at the page origin, so the zoom maths can be checked in px.
@@ -74,7 +74,7 @@ function setup(script, preview = false) {
   function StoppedDate(...args) { return new RealDate(...args); }
   StoppedDate.now = () => RealDate.now() + clock.offset;
   StoppedDate.prototype = RealDate.prototype;
-  const window = {...element(), location: {href: ''}};
+  const window = {...element(), location: {href: '', protocol: 'http:', host: 'pi.local'}};
   let nextTimer = 0, files = 0;
   const env = {
     document, window, AbortController, Date: StoppedDate, console,
@@ -99,12 +99,38 @@ function setup(script, preview = false) {
     navigator: {sendBeacon: (url) => { beacons.push(url); return true; }},
     DOMParser: class { parseFromString() { return {getElementById: () => ({innerHTML:'new render'}), querySelector: () => null}; } }
   };
+  // The drive socket. Absent unless a test asks for one, because "no
+  // WebSocket in this environment" is exactly the fallback path that every
+  // other drive test in this file is then exercising for free.
+  const sockets = [];
+  if (opts.websocket) {
+    window.WebSocket = function (url) {
+      this.url = url;
+      this.readyState = 0;   // CONNECTING
+      this.sent = [];
+      this.send = frame => {
+        if (this.readyState !== 1) { throw new Error('not open'); }
+        this.sent.push(frame);
+      };
+      this.close = () => { this.readyState = 3; };
+      sockets.push(this);
+    };
+  }
   // The two picture pages load poll.js first, as their templates do; the
   // loop lives there and camera.js / robot.js call window.KonaPoll.
   const scripts = ['camera.js', 'robot.js', 'drive.js'].includes(script) ? ['poll.js', script] : [script];
   scripts.forEach(s => vm.runInNewContext(fs.readFileSync(path.join(staticDir, s), 'utf8'), env));
   return {nodes, page, label, note, document, window, requests, timers, intervals, created, revoked, camFrame, beacons,
     files: () => files,
+    socket: () => sockets[sockets.length - 1],
+    // A socket the browser has finished opening: readyState 1 and onopen fired.
+    openSocket() {
+      const ws = sockets[sockets.length - 1];
+      assert.ok(ws, 'no socket was created');
+      ws.readyState = 1;
+      ws.onopen();
+      return ws;
+    },
     advance(ms) { clock.offset += ms; },
     // `tick()` fires whichever interval is first; a page with three of them
     // needs to name the one it means.
@@ -668,8 +694,8 @@ const drives = x => x.requests.filter(q => q.url === '/robot/drive');
 const looping = x => [...x.intervals.values()].some(t => t.delay === 200);
 const stops = x => x.requests.filter(q => q.url === '/robot/stop');
 
-async function ready(extra = {}) {
-  const x = setup('drive.js');
+async function ready(extra = {}, opts = {}) {
+  const x = setup('drive.js', false, opts);
   await telemetry(x, extra);
   return x;
 }
@@ -1059,4 +1085,95 @@ test('a refusal disables the controls and shows the gateway own words', async ()
   assert.equal(x.off.disabled, true);
   assert.equal(x.swatches[0].disabled, true);
   assert.match(x.note.textContent, /led_unavailable/);
+});
+
+// -- the drive socket ------------------------------------------------------
+//
+// The whole reason it exists: over HTTP the page holds one command in flight
+// at a time, so on Chris's 700 ms LTE link it could only send ~1.5 commands a
+// second against a 500 ms TTL, and the gateway's watchdog fired seven times in
+// six seconds with the stick held down. A socket has no round trip in the send
+// path. Everything here is about it staying strictly an optimisation.
+
+async function wired(extra = {}) {
+  const x = await ready(extra, {websocket: true});
+  x.openSocket();
+  return x;
+}
+
+test('with no WebSocket in the browser everything still drives over HTTP', async () => {
+  // Not a hypothetical: the CSP is `connect-src 'self'`, and some Safari
+  // versions have refused ws: under exactly that. The page must degrade to
+  // the original path rather than become a set of dead controls.
+  const x = await ready();
+  press(x, 64, 8);
+  assert.equal(drives(x).length, 1, 'no socket means the POST path carries it');
+  assert.equal(x.nodes.wire.textContent, 'polling');
+});
+
+test('an open socket carries the command and no POST is made', async () => {
+  const x = await wired();
+  const before = drives(x).length;
+  press(x, 64, 8);
+  assert.equal(drives(x).length, before, 'the socket took it; nothing should be POSTed');
+  assert.deepEqual(JSON.parse(x.socket().sent[0]), {vx: 0.4, vy: 0, omega: 0});
+  assert.equal(x.nodes.wire.textContent, 'socket');
+});
+
+test('the socket is not gated by one-command-in-flight', async () => {
+  // This is the entire performance claim. Over HTTP `sending` blocks the next
+  // command until the last answers, which on a slow link is the bottleneck.
+  const x = await wired();
+  press(x, 64, 8);
+  x.tickEvery(200);
+  x.tickEvery(200);
+  assert.equal(x.socket().sent.length, 3, 'a frame in flight must not block the next');
+});
+
+test('a socket that drops mid-drive falls back to POSTing, silently', async () => {
+  // A closed socket is not worth shouting about: the HTTP path picks it
+  // straight up and the person is mid-drive with a thumb down.
+  const x = await wired();
+  press(x, 64, 8);
+  const before = drives(x).length;
+  x.socket().readyState = 3;
+  x.socket().onclose();
+  assert.equal(x.nodes.wire.textContent, 'polling');
+  x.tickEvery(200);
+  assert.equal(drives(x).length, before + 1, 'the HTTP path did not take over');
+  assert.equal(x.nodes.shout.hidden, true, 'a dropped socket is not an alarm');
+});
+
+test('an error frame lets go rather than hammering, same as a failed POST', async () => {
+  const x = await wired();
+  press(x, 64, 8);
+  x.socket().onmessage({data: JSON.stringify(
+    {ok: false, error: 'The robot battery is too low to drive.', reason: 'low_battery'})});
+  assert.equal(x.nodes.shout.hidden, false);
+  assert.match(x.nodes['shout-text'].textContent, /too low/);
+  // Letting go means the send ticker is gone, not merely that the next tick
+  // happens to send nothing: a cleared interval cannot be restarted by a
+  // thumb that is still down.
+  assert.equal([...x.intervals].some(([, t]) => t.delay === 200), false,
+    'the send ticker survived a refusal');
+});
+
+test('a stop goes down the socket AND over HTTP, never only one', async () => {
+  // The socket arrives first, without waiting for a round trip. The POST is
+  // the one that can be watched landing, and a stop that was not confirmed is
+  // the most dangerous state this page can be in.
+  const x = await wired();
+  press(x, 64, 8);
+  x.nodes.stick.events.pointerup({pointerId: 1});
+  assert.equal(x.socket().sent[x.socket().sent.length - 1], '{"stop":true}');
+  assert.equal(stops(x).length, 1, 'the watched HTTP stop must still be sent');
+});
+
+test('a socket that never opens is never used', async () => {
+  // readyState stays CONNECTING. Sending into it throws, and a thrown send
+  // must not lose the command -- it falls through to the POST.
+  const x = await ready({}, {websocket: true});
+  assert.equal(x.nodes.wire.textContent, 'polling');
+  press(x, 64, 8);
+  assert.equal(drives(x).length, 1, 'a half-open socket swallowed the command');
 });

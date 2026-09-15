@@ -41,6 +41,12 @@
           <span>Battery <b class="v unknown" id="volts">—</b></span>
           <span>Ahead <b class="v unknown" id="sonar">—</b></span>
           <span>Picture <b class="v unknown" id="picture">—</b></span>
+          {# Which transport is actually carrying the commands. Not decoration:
+             the socket is the whole point of the 2026-09-15 change, and
+             whether a given phone and network let it open is a question this
+             container cannot answer. Without this the only way to tell a
+             working socket from a silent fallback is to feel the lag. #}
+          <span>Link <b class="v unknown" id="wire">—</b></span>
           <span class="v unknown" id="cap">Reaching the robot…</span>
         </div>
       </div>
