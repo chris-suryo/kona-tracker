@@ -47,7 +47,7 @@ function element() {
 function setup(script, preview = false, opts = {}) {
   const names = ['cam', 'cap', 'dot', 'livetxt', 'capture', 'capture-hint', 'activity-body', 'pull', 'zoom-level',
     'drive', 'stick', 'knob', 'estop', 'estop-alarm', 'speed', 'rot-left', 'rot-right', 'shout', 'shout-text', 'note',
-    'volts', 'sonar', 'picture', 'wire', 'look', 'look-knob'];
+    'volts', 'sonar', 'picture', 'wire', 'look', 'look-knob', 'legend'];
   const nodes = Object.fromEntries(names.map(name => [name, element()]));
   const page = element(), label = element(), note = element(), freshness = element(), camFrame = element();
   // A 400x225 frame at the page origin, so the zoom maths can be checked in px.
@@ -57,6 +57,9 @@ function setup(script, preview = false, opts = {}) {
   // The drive page reads its send interval from the server, so the loop and
   // the gateway's TTL can never drift apart.
   nodes.drive.dataset.interval = '200';
+  if (opts.ttl) { nodes.drive.dataset.ttl = opts.ttl; }
+  // Both start `hidden` in drive.html; drive.js only ever reveals them.
+  nodes.legend.hidden = true; nodes.note.hidden = true;
   nodes['activity-body'].querySelector = selector => ({
     '.preview-banner': preview ? element() : null, '.freshness': freshness, 'p.note': note
   })[selector] || null;
@@ -74,7 +77,17 @@ function setup(script, preview = false, opts = {}) {
   function StoppedDate(...args) { return new RealDate(...args); }
   StoppedDate.now = () => RealDate.now() + clock.offset;
   StoppedDate.prototype = RealDate.prototype;
-  const window = {...element(), location: {href: '', protocol: 'http:', host: 'pi.local'}};
+  // localStorage the way theme.js and drive.js use it: a Map, or absent
+  // (opts.storage === null) for a private window where every access throws.
+  const storage = new Map();
+  const localStorage = opts.storage === null ? {
+    getItem() { throw new Error('blocked'); }, setItem() { throw new Error('blocked'); }, removeItem() { throw new Error('blocked'); }
+  } : {
+    getItem: k => storage.has(k) ? storage.get(k) : null, setItem: (k, v) => storage.set(k, String(v)), removeItem: k => storage.delete(k)
+  };
+  if (opts.seen) { storage.set('kona-drive-seen', '1'); }
+  const window = {...element(), localStorage,
+    location: {href: '', protocol: 'http:', host: 'pi.local', search: opts.search || ''}};
   let nextTimer = 0, files = 0;
   const env = {
     document, window, AbortController, Date: StoppedDate, console,
@@ -120,7 +133,7 @@ function setup(script, preview = false, opts = {}) {
   // loop lives there and camera.js / robot.js call window.KonaPoll.
   const scripts = ['camera.js', 'robot.js', 'drive.js'].includes(script) ? ['poll.js', script] : [script];
   scripts.forEach(s => vm.runInNewContext(fs.readFileSync(path.join(staticDir, s), 'utf8'), env));
-  return {nodes, page, label, note, document, window, requests, timers, intervals, created, revoked, camFrame, beacons,
+  return {nodes, page, label, note, document, window, requests, timers, intervals, created, revoked, camFrame, beacons, storage,
     files: () => files,
     socket: () => sockets[sockets.length - 1],
     // A socket the browser has finished opening: readyState 1 and onopen fired.
@@ -734,6 +747,49 @@ async function ready(extra = {}, opts = {}) {
 function press(x, clientX, clientY) {
   x.nodes.stick.events.pointerdown({pointerId: 1, clientX, clientY, preventDefault() {}});
 }
+
+// Drive mode had no onboarding at all: the look stick not recentring,
+// double-tap to level, Escape, rotation being the buttons -- all only in
+// aria-labels and source comments. The legend says it once.
+test('the legend shows on the first drive, is dismissed by a tap, and stays dismissed', () => {
+  const first = setup('drive.js');
+  assert.equal(first.nodes.legend.hidden, false, 'a first drive gets the legend');
+  first.nodes.legend.events.click();
+  assert.equal(first.nodes.legend.hidden, true);
+  assert.equal(first.storage.get('kona-drive-seen'), '1');
+  const again = setup('drive.js', false, {seen: true});
+  assert.equal(again.nodes.legend.hidden, true, 'seen once is seen');
+});
+
+test('the Robot tab can ask for the legend again, and a blocked storage errs towards showing it', () => {
+  const asked = setup('drive.js', false, {seen: true, search: '?legend=1'});
+  assert.equal(asked.nodes.legend.hidden, false);
+  const blocked = setup('drive.js', false, {storage: null});
+  assert.equal(blocked.nodes.legend.hidden, false, 'a legend that shows again beats a driver who never saw it');
+  blocked.nodes.legend.events.click();
+  assert.equal(blocked.nodes.legend.hidden, true, 'dismissing still works when saving does not');
+});
+
+// The HUD used to be blank until something went wrong, so "all good" and
+// "not connected yet" looked the same. The resting line states the one fact
+// that makes letting go safe, from the number the server rendered.
+test('the HUD says the robot is ready, and how soon it stops, when nothing is wrong', async () => {
+  const x = setup('drive.js');
+  x.nodes.drive.dataset.ttl = '500';
+  // Re-run with the ttl present: setup already ran the script once.
+  const y = setup('drive.js', false, {ttl: '500'});
+  assert.equal(y.nodes.note.hidden, true, 'nothing to say before the robot answers');
+  telemetry(y); await settle();
+  assert.equal(y.nodes.note.hidden, false);
+  assert.match(y.nodes.note.textContent, /^Ready · let go and she stops within 0\.5 s$/);
+  assert.equal(y.nodes.note.className, 'drive-note calm');
+  // A problem replaces it, never joins it.
+  y.tickEvery(1000); telemetry(y, {demo_detection: false}); await settle();
+  assert.doesNotMatch(y.nodes.note.textContent, /Ready/);
+  assert.match(y.nodes.note.textContent, /guard is off/);
+  assert.equal(y.nodes.note.className, 'drive-note');
+  void x;
+});
 
 test('nothing can drive until the robot has actually answered', async () => {
   const x = setup('drive.js');

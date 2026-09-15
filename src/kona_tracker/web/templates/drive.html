@@ -25,7 +25,21 @@
           aria-label="Stop {{ robot_name }} now">STOP</button>
 </div>
 
-<div class="drive" id="drive" data-interval="{{ drive_interval_ms }}">
+<div class="drive" id="drive" data-interval="{{ drive_interval_ms }}" data-ttl="{{ drive_ttl_ms }}">
+  {# The first time drive mode opens, and never again unless asked (the Robot
+     tab has a link): four sentences a second driver needs and could not
+     otherwise learn short of reading aria-labels. Tapping anywhere on it
+     starts driving; it is inside `.drive` so portrait never shows it, and
+     under the stop alarm's z-index so it can never cover a STOP. #}
+  <div class="drive-legend" id="legend" hidden role="dialog" aria-label="How to drive {{ robot_name }}">
+    <div class="drive-legend-card">
+      <p><b>Left stick</b> moves her. Let go and she stops.</p>
+      <p><b>Right stick</b> aims the camera and stays where you point it. Double-tap it to level.</p>
+      <p><b>The two round buttons</b> turn her on the spot.</p>
+      <p><b>STOP</b> is STOP. On a keyboard, Escape is too.</p>
+      <p class="drive-legend-go">Tap anywhere to start</p>
+    </div>
+  </div>
   {# poll.js owns the picture and needs these four ids; the caption doubles
      as the camera's own line in the telemetry strip. #}
   <figure class="cam">
@@ -60,8 +74,11 @@
     <div class="drive-pads">
       {# Holonomic: this robot strafes. Sideways on the stick is a genuine
          sideways move, not a turn -- turning is the two buttons. #}
-      <div class="stick" id="stick" role="application" aria-label="Drive {{ robot_name }}: push to move, let go to stop">
-        <div class="knob" id="knob"></div>
+      <div class="pad">
+        <div class="stick" id="stick" role="application" aria-label="Drive {{ robot_name }}: push to move, let go to stop">
+          <div class="knob" id="knob"></div>
+        </div>
+        <span class="pad-label" aria-hidden="true">Move</span>
       </div>
       <div class="drive-right">
         {# The second stick, which is what Chris asked for twice: left thumb
@@ -77,12 +94,16 @@
            stick's sideways axis is a genuine strafe, so there is no spare
            axis for turning, and a button press is unambiguous where a stick
            corner is not. #}
-        <div class="stick look" id="look" role="application"
-             aria-label="Look around: drag to aim the camera, double-tap to level it">
-          <div class="knob" id="look-knob"></div>
+        <div class="pad">
+          <div class="stick look" id="look" role="application"
+               aria-label="Look around: drag to aim the camera, double-tap to level it">
+            <div class="knob" id="look-knob"></div>
+          </div>
+          <span class="pad-label" aria-hidden="true">Look</span>
         </div>
         <div class="drive-spins">
           <button class="spin" id="rot-left" type="button" aria-label="Rotate left">↺</button>
+          <span class="pad-label" aria-hidden="true">Turn</span>
           <button class="spin" id="rot-right" type="button" aria-label="Rotate right">↻</button>
         </div>
         <button class="estop" id="estop" type="button" aria-label="Stop the robot now">STOP</button>

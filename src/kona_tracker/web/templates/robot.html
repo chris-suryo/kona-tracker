@@ -25,6 +25,9 @@
   <span>Drive {{ robot_name }}<small>Turn your phone sideways. Let go and it stops.</small></span>
   <span class="go" aria-hidden="true">{% include "_chevron.svg" %}</span>
 </a>
+{# The legend shows itself once. This is the way back to it, for the second
+   driver or the first one a month later. #}
+<a class="drive-again" href="/drive?legend=1">Show me the controls again</a>
 {# The two front lights. Here rather than on the Drive page for one concrete
    reason: the gateway writes them straight over I2C (the ultrasonic module at
    0x77) instead of through the RPC server that owns the motors, so they are

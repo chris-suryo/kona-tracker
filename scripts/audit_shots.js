@@ -99,6 +99,12 @@ async function stubTiles(context) {
     await lp.waitForLoadState('domcontentloaded');
     await lp.goto(BASE + '/drive', { waitUntil: 'domcontentloaded' });
     await lp.waitForTimeout(2000);
+    // A fresh context has never driven, so the first-drive legend is up.
+    // Both states are worth a reviewer's eyes: the legend, and the controls
+    // it was covering.
+    await lp.screenshot({ path: path.join(OUT, `drive-first-visit-${scheme}.png`) });
+    await lp.click('#legend');
+    await lp.waitForTimeout(300);
     await lp.screenshot({ path: path.join(OUT, `drive-landscape-${scheme}.png`) });
     await lp.setViewportSize(PHONE);
     await lp.waitForTimeout(500);

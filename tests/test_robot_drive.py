@@ -468,3 +468,21 @@ def test_the_portrait_prompt_is_still_the_only_thing_portrait_normally_shows():
     html = signed_in(make()).get("/drive").text
     alarm = html[html.index('id="shout"') - 200 : html.index('id="shout"') + 40]
     assert "hidden" in alarm, "the stop alarm no longer starts hidden"
+
+
+def test_the_drive_page_says_what_each_control_is_and_offers_the_legend(drivable):
+    """A second driver could not learn, short of reading aria-labels, that
+    the right stick stays where it is put, that double-tap levels it, that
+    the round buttons turn, or that Escape stops. The legend says so once;
+    the labels under the sticks say which is which every time; the Robot
+    tab has the way back to the legend."""
+    client, _ = drivable
+    page = client.get("/drive").text
+    assert 'id="legend"' in page and "Double-tap it to level" in page and "Escape" in page
+    for label in ("Move", "Look", "Turn"):
+        assert f'<span class="pad-label" aria-hidden="true">{label}</span>' in page
+    # The dead-man window is stated to the page as a number to say, and the
+    # page never sends one back (test_the_browser_never_chooses_the_ttl).
+    assert 'data-ttl="500"' in page
+    robot = client.get("/robot").text
+    assert 'href="/drive?legend=1"' in robot and "Show me the controls again" in robot

@@ -792,6 +792,7 @@ body.activity-page { overscroll-behavior-y: contain; }
 .robot-page .drive-link { display: flex; align-items: center; justify-content: space-between;
   gap: 12px; margin: 18px 0 0; padding: 16px; border: 1px solid var(--line); border-radius: 18px;
   background: var(--bg2); color: var(--ink); text-decoration: none; font-weight: 600; }
+.robot-page .drive-again { display: inline-block; min-height: 44px; padding: 12px 0 0; font-size: 13px; color: var(--ink2); }
 .robot-page .drive-link small { display: block; margin-top: 3px; color: var(--ink2);
   font-size: 12px; font-weight: 400; }
 
@@ -847,6 +848,26 @@ body.activity-page { overscroll-behavior-y: contain; }
 .drive-note { margin: 8px 0 0; padding: 7px 12px; border-radius: 12px; max-width: 46ch;
   background: rgba(0,0,0,.55); color: #F0D9A8; font-size: 11px; line-height: 1.4; }
 .drive-note.gone { color: #FFB3A3; }
+/* The resting line: what is true when nothing is wrong. Quieter than a
+   problem sentence, which replaces it. */
+.drive-note.calm { color: rgba(255,255,255,.72); background: transparent; padding-left: 0; }
+/* The first-drive legend. Under the stop alarm (z-index 30): it must never
+   sit on top of a STOP. Tapping anywhere on it dismisses it. */
+.drive-legend[hidden] { display: none; }
+.drive-legend { position: fixed; inset: 0; z-index: 20; display: grid; place-content: center;
+                padding: 16px; background: rgba(0,0,0,.55); }
+.drive-legend-card { max-width: 44ch; padding: 16px 20px; border-radius: 16px;
+                     background: rgba(18,22,17,.92); color: #fff; font-size: 14px; line-height: 1.45; }
+.drive-legend-card p { margin: 0 0 8px; }
+.drive-legend-card b { font-weight: 700; }
+.drive-legend-go { margin-top: 12px; color: rgba(255,255,255,.7); font-size: 12px;
+                   text-transform: uppercase; letter-spacing: .08em; }
+/* A word under each control, so a second driver does not have to guess
+   which stick moves and which one looks. Quiet: the sticks are the point. */
+.pad { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.pad-label { font-size: 10px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase;
+             color: rgba(255,255,255,.7); }
+.drive-spins .pad-label { text-align: center; }
 /* A stop that did not land is the most dangerous state this app has, so it
    is the loudest thing on the screen and it does not wait to be dismissed.
    It is fixed to the viewport rather than laid out inside `.drive-hud`,

@@ -25,6 +25,7 @@ from starlette.concurrency import run_in_threadpool
 from kona_tracker.robot.gateway import (
     DRIVE_HOLD_MS,
     DRIVE_INTERVAL_MS,
+    DRIVE_TTL_MS,
     RobotError,
     RobotFault,
     RobotGateway,
@@ -125,6 +126,10 @@ def make_robot_router(deps: AppDeps) -> APIRouter:
                 "tab": None,
                 "robot_name": settings.robot_name,
                 "drive_interval_ms": DRIVE_INTERVAL_MS,
+                # Stated on the HUD ("let go and it stops within 0.5 s"),
+                # never sent back: the page must not choose its own dead-man
+                # window, and does not -- test_the_browser_never_chooses_the_ttl.
+                "drive_ttl_ms": DRIVE_TTL_MS,
             },
         )
 
