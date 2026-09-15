@@ -803,6 +803,18 @@ body.activity-page { overscroll-behavior-y: contain; }
   padding: 24px; text-align: center; }
 .drive-turn .d { font-size: 26px; }
 .drive-turn p { margin: 0; color: var(--ink2); font-size: 14px; line-height: 1.5; max-width: 30ch; }
+/* The only bare `<a>` left in the app, and it showed: on the portrait prompt
+   it rendered in the browser's default link blue -- purple once visited --
+   on a near-black ground. Nothing else needed a global `a` rule because every
+   other link in this app belongs to a component that colours it; this one
+   belongs to nothing.
+
+   It is also the single control on that screen, so it gets a target rather
+   than a 14px line of text: 44px is the minimum a thumb should be asked to
+   hit, and the underline stays because it is the only thing marking it as a
+   link at all. Found in the dark-theme screenshot, 2026-09-15. */
+.drive-turn a { display: inline-block; min-height: 44px; padding: 11px 4px;
+  color: var(--t4); font-size: 15px; font-weight: 600; }
 .drive { display: none; }
 @media (orientation: landscape) {
   .drive-turn { display: none; }
