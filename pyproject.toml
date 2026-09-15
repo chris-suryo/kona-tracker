@@ -1,9 +1,25 @@
 [project]
 name = "kona-tracker"
 version = "0.1.0"
-description = "Private, passcode-gated web app to check on Kona (Fi collar data, camera later)."
+description = "Private, passcode-gated web app for checking on a dog: Fi collar activity, a camera in the house, and a drivable robot."
 readme = "README.md"
 requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Chris Suryo" }]
+keywords = ["fastapi", "fi-collar", "dog", "home-automation", "tapo", "turbopi", "raspberry-pi"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Web Environment",
+    "Framework :: FastAPI",
+    "Intended Audience :: End Users/Desktop",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Private :: Do Not Upload",
+    "Topic :: Home Automation",
+]
 dependencies = [
     "fastapi>=0.141.1",
     "httpx>=0.27",
@@ -16,6 +32,11 @@ dependencies = [
     "tzdata>=2026.3",
     "uvicorn[standard]>=0.52.4",
 ]
+
+[project.urls]
+Homepage = "https://github.com/chris-suryo/kona-tracker"
+Repository = "https://github.com/chris-suryo/kona-tracker"
+Issues = "https://github.com/chris-suryo/kona-tracker/issues"
 
 [project.scripts]
 kona = "kona_tracker.cli:app"

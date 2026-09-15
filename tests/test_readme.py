@@ -106,3 +106,32 @@ def test_the_pages_table_is_not_missing_a_page_a_person_would_open():
     listed = [re.sub(r"<[^>]+>", "x", q) for q in pages_table()]
     unlisted = sorted(r.path for r in pages if not any(r.path_regex.match(q) for q in listed))
     assert not unlisted, f"pages the README does not mention: {unlisted}"
+
+
+def test_the_license_section_names_every_licence_in_the_tree():
+    """Two dependencies are vendored, each under its own licence. A reader who
+    forks this needs all three named, and the section goes stale the moment a
+    third thing is vendored without being added."""
+    section = README.split("## License", 1)[1]
+    assert "MIT" in section and "`LICENSE`" in section
+    for path, name in (
+        ("src/kona_tracker/web/static/leaflet/", "BSD-2"),
+        ("src/kona_tracker/web/static/fonts/", "OFL"),
+    ):
+        assert path in section, f"{path} is vendored but not named in the licence section"
+        assert name in section, f"{path} is named without its licence"
+        assert (ROOT / path).is_dir()
+
+
+def test_the_readme_declares_the_same_project_as_the_package_metadata():
+    """The pyproject description said "camera later" for a month after the
+    camera shipped. Nobody reads it, which is exactly why it drifts."""
+    import tomllib  # noqa: PLC0415 - test-only
+
+    meta = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
+    assert meta["description"], "pyproject needs a description; it is what GitHub shows"
+    assert "later" not in meta["description"], (
+        "a description promising a future feature has drifted"
+    )
+    assert meta["urls"]["Repository"].endswith("/kona-tracker")
+    assert meta["readme"] == "README.md"
