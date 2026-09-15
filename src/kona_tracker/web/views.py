@@ -123,14 +123,41 @@ def step_ring(steps: int | float | None, goal: int | float | None) -> dict[str, 
     }
 
 
+def _hhmm(moment: datetime) -> str:
+    """`9:27 pm`. Kona's clock, the way her people read one.
+
+    Built from arithmetic rather than a strftime directive on purpose: the
+    no-pad hour is `%-I` on glibc and `%#I` on Windows, and `%-I` raises
+    ValueError there. This app is served from a Windows PC, and that exact
+    mistake broke its Settings page once already (PR #49). `%I` would pad to
+    "09:27 pm", which is not how anyone writes it.
+
+    Lower-case am/pm: it sits beside numbers all over this app, and capitals
+    shout next to a 48px figure.
+    """
+    hour = moment.hour % 12 or 12
+    return f"{hour}:{moment.minute:02d} {'am' if moment.hour < 12 else 'pm'}"
+
+
+def _hour_range(at: datetime) -> str:
+    """`9-10 am`, or `11 am-12 pm` when the hour crosses over."""
+    end = at + timedelta(hours=1)
+    start_h, end_h = at.hour % 12 or 12, end.hour % 12 or 12
+    start_m = "am" if at.hour < 12 else "pm"
+    end_m = "am" if end.hour < 12 else "pm"
+    if start_m == end_m:
+        return f"{start_h}\u2013{end_h} {end_m}"
+    return f"{start_h} {start_m}\u2013{end_h} {end_m}"
+
+
 def _since(moment: datetime | None, now: datetime | None, zone: tzinfo | None) -> str | None:
     """`10:42`, or `9 Sep 22:10` once it is no longer today. Kona's clock."""
     if moment is None or now is None:
         return None
     local = _clock(moment, zone)
     if local.date() == now.date():
-        return local.strftime("%H:%M")
-    return f"{_day(local)} {local:%H:%M}"
+        return _hhmm(local)
+    return f"{_day(local)} {_hhmm(local)}"
 
 
 def _count(value: int | float | None) -> str | None:
@@ -165,7 +192,7 @@ def _span(start: datetime | None, end: datetime | None, zone: tzinfo | None) -> 
     """`14:23 – 15:06` on Kona's clock; None unless both ends are known."""
     if start is None or end is None:
         return None
-    return f"{_clock(start, zone):%H:%M} \u2013 {_clock(end, zone):%H:%M}"
+    return f"{_hhmm(_clock(start, zone))} \u2013 {_hhmm(_clock(end, zone))}"
 
 
 def _age_seconds(moment: datetime | None, now: datetime | None) -> int | None:
@@ -267,20 +294,31 @@ def connection_label(status: CollarStatus | None, zone: tzinfo | None) -> dict[s
     """
     if status is None or status.on_base is None:
         return None
-    place = "the charger" if status.on_base else "cellular"
+    place = "the base" if status.on_base else "cellular"
     current = True
     if status.connection_at is not None and status.last_report is not None:
         behind = (status.last_report - status.connection_at).total_seconds()
         current = behind <= CONNECTION_CURRENT_SECONDS
     if current:
         if status.on_base:
-            text = "On charger"
+            # NOT "On charger". `ConnectedToBase` means the collar is talking
+            # to the base over its short-range radio, which it does from
+            # anywhere in range -- a dog asleep on the sofa nearby is
+            # connected to the base and charging nothing. Chris saw "On
+            # charger" on 2026-09-15 with the collar on Kona and the base
+            # empty, which is how this was found.
+            #
+            # There is no field to fix it with, either: `charging` on `Device`
+            # is recorded as confirmed absent in docs/device-capabilities.md
+            # -- the probe asked and Fi does not have it. So the app cannot
+            # know whether the collar is charging and must not imply it.
+            text = "Connected to base"
         elif status.signal_percent is not None:
             text = f"Cellular {_count(status.signal_percent)}%"
         else:
             text = "Cellular"
         return {"text": text, "current": True}
-    when = _clock(status.connection_at, zone).strftime("%H:%M") if status.connection_at else None
+    when = _hhmm(_clock(status.connection_at, zone)) if status.connection_at else None
     return {
         "text": f"Last connected to {place}{f' · {when}' if when else ''}",
         "current": False,
@@ -508,7 +546,7 @@ def activity_context(snapshot: FiSnapshot | None, configured: bool) -> dict[str,
         ],
         "map_kind": map_kind,
         "location_updated": (
-            _clock(last_position.recorded_at, zone).strftime("%H:%M")
+            _hhmm(_clock(last_position.recorded_at, zone))
             if last_position and last_position.recorded_at
             else None
         ),
@@ -573,7 +611,7 @@ def activity_context(snapshot: FiSnapshot | None, configured: bool) -> dict[str,
         "dial_scale": f"{DIAL_SCALE_HOURS:.0f}",
         # Only stamped when there is something for it to date. "As of 18:48"
         # over an empty dial reads as "we checked and she slept nothing".
-        "as_of": (fetched_local.strftime("%H:%M") if fetched_local and snapshot.has_data else None),
+        "as_of": (_hhmm(fetched_local) if fetched_local and snapshot.has_data else None),
         # Shown next to the times only when they are Kona's, so a reader in
         # another timezone knows whose 18:48 that is. Blank on the fallback:
         # the server's clock has no name worth printing.
@@ -734,7 +772,7 @@ def rest_history_context(
         "has_days": bool(buckets),
         "stale": bool(snapshot and snapshot.stale),
         "problem": snapshot.problem if snapshot else None,
-        "fetched_label": fetched_local.strftime("%H:%M") if fetched_local else None,
+        "fetched_label": _hhmm(fetched_local) if fetched_local else None,
         "clock_zone": fetched_local.strftime("%Z") if zone and fetched_local else None,
         "excluded_note": excluded_note,
         "range_label": (
@@ -1028,7 +1066,7 @@ def walk_context(
         ],
         "map_kind": "walk",
         "stale": bool(snapshot.stale),
-        "as_of": fetched_local.strftime("%H:%M"),
+        "as_of": _hhmm(fetched_local),
         "clock_zone": fetched_local.tzname() or "",
     }
 
@@ -1106,7 +1144,11 @@ def hourly_buckets(
             sleep = nap = None
         buckets.append(
             {
-                "label": f"{at:%H:%M}\u2013{(at + timedelta(hours=1)):%H:%M}",
+                # Hour labels are always on the hour, so the minutes carry
+                # nothing: "9-10 am" rather than "9:00 am - 10:00 am", which
+                # is twice the width of the tick it sits under. The suffix
+                # appears once unless the hour crosses noon or midnight.
+                "label": _hour_range(at),
                 "short": f"{at:%H}",
                 "value": value,
                 "sleep": sleep,
@@ -1157,7 +1199,7 @@ def hourly_context(
         "hours": buckets,
         "hours_maximum": maximum,
         "hours_maximum_label": scale_label(maximum, "min" if metric == "rest" else "steps"),
-        "hours_through": (f"Through {_clock(now, zone):%H:%M}" if buckets and now else None),
+        "hours_through": (f"Through {_hhmm(_clock(now, zone))}" if buckets and now else None),
         "hour": hour,
         "hour_chosen": chosen,
         "hours_total": total,
@@ -1189,7 +1231,7 @@ def steps_context(
                 activity.steps if activity else None, activity.step_goal if activity else None
             ),
             "distance": distance_label(activity.distance if activity else None),
-            "fetched_label": fetched_local.strftime("%H:%M") if fetched_local else None,
+            "fetched_label": _hhmm(fetched_local) if fetched_local else None,
             "clock_zone": fetched_local.strftime("%Z") if zone and fetched_local else None,
         }
     )
@@ -1265,19 +1307,17 @@ def live_button(state: dict[str, Any] | None) -> dict[str, Any]:
     if not state:
         return {"offered": False, "on": False, "label": None, "note": None}
     on = bool(state.get("live"))
-    every = int(state.get("every_seconds") or 0)
     left = int(state.get("seconds_left") or 0)
     return {
         "offered": True,
         "on": on,
         "label": "Stop walk" if on else "Start walk",
-        # Say what pressing it actually does. "Live" on its own is a claim
-        # about the data; "every 20 s" is a fact about this server.
-        "note": (
-            f"Asking Fi every {every} s · stops in {max(1, round(left / 60))} min"
-            if on
-            else f"Ask Fi every {every} s while you are out"
-        ),
+        # Off, the button says what it does and needs no caption. On, the
+        # one thing worth saying is that it turns itself off -- so nobody
+        # leaves it running and flattens the collar. Our polling interval
+        # was on screen here and is a fact about this server, not about
+        # Kona; Chris's words were "I don't ever need to see that".
+        "note": (f"Stops on its own in {max(1, round(left / 60))} min" if on else ""),
     }
 
 

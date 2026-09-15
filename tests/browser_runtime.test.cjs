@@ -815,9 +815,22 @@ test('a distance sensor that cannot be read is said out loud', async () => {
 test('rotating is a turn on the spot, and releasing it stops too', async () => {
   const x = await ready();
   x.nodes['rot-left'].events.pointerdown({preventDefault() {}});
-  assert.equal(drives(x)[0].options.body, 'vx=0.000&vy=0.000&omega=-0.400');
+  // POSITIVE for left. The gateway's frame is "omega counter-clockwise"
+  // (robot_gateway.py, wheel_duties) and counter-clockwise is a left turn.
+  // This test asserted -0.400 until 2026-09-15, when the first real drive
+  // showed the two buttons swapped -- the test had been pinning our bug.
+  assert.equal(drives(x)[0].options.body, 'vx=0.000&vy=0.000&omega=0.400');
   x.nodes['rot-left'].events.pointerup({});
   assert.equal(stops(x).length, 1);
+});
+
+test('the two rotate buttons send opposite signs, left positive', async () => {
+  const left = await ready();
+  left.nodes['rot-left'].events.pointerdown({preventDefault() {}});
+  const right = await ready();
+  right.nodes['rot-right'].events.pointerdown({preventDefault() {}});
+  assert.equal(drives(left)[0].options.body, 'vx=0.000&vy=0.000&omega=0.400');
+  assert.equal(drives(right)[0].options.body, 'vx=0.000&vy=0.000&omega=-0.400');
 });
 
 test('a drive the server refused lets go rather than hammering the robot', async () => {

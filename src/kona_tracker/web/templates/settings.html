@@ -20,7 +20,12 @@
 <section class="settings-group" aria-labelledby="collar-settings-title">
   <h2 id="collar-settings-title">Collar</h2>
   <div class="settings-row"><span>Battery</span><strong>{{ battery ~ '%' if battery else 'Unavailable' }}</strong></div>
-  <div class="settings-row"><span>Connection</span><strong>{% if on_base is sameas true %}On charger{% elif on_base is sameas false and signal %}Cellular {{ signal }}%{% elif configured %}Unknown{% else %}Not connected{% endif %}</strong></div>
+  {# The same `connection_label()` the Activity card uses, not a second copy
+     of the logic. This row had its own version and it said "On charger" --
+     a claim Fi cannot support (`charging` is confirmed absent) and which
+     also skipped the freshness guard, so it could report a state from hours
+     earlier in the present tense. One function, one answer, both screens. #}
+  <div class="settings-row"><span>Connection</span><strong>{% if connection %}{{ connection.text }}{% elif configured %}Unknown{% else %}Not connected{% endif %}</strong></div>
 </section>
 
 <section class="settings-group" aria-labelledby="camera-settings-title">

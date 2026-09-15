@@ -65,7 +65,10 @@ def test_wrong_passcode_then_right_passcode(client):
     r = login(client, "0000")
     assert r.status_code == 401 and COOKIE_NAME not in r.cookies
     r = login(client)
-    assert r.status_code == 303 and r.headers["location"] == "/camera"
+    # The app opens on Activity as of 2026-09-15: the camera is one tap
+    # away and the dog is not. Login, "/" and the home-screen icon all land
+    # in the same place, which is what this pins.
+    assert r.status_code == 303 and r.headers["location"] == "/activity"
     assert COOKIE_NAME in r.cookies
     assert client.get("/camera").status_code == 200
     assert "Camera" in client.get("/activity").text
@@ -252,7 +255,9 @@ def test_manifest_and_icons_are_public(client):
     assert r.status_code == 200
     manifest = r.json()
     assert manifest["display"] == "standalone"
-    assert manifest["start_url"] == "/camera"
+    # The home-screen icon has its own copy of that decision, and is the
+    # one that was missed the first time the landing page moved.
+    assert manifest["start_url"] == "/activity"
     srcs = {i["src"] for i in manifest["icons"]}
     assert "/static/icon-192.png" in srcs and "/static/icon-512.png" in srcs
     assert any(i.get("purpose") == "maskable" for i in manifest["icons"])

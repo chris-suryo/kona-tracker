@@ -17,7 +17,7 @@ from kona_tracker.fi.parse import ActivityStats, CollarStatus, PetProfile, RestW
 from kona_tracker.fi.service import FiSnapshot
 from kona_tracker.web.app import create_app
 from kona_tracker.web.settings import Settings
-from kona_tracker.web.views import activity_context, duration_parts, step_ring
+from kona_tracker.web.views import _hhmm, activity_context, duration_parts, step_ring
 
 NOW = datetime(2026, 9, 11, 15, 0, tzinfo=UTC)
 #: Kona's zone, the value `tests/fixtures/status.json` carries. Pinned here
@@ -128,7 +128,7 @@ def test_the_page_prints_naps_and_last_night_as_hours_and_minutes():
 
 def test_resting_since_uses_the_start_fi_already_sends():
     since = NOW - timedelta(hours=2, minutes=18)
-    expected = since.astimezone(CHICAGO).strftime("%H:%M")
+    expected = _hhmm(since.astimezone(CHICAGO))
     ctx = activity_context(_snapshot(activity="rest", activity_since=since), configured=True)
     assert ctx["activity_since"] == expected
     page = render(_snapshot(activity="rest", activity_since=since))
@@ -150,7 +150,7 @@ def test_a_rest_that_began_on_an_earlier_day_names_the_day():
     local = began.astimezone(CHICAGO)
     assert local.date() < NOW.astimezone(CHICAGO).date(), "this fixture must cross her midnight"
     ctx = activity_context(_snapshot(activity="rest", activity_since=began), configured=True)
-    assert ctx["activity_since"] == f"{local.day} {local:%b} {local:%H:%M}"
+    assert ctx["activity_since"] == f"{local.day} {local:%b} {_hhmm(local)}"
 
 
 def test_without_fi_s_timezone_since_falls_back_to_the_servers_clock():
@@ -171,7 +171,7 @@ def test_without_fi_s_timezone_since_falls_back_to_the_servers_clock():
         _snapshot(activity="rest", activity_since=since), profile=PetProfile(name="Kona")
     )
     ctx = activity_context(zoneless, configured=True)
-    assert ctx["activity_since"].endswith(since.astimezone().strftime("%H:%M"))
+    assert ctx["activity_since"].endswith(_hhmm(since.astimezone()))
     assert ctx["clock_zone"] is None, "an unnamed clock is never labelled as hers"
 
 

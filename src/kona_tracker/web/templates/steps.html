@@ -30,7 +30,8 @@
       {% else %}<rect class="step-bar" x="{{ b.x }}" y="{{ 162 - b.height }}" width="{{ b.width }}" height="{{ b.height }}" rx="1.5"/>{% endif %}
     </a>{% endfor %}
   </svg>
-  <div class="chart-axis"><span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>24:00</span></div>
+  {# Midnight to midnight, in the clock the rest of the app now uses. #}
+  <div class="chart-axis"><span>12 am</span><span>6 am</span><span>noon</span><span>6 pm</span><span>12 am</span></div>
   <p class="chart-selection" aria-live="polite">{% if hour_chosen %}<strong>{{ hour_chosen.label }}</strong> · {% if hour_chosen.future %}Not yet{% elif hour_chosen.value is none %}No reading{% else %}{{ '{:,}'.format(hour_chosen.value) }} steps{% endif %}{% else %}Tap an hour to see its reading.{% endif %}</p>
   <details class="history-readings"><summary>View readings</summary>
     <p class="chart-footnote">The values plotted above, as Fi reported them. Dots mean zero; dashed marks mean no reading; faint marks are hours still to come. The day total is Fi's own figure and can run ahead of the bars.</p>

@@ -2,7 +2,7 @@
   "name": "Kona",
   "short_name": "Kona",
   "description": "Check on Kona: her camera and her collar.",
-  "start_url": "/camera",
+  "start_url": "/activity",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",

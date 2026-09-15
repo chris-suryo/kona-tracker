@@ -63,7 +63,7 @@ def test_last_night_is_the_night_not_the_calendar_day():
     assert night["parts"] == [("7", "h"), ("44", "m")]
     assert night["raw"] == NIGHT_SLEEP
     assert night["source"] == "overnight"
-    assert night["labels"]["span"] == "00:20 – 08:04"
+    assert night["labels"]["span"] == "12:20 am – 8:04 am"
     assert night["labels"]["wake_label"] == "slept through"
 
 
@@ -89,7 +89,7 @@ def test_a_current_connection_reading_speaks_in_the_present():
     label = connection_label(
         CollarStatus(on_base=True, connection_at=same, last_report=same), NEW_YORK
     )
-    assert label == {"text": "On charger", "current": True}
+    assert label == {"text": "Connected to base", "current": True}
 
 
 def test_cellular_carries_the_signal_when_it_is_current():
@@ -114,7 +114,7 @@ def test_a_stale_reading_is_a_memory_and_says_when():
         NEW_YORK,
     )
     assert label["current"] is False
-    assert label["text"] == "Last connected to the charger · 04:48"
+    assert label["text"] == "Last connected to the base · 4:48 am"
     # Never the bare present tense that started this.
     assert label["text"] != "On charger"
 
@@ -144,4 +144,4 @@ def test_a_reading_with_no_date_is_taken_at_face_value():
     """Older snapshots, and any response where Fi omits the date, keep the
     behaviour they had: state it plainly rather than invent a doubt."""
     label = connection_label(CollarStatus(on_base=True), NEW_YORK)
-    assert label == {"text": "On charger", "current": True}
+    assert label == {"text": "Connected to base", "current": True}

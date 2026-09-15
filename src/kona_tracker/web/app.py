@@ -203,6 +203,12 @@ WALK_ID = re.compile(r"[A-Za-z0-9_-]{1,64}")
 
 log = logging.getLogger("kona_tracker.web")
 
+#: Where the app opens: signing in, "/", and the home-screen icon all land
+#: here. It was "/camera" from the days when the camera was the only thing
+#: this app did. Activity is what you open it for -- the camera is one tap
+#: away and the dog is not.
+HOME = "/activity"
+
 
 def create_app(
     settings: Settings,
@@ -398,7 +404,7 @@ def create_app(
     @app.get("/login", response_class=HTMLResponse)
     def login_page(request: Request):
         if authed(request):
-            return RedirectResponse("/camera", status_code=303)
+            return RedirectResponse(HOME, status_code=303)
         return templates.TemplateResponse(request, "login.html", {"error": None})
 
     @app.post("/login", response_class=HTMLResponse)
@@ -422,7 +428,7 @@ def create_app(
                 request, "login.html", {"error": "That's not it."}, status_code=401
             )
         auth.lockout.clear(key)
-        resp = RedirectResponse("/camera", status_code=303)
+        resp = RedirectResponse(HOME, status_code=303)
         resp.set_cookie(
             COOKIE_NAME,
             auth.issue_cookie(),
@@ -444,7 +450,7 @@ def create_app(
 
     @app.get("/")
     def root():
-        return RedirectResponse("/camera", status_code=303)
+        return RedirectResponse(HOME, status_code=303)
 
     @app.get("/camera", response_class=HTMLResponse)
     def camera(request: Request):

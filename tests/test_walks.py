@@ -104,7 +104,7 @@ def test_walk_rows_keep_today_only_on_kona_s_clock_and_keep_the_car_ride():
     rows = walk_rows(walks, FIXTURE_NOW.astimezone(CHICAGO), CHICAGO)
     assert [r["id"] for r in rows] == ["late", "ride"]
     late, ride = rows
-    assert late["label"] == "Walk" and late["span"] == "08:14 – 09:24"
+    assert late["label"] == "Walk" and late["span"] == "8:14 am – 9:24 am"
     assert late["duration"] == [("1", "h"), ("10", "m")]
     assert late["steps"] == "11,353" and late["distance"] == "4.0 mi"
     assert late["href"] == "/walks/late"
@@ -131,9 +131,9 @@ def test_overnight_labels_say_when_and_how_often_she_woke():
     )
     eastern = ZoneInfo("America/New_York")
     labels = overnight_labels(night, eastern)
-    assert labels["span"] == "00:20 – 08:04"
+    assert labels["span"] == "12:20 am – 8:04 am"
     assert labels["wake_label"] == "woke twice" and labels["wake_count"] == 2
-    assert labels["interruptions"] == ["03:00 – 03:05", "05:10 – 05:25"]
+    assert labels["interruptions"] == ["3:00 am – 3:05 am", "5:10 am – 5:25 am"]
     assert overnight_labels(None, eastern) is None
     quiet = Overnight(None, 100, night.sleep_start, night.sleep_end)
     assert overnight_labels(quiet, eastern)["wake_label"] == "slept through"
@@ -150,7 +150,7 @@ def test_activity_page_lists_today_s_walks_and_last_night_s_span():
     assert "Car ride" in page and 'href="/walks/ride"' not in page
     assert "11,353" in page and "4.0 mi" in page
     # The rest metric now carries Fi's own interval for the night, Chicago time.
-    assert "23:20 – 07:04 · woke twice" in page
+    assert "11:20 pm – 7:04 am · woke twice" in page
 
 
 def test_walk_page_draws_the_route_and_reports_fi_s_figures():
@@ -158,7 +158,7 @@ def test_walk_page_draws_the_route_and_reports_fi_s_figures():
         r = c.get("/walks/walk-late")
         assert r.status_code == 200
         page = r.text
-        assert "Today · 08:14 – 09:24" in page
+        assert "Today · 8:14 am – 9:24 am" in page
         assert "11,353" in page and "4.0 mi" in page and "8 GPS fixes" in page
         assert '<script type="application/json" id="map-points">' in page
         assert page.count('"lat"') == 8, "every fix of the route, none invented"

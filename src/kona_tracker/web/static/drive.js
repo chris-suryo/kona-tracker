@@ -222,7 +222,17 @@
     });
   });
 
-  [[rotL, -1], [rotR, 1]].forEach(function (pair) {
+  // Rotate left is POSITIVE omega. The gateway's frame is "vx forward, vy
+  // left, omega counter-clockwise" (robot_gateway.py, wheel_duties), and
+  // counter-clockwise seen from above is a left turn -- so the left button
+  // sends +1. These were the other way round until 2026-09-15, when Chris
+  // drove the robot for the first time and reported "the left and right
+  // turns are reversed". Ours, not theirs: the gateway matches its own
+  // documented contract, and we were sending the opposite sign.
+  //
+  // Fixed here rather than on the Pi for that reason. A negation on their
+  // side would have made every other client wrong instead.
+  [[rotL, 1], [rotR, -1]].forEach(function (pair) {
     var button = pair[0], direction = pair[1];
     button.addEventListener('pointerdown', function (e) {
       if (button.disabled) { return; }

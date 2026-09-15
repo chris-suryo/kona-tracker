@@ -129,9 +129,16 @@ def test_the_button_says_what_pressing_it_does(state, on, label):
     assert button["offered"] is True
     assert button["on"] is on
     assert button["label"] == label
-    # "Live" alone is a claim about the data; the seconds are a fact about
-    # this server, so the note carries the number either way.
-    assert "20 s" in button["note"]
+    # The caption used to print our polling interval in both states. That is
+    # a fact about this server, not about Kona -- Chris's words on 2026-09-15
+    # were "I don't ever need to see that". Off, the button speaks for
+    # itself and the note is empty; on, the one thing worth saying is that
+    # it stops by itself, so nobody leaves it draining the collar.
+    assert "20 s" not in button["note"], "our cadence is not news about a dog"
+    if on:
+        assert button["note"] == "Stops on its own in 30 min"
+    else:
+        assert button["note"] == ""
 
 
 def test_no_collar_means_no_button_rather_than_a_dead_one():
