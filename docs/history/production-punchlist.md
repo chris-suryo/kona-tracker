@@ -2,7 +2,7 @@
 
 Written 2026-09-11, at the end of the first day the app ran on Chris's
 phone. Three requests from him, one diagnosis, a security pass, and an
-honest list of what this still lacks. `docs/handoff.md` is the project;
+honest list of what this still lacks. `docs/history/handoff.md` is the project;
 this is the queue to production.
 
 ---

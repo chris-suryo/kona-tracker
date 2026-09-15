@@ -1,7 +1,7 @@
 # Overnight brief, 2026-09-11
 
 For a fresh session picking this up while Chris sleeps. Read `CLAUDE.md`,
-then this, then `docs/codex-polish-handoff.md` for what Codex just landed.
+then this, then `docs/history/codex-polish-handoff.md` for what Codex just landed.
 Everything below is either decided or explicitly marked as needing Chris.
 
 ---

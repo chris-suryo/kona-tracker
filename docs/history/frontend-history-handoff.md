@@ -185,7 +185,7 @@ reported usage-limit rejection; no alternate browser access was attempted.
 Suggested Claude pickup prompt:
 
 > Continue kona-tracker from branch chatgpt/ui-pass, draft PR #7. Read
-> CLAUDE.md, PROJECT.md and docs/frontend-history-handoff.md first. The branch
+> CLAUDE.md, PROJECT.md and docs/history/frontend-history-handoff.md first. The branch
 > includes main through f266de8 plus the frontend history prototype and
 > approved polish. Fetch current main and inspect newer merges before
 > changing anything. Preserve the camera snapshot polling implementation.

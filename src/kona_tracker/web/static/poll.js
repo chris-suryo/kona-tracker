@@ -9,7 +9,7 @@
 // the small pool the stream waits use was full and no new stream could
 // start: status polls kept answering, video never arrived, and only a
 // server restart cleared it. Measured on Chris's iPhone, 2026-09-11; the
-// record is docs/camera-black-screen-handoff.md.
+// record is docs/history/camera-black-screen-handoff.md.
 //
 // So each frame is one short request. The client sends back the seq it was
 // last given and the server holds the request until a newer frame exists,

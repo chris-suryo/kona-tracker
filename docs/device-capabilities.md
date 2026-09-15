@@ -35,7 +35,7 @@ diagnosis steps.
 
 (The model was previously recorded here as a "C230 HD". That was wrong;
 Chris confirmed a **C270** on 2026-09-10, recorded in
-`docs/next-session.md`. The string drives no behaviour either way:
+`docs/history/next-session.md`. The string drives no behaviour either way:
 capabilities come from `KONA_CAMERA_MODEL`, and any value not in
 `BY_MODEL` -- including no value at all -- falls back to the video-only
 `USB` set.)
@@ -636,7 +636,7 @@ server, not Safari: abandoned streams saturated the pool their waits ran
 on, and a server restart cured it every time. The Camera tab now polls
 `/snapshot.jpg` one frame at a time and holds no stream. The build,
 the Chromium verification and the iPhone acceptance list are in
-`docs/camera-black-screen-handoff.md`.
+`docs/history/camera-black-screen-handoff.md`.
 
 This matters more than it sounds. Every camera fix before this was verified
 in desktop Chrome, a different engine, which is why several rounds of

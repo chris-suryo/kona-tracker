@@ -85,23 +85,23 @@ by CI.
 Things that will silently break if changed without reading first -- the
 Content-Security-Policy that forbids inline scripts, the vendored and
 byte-pinned Leaflet, page zoom being off on purpose -- are listed in
-`docs/chatgpt-handoff.md`, each with the reason.
+`docs/history/chatgpt-handoff.md`, each with the reason.
 
 ## The docs, and which one to trust
 
 | File | What it is |
 |---|---|
 | `PROJECT.md` | **Current.** Status, hard-won facts, the queue. |
-| `docs/production-punchlist.md` | The queue with the reasoning behind every item. |
+| `docs/history/production-punchlist.md` | The queue with the reasoning behind every item. |
 | `docs/scaling-limits.md` | The ceilings this design has, with the measurements behind each. |
 | `docs/device-capabilities.md` | What the hardware can actually do, measured. Cameras and the collar. |
 | `docs/data-brief.md` | What Fi's API returns and what the page may therefore claim. |
 | `docs/remote-access.md` | Tunnel, Tailscale, keeping the PC awake, what breaks. |
 | `docs/first-run.md` | Setting it up, in plain language. |
-| `docs/camera-black-screen-handoff.md` | Why the camera polls one frame at a time instead of streaming. |
-| `docs/chatgpt-handoff.md` | The brief for a visiting assistant. |
-| `docs/handoff.md` | The 2026-09-10 handoff. Dated; `PROJECT.md` supersedes it. |
-| `docs/archive/` | Records of past days, not instructions. |
+| `docs/history/camera-black-screen-handoff.md` | Why the camera polls one frame at a time instead of streaming. |
+| `docs/history/chatgpt-handoff.md` | The brief for a visiting assistant. |
+| `docs/history/handoff.md` | The 2026-09-10 handoff. Dated; `PROJECT.md` supersedes it. |
+| `docs/history/` | Records of past days, not instructions. |
 
 ## Privacy
 

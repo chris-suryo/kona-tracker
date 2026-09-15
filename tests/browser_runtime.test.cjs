@@ -6,7 +6,7 @@
 // only; nothing runs this file automatically, so a green CI says nothing
 // about it. Run it yourself after touching app.js, poll.js, camera.js or robot.js. Wiring it
 // into CI means installing Node on both runners, which is a dependency
-// decision that is Chris's to make (docs/overnight-brief.md, item 3).
+// decision that is Chris's to make (docs/history/overnight-brief.md, item 3).
 const {test} = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');

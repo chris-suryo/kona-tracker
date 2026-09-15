@@ -1,8 +1,8 @@
 # Overnight report, 2026-09-11
 
 For Chris, on the phone, before touching the PC. Read with
-`docs/screenshots/2026-09-11/` open. The queue and its reasoning are in
-`docs/overnight-brief.md`; this is what happened to it.
+`docs/screenshots/history/2026-09-11/` open. The queue and its reasoning are in
+`docs/history/overnight-brief.md`; this is what happened to it.
 
 Starting state verified before anything was touched: branch
 `claude/elegant-sagan-tit1xp` at `1ea0b99`, 234 passed, ruff clean, CI run
@@ -75,7 +75,7 @@ Each is one commit; the commit message carries the why.
 
 6. **The Node browser test says at the top that CI does not run it.**
 
-7. **Screenshots** in `docs/screenshots/2026-09-11/`: Activity (light,
+7. **Screenshots** in `docs/screenshots/history/2026-09-11/`: Activity (light,
    dark), the sample preview, the profile page (light, dark), and the
    dark-map prototype. Real Chromium at 390 px against the real app. Two
    gaps: the Bricolage font could not load in the sandbox, so these show the
@@ -84,7 +84,7 @@ Each is one commit; the commit message carries the why.
 
 ## Proposed only
 
-- **Dark map.** `docs/screenshots/2026-09-11/dark-map-prototype.png` shows a
+- **Dark map.** `docs/screenshots/history/2026-09-11/dark-map-prototype.png` shows a
   synthetic tile in OpenStreetMap's palette under today's dark filter and
   under `invert(1) hue-rotate(180deg) brightness(.95) contrast(.9)
   saturate(.6)`. On the synthetic tile it reads as a proper dark basemap:

@@ -119,7 +119,7 @@ carries `X-Kona-State`, `X-Kona-Seq`, `X-Kona-Error` and
 same response as its pixels and no longer polls `/status.json` at all. A
 frame is assigned to the `<img>` as an object URL only when the server
 called it live; the placeholder is never shown as a picture. The CSP
-`img-src` gains `blob:` for that, and `docs/chatgpt-handoff.md` now lists
+`img-src` gains `blob:` for that, and `docs/history/chatgpt-handoff.md` now lists
 it among the constraints that fail silently.
 
 The MJPEG endpoint stays for curl and a desktop but is fenced: its waits

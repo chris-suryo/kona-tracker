@@ -14,16 +14,16 @@ kit: 3e06b156508b881bef26345c0bb7a63c90db4824 · stamped by dos new
 waiting. Branch from `main`, open a PR, CI green, merge. ChatGPT's UI pass
 (PR #7) was reconciled in as #14 and #7 closed.
 
-`docs/production-punchlist.md` is the queue and carries the reasoning behind
+`docs/history/production-punchlist.md` is the queue and carries the reasoning behind
 every item; `docs/scaling-limits.md` is the standing list of ceilings;
-`docs/chatgpt-handoff.md` is the brief for a visiting assistant.
+`docs/history/chatgpt-handoff.md` is the brief for a visiting assistant.
 
 - **Slice 1:** `kona probe` dumps every Fi API field, redacted. Eleven rounds
   run against Kona's collar; each round asks one unknown per query so the
-  validation error names the next thing. `docs/slice-1-probe-plan.md`.
+  validation error names the next thing. `docs/history/slice-1-probe-plan.md`.
 - **Slice 2 + 2b:** `kona serve` = passcode gate, live camera (USB or RTSP,
-  reconnects, "NO SIGNAL" when stale). `docs/slice-2-camera-plan.md`,
-  `docs/slice-2b-rtsp-plan.md`.
+  reconnects, "NO SIGNAL" when stale). `docs/history/slice-2-camera-plan.md`,
+  `docs/history/slice-2b-rtsp-plan.md`.
 - **Camera is the Tapo C120 (2026-09-12).** RTSP `stream1` at 2560x1440,
   downscaled server-side to `KONA_CAMERA_WIDTH` after decode so the phone
   gets a sharp 1280-wide frame without the full bitrate. Latency: the reader
@@ -62,7 +62,7 @@ every item; `docs/scaling-limits.md` is the standing list of ceilings;
 - **Motion:** `@view-transition { navigation: auto; }` gives animated
   cross-document navigation on Safari 18.2+ and Chrome 126+. All CSS, no
   build step, all inside `prefers-reduced-motion` guards.
-  `docs/design-brief.md` explains why the app is HTML and not React.
+  `docs/history/design-brief.md` explains why the app is HTML and not React.
 - **Slice 5 (production pass, 2026-09-11):** her resting position on the map
   with honest tiers, a login lockout that survives a tunnel, Secure cookies
   by setting, a CSP with every script in a file, vendored Leaflet,
@@ -145,8 +145,8 @@ S4. One lights-off evening for the camera's black-frame rule in a genuinely
 S5. After a week of polling holding up, delete `/stream.mjpg` and the
     containment that exists only for it.
 
-*Record, for the reasoning behind any of the above:* `docs/archive/`,
-`docs/camera-black-screen-handoff.md` (why the camera polls one frame at a
+*Record, for the reasoning behind any of the above:* `docs/history/`,
+`docs/history/camera-black-screen-handoff.md` (why the camera polls one frame at a
 time), `docs/remote-access.md` "When it breaks" (the quick tunnel failure),
 and `.dos/outbox/` (every session's artifact).
 
@@ -156,7 +156,7 @@ and `.dos/outbox/` (every session's artifact).
 |---|---|
 | Claude Code (cloud) | code, tests, CI, docs. Cannot see hardware, LAN, or the Fi API. |
 | Chris | runs the local steps (`docs/first-run.md`), hardware, `.env`, merges. |
-| Astro (ChatGPT) | visual and copy passes. Brief it with `docs/chatgpt-handoff.md`, which lists the constraints that now fail silently (CSP, vendored Leaflet, zoom). |
+| Astro (ChatGPT) | visual and copy passes. Brief it with `docs/history/chatgpt-handoff.md`, which lists the constraints that now fail silently (CSP, vendored Leaflet, zoom). |
 | Claude Design | Meadow direction chosen; further visual passes edit `web/templates` + `static/app.css`. |
 
 Shared only via GitHub. One branch per assistant.
