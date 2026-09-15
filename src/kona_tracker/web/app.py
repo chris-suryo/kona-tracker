@@ -17,7 +17,6 @@ from fastapi import (
     Response,
 )
 from fastapi.responses import (
-    HTMLResponse,
     RedirectResponse,
 )
 from fastapi.staticfiles import StaticFiles
@@ -48,11 +47,10 @@ from kona_tracker.web.logs import attach_file_logging, detach_file_logging
 from kona_tracker.web.routes.activity import make_activity_router
 from kona_tracker.web.routes.auth import make_auth_router
 from kona_tracker.web.routes.camera import make_camera_router
+from kona_tracker.web.routes.profile import make_profile_router
 from kona_tracker.web.routes.robot import make_robot_router
 from kona_tracker.web.settings import Settings
 from kona_tracker.web.views import (
-    activity_context,
-    camera_health,
     map_tile_config,
 )
 
@@ -363,30 +361,6 @@ def create_app(
 
     app.state.health_summary = health_summary
 
-    @app.get("/settings", response_class=HTMLResponse)
-    def profile_settings(request: Request, from_preview: bool = False):
-        snapshot = fi.snapshot() if fi else None
-        context = activity_context(snapshot, configured=fi is not None)
-        # Not a tab. With `tab` set the header drew the Activity/Camera
-        # toggle with neither selected, which read as broken, plus a second
-        # avatar over the hero's. This page is reached from the avatar and
-        # left by its own back link, so it carries no header at all.
-        context["tab"] = None
-        # The same statistics camera-doctor reads, so a wedged USB device
-        # can be diagnosed from a phone instead of at the machine.
-        house_kind = "rtsp" if settings.camera_source == "rtsp" else "usb"
-        context["camera"] = camera_health(hub.status(), kind=house_kind)
-        context["camera_description"] = settings.camera_description()
-        # The robot is a second camera and gets its own rows, in its own
-        # words; None when there is no robot and the section is not drawn.
-        context["robot"] = (
-            camera_health(robot_hub.status(), kind="robot") if robot_hub is not None else None
-        )
-        context["robot_name"] = settings.robot_name
-        context["from_preview"] = from_preview
-        context["build"] = build.label
-        return templates.TemplateResponse(request, "settings.html", context)
-
     deps = AppDeps(
         settings=settings,
         templates=templates,
@@ -406,5 +380,6 @@ def create_app(
     app.include_router(make_camera_router(deps))
     app.include_router(make_robot_router(deps))
     app.include_router(make_activity_router(deps))
+    app.include_router(make_profile_router(deps))
 
     return app
