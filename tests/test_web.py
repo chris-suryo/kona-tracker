@@ -588,6 +588,120 @@ def test_leaflet_is_vendored_and_is_the_exact_release_the_page_used_to_pin():
         assert (vendored / "images" / image).exists(), "leaflet.css references these"
 
 
+def test_the_webfont_is_vendored_and_is_the_variable_build_google_serves_safari():
+    """A CDN is a dependency, and this one was invisible. The capture sandbox
+    cannot reach it, so every screenshot this project produced rendered in
+    DejaVu Sans while the phone rendered Bricolage Grotesque, and nothing
+    said so.
+
+    These are the bytes Google returns for `opsz,wght@12..96,400..800` to an
+    iOS Safari User-Agent: one variable file per subset. The same URL with a
+    Chrome UA returns fifteen static instances, which render at a fixed
+    optical size and look wrong in a way no test could describe -- so the
+    hashes are pinned rather than the filenames.
+    """
+    import hashlib  # noqa: PLC0415 - test-only
+
+    from kona_tracker.web.app import HERE  # noqa: PLC0415
+
+    fonts = HERE / "static" / "fonts"
+    expected = {
+        "bricolage-grotesque-v9-latin.woff2": (
+            76868,
+            "85f55a58a31e61a2e19e8bb25fed503181bf2a6b4cab76c589992cfaac377447",
+        ),
+        "bricolage-grotesque-v9-latin-ext.woff2": (
+            30636,
+            "1d04719f1325400ea4267e630dba29b02af87eb094d7d71d2e4d80a05479d07a",
+        ),
+        "bricolage-grotesque-v9-vietnamese.woff2": (
+            13060,
+            "7e13a14cb0bd5fcacf4907e47ac01fb4adb471540663987ecf356043612368c0",
+        ),
+    }
+    for name, (size, sha) in expected.items():
+        blob = (fonts / name).read_bytes()
+        assert blob[:4] == b"wOF2", f"{name} is not a WOFF2 file"
+        assert len(blob) == size, f"{name} is not the {size}-byte subset Google serves"
+        assert hashlib.sha256(blob).hexdigest() == sha, (
+            f"{name} is not the file fetched from fonts.gstatic.com v9 with a Safari UA"
+        )
+
+    licence = (fonts / "OFL.txt").read_text(encoding="utf-8")
+    assert licence.startswith("Copyright 2022 The Bricolage Grotesque Project Authors")
+    assert "SIL Open Font License, Version 1.1" in licence
+
+
+def test_the_stylesheet_declares_the_vendored_font_and_nothing_remote():
+    """A `src:` still pointing at a CDN, or a rule that lost its
+    unicode-range, leaves the page working here and wrong on the phone."""
+    from kona_tracker.web.app import HERE  # noqa: PLC0415
+
+    css = (HERE / "static" / "app.css").read_text(encoding="utf-8")
+    # The brace matters: a comment elsewhere in the file mentions @font-face.
+    assert css.count("@font-face {") == 3, "one @font-face rule per subset"
+    assert css.count("font-weight: 400 800") == 3, (
+        "a single weight per block means someone re-fetched with a Chrome UA and "
+        "vendored the fifteen static instances instead of the variable build"
+    )
+    for name in (
+        "fonts/bricolage-grotesque-v9-latin.woff2",
+        "fonts/bricolage-grotesque-v9-latin-ext.woff2",
+        "fonts/bricolage-grotesque-v9-vietnamese.woff2",
+    ):
+        assert f"url({name}) format('woff2')" in css, name
+        assert (HERE / "static" / name).is_file(), f"{name} is declared but not in the tree"
+    # One distinctive range per subset: a hand-mangled copy stops matching.
+    for uni in ("U+1EA0-1EF9", "U+2C60-2C7F", "U+FFFD"):
+        assert uni in css, f"{uni} is missing; a subset's unicode-range was mangled"
+    assert "font-display: swap" in css
+
+
+def test_the_font_files_are_served_as_fonts(client):
+    """Python's mimetypes has no .woff2 of its own, so without the add_type in
+    app.py these come back as application/octet-stream -- and every response
+    here carries `nosniff`, which is the pair a browser may refuse a font on.
+    It would pass on the machine that vendored the font and fail on Windows,
+    which is where this app runs. Both CI runners execute this."""
+    login(client)
+    for name in (
+        "bricolage-grotesque-v9-latin.woff2",
+        "bricolage-grotesque-v9-latin-ext.woff2",
+        "bricolage-grotesque-v9-vietnamese.woff2",
+    ):
+        r = client.get(f"/static/fonts/{name}")
+        assert r.status_code == 200, name
+        assert r.headers["content-type"] == "font/woff2", (name, r.headers["content-type"])
+        assert r.content[:4] == b"wOF2", name
+
+
+def test_no_page_and_no_stylesheet_reaches_out_to_a_font_host(client):
+    """The counterpart to the Leaflet test: the font was the last third-party
+    request any page made. Scanned in the source as well as in the served
+    HTML, because a <link> in a template no test renders is still a request a
+    phone would make."""
+    from pathlib import Path  # noqa: PLC0415
+
+    from kona_tracker.web.app import HERE  # noqa: PLC0415
+
+    hosts = ("fonts.googleapis.com", "fonts.gstatic.com")
+    sources = sorted(Path(HERE / "templates").glob("*.html")) + [HERE / "static" / "app.css"]
+    offenders = [
+        f"{path.name}: {host}"
+        for path in sources
+        for host in hosts
+        if host in path.read_text(encoding="utf-8")
+    ]
+    assert not offenders, f"the font is vendored; nothing may name a font CDN: {offenders}"
+
+    login(client)
+    for route in ("/login", "/activity", "/camera", "/settings"):
+        page = client.get(route).text
+        for host in hosts:
+            assert host not in page, (route, host)
+        assert "preconnect" not in page, route
+
+
 def test_the_map_page_loads_no_third_party_script(client):
     login(client)
     page = client.get("/activity?preview=1").text
@@ -598,9 +712,10 @@ def test_the_map_page_loads_no_third_party_script(client):
 
 def test_every_response_carries_the_security_headers(client):
     """Once the URL is public this is a page with a live camera on it: it
-    must not be frameable, must not hand OpenStreetMap a referrer, and may
-    run only its own scripts. The headers ride the outer middleware so a
-    login redirect, an <img> 401 and a static file all get them."""
+    must not be frameable, must not hand OpenStreetMap a referrer, may
+    run only its own scripts, and fetches its font from itself. The headers
+    ride the outer middleware so a login redirect, an <img> 401 and a static
+    file all get them."""
     from kona_tracker.web.app import SECURITY_HEADERS
 
     csp = SECURITY_HEADERS["Content-Security-Policy"]
@@ -611,6 +726,12 @@ def test_every_response_carries_the_security_headers(client):
     assert "https://tiles.stadiamaps.com" in csp, (
         "the optional Stadia basemap; without this every tile is silently blocked"
     )
+    # The trailing semicolon is load-bearing: without it this also passes for
+    # `style-src 'self' https://evil.example`.
+    assert "style-src 'self';" in csp and "font-src 'self';" in csp, (
+        "the webfont is vendored; both directives are self-only now"
+    )
+    assert "fonts.googleapis.com" not in csp and "fonts.gstatic.com" not in csp
 
     responses = [
         client.get("/login"),

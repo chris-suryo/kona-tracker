@@ -10,6 +10,7 @@ module per domain; the strings they render are built in `views/`.
 from __future__ import annotations
 
 import logging
+import mimetypes
 import sys
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
@@ -62,6 +63,17 @@ from kona_tracker.web.views import map_tile_config
 HERE = Path(__file__).parent
 PUBLIC_PATHS = {"/login", "/healthz"}
 
+#: Python's own mimetypes table has no `.woff2`. It resolves on this machine
+#: only because the image happens to ship /etc/mime.types, which Windows --
+#: where this app actually runs -- does not. Left alone, Starlette serves the
+#: vendored font as `application/octet-stream`, and every response here
+#: carries `X-Content-Type-Options: nosniff`: exactly the pair a browser is
+#: entitled to refuse a font on. It would work on the machine that vendored
+#: the font and fail on the machine that serves it, which is the worst shape
+#: a bug can have. Module level, so the registration happens once and lands
+#: on top of whatever the platform's own table says.
+mimetypes.add_type("font/woff2", ".woff2")
+
 #: Sent with every response, static files and 401s included. Read against the
 #: threat that matters once there is a public URL: a page with a live camera
 #: on it. Nothing here is a nonce -- every script the pages use is a file
@@ -81,11 +93,20 @@ PUBLIC_PATHS = {"/login", "/healthz"}
 #: is the same bargain as OSM's host for the optional Alidade Smooth Dark
 #: basemap, off unless `KONA_MAP_TILES=stadia`; naming both costs nothing
 #: while only one can be configured at a time.
+#: `style-src` and `font-src` are `'self'` and nothing else because the
+#: webfont is vendored under `static/fonts/`. Bricolage Grotesque used to
+#: arrive as a stylesheet from one Google host naming files on another, which
+#: put two third-party origins in this header, a render-blocking request on
+#: every page load, and a third party in a position to learn which of these
+#: pages get opened and from where. Note that `font-src` previously had no
+#: `'self'` at all -- a directive replaces the `default-src` fallback rather
+#: than extending it -- so a self-hosted font would have been blocked with
+#: nothing but a console line on a phone nobody reads. That is the one
+#: failure this change could have shipped silently; tests/test_web.py pins it.
 #: No HSTS: the LAN address is plain http on purpose.
 SECURITY_HEADERS = {
     "Content-Security-Policy": (
-        "default-src 'self'; script-src 'self'; "
-        "style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; "
+        "default-src 'self'; script-src 'self'; style-src 'self'; font-src 'self'; "
         "img-src 'self' data: blob: https://tile.openstreetmap.org "
         "https://tiles.stadiamaps.com; connect-src 'self'; "
         "frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; "
