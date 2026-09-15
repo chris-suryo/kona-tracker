@@ -8,6 +8,7 @@
 *.mp3 binary
 *.ttf binary
 *.otf binary
+*.woff2 binary
 # Vendored Leaflet must stay byte-for-byte what npm publishes (its css has
 # CRLF line endings); the test pins the sha256 that unpkg's SRI carried.
 src/kona_tracker/web/static/leaflet/** -text
