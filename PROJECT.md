@@ -1,8 +1,10 @@
 # kona-tracker
 
 Private, passcode-gated, iPhone-first web app for Chris and their sister to
-check on Kona (dog). Activity tab from her Fi collar (Whoop later); Camera tab
-once the hardware exists.
+check on Kona (dog). Activity tab from her Fi collar; Camera tab from a Tapo
+C120 in the house; Robot tab and drive mode for a Hiwonder TurboPi, through a
+Pi-side safety gateway. `README.md` is the front door; this file is the
+running state.
 
 ---
 kit: 3e06b156508b881bef26345c0bb7a63c90db4824 · stamped by dos new
