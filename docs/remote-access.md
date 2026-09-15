@@ -157,7 +157,7 @@ Reopen PowerShell so the new `cloudflared` is on your PATH. Then, in one
 window, start the app:
 
 ```powershell
-cd C:\Users\harim\kona-tracker
+cd C:\Users\<you>\kona-tracker
 uv run kona serve
 ```
 
@@ -228,11 +228,11 @@ cloudflared tunnel create kona    # prints a tunnel UUID and writes a .json cred
 cloudflared tunnel route dns kona kona.yourdomain.com
 ```
 
-Then a config file at `C:\Users\harim\.cloudflared\config.yml`:
+Then a config file at `C:\Users\<you>\.cloudflared\config.yml`:
 
 ```yaml
 tunnel: kona
-credentials-file: C:\Users\harim\.cloudflared\<TUNNEL-UUID>.json
+credentials-file: C:\Users\<you>\.cloudflared\<TUNNEL-UUID>.json
 
 ingress:
   - hostname: kona.yourdomain.com
@@ -315,7 +315,7 @@ user, and run the task **at log on as that user**, not at startup as SYSTEM.
 ```powershell
 # PowerShell as Administrator. Adjust the uv path if `where.exe uv` differs.
 $action  = New-ScheduledTaskAction -Execute "$env:USERPROFILE\.local\bin\uv.exe" `
-           -Argument "run kona serve" -WorkingDirectory "C:\Users\harim\kona-tracker"
+           -Argument "run kona serve" -WorkingDirectory "C:\Users\<you>\kona-tracker"
 $trigger = New-ScheduledTaskTrigger -AtLogOn
 $settings = New-ScheduledTaskSettingsSet `
            -ExecutionTimeLimit ([TimeSpan]::Zero) `
@@ -400,7 +400,7 @@ This adds what the push cannot see: whether your sister can actually reach
 the app from outside. Worth having in addition, not instead. It is pointless
 before a named tunnel, since there is no stable URL to give it.
 
-Set `KONA_LOG_DIR=C:\Users\harim\kona-tracker\logs` in `.env` so the
+Set `KONA_LOG_DIR=C:\Users\<you>\kona-tracker\logs` in `.env` so the
 access log and every camera or Fi failure land in a rotating `kona.log`
 that survives the PowerShell window closing. On Windows a rotation can
 fail with a PermissionError while another program (an editor, a tail) holds

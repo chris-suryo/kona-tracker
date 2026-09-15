@@ -6,13 +6,27 @@
 #
 #   powershell -ExecutionPolicy Bypass -File scripts\robot_check.ps1
 #
-# Optional: -Address 10.0.0.42 if the Pi has moved.
+# Optional: -Address 192.0.2.42 if the Pi has moved.
 
 param(
-    [string]$Address = "10.0.0.3",
+    [string]$Address,
     [int]$CameraPort = 8080,
     [int]$GatewayPort = 9031
 )
+
+# Without -Address, check the robot the app itself is configured to reach:
+# the host in KONA_ROBOT_CONTROL_URL in .env. The point of this script is
+# to explain why the Robot tab says ROBOT OFF, and that tab uses this
+# address, not a default written into a script. `turbopi.local` is the
+# fallback when there is no .env yet.
+if (-not $Address) {
+    $envFile = Join-Path (Split-Path -Parent $PSScriptRoot) ".env"
+    if (Test-Path $envFile) {
+        $line = Get-Content $envFile | Where-Object { $_ -match '^\s*KONA_ROBOT_CONTROL_URL\s*=' } | Select-Object -First 1
+        if ($line -and $line -match '://([^:/\s]+)') { $Address = $Matches[1] }
+    }
+    if (-not $Address) { $Address = "turbopi.local" }
+}
 
 $ErrorActionPreference = "Continue"
 $failed = $false

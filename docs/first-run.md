@@ -226,18 +226,18 @@ to reach the robot. Two checks, then two lines.
    the one link nobody has tested yet:
 
    ```
-   Test-NetConnection 10.0.0.3 -Port 8080
+   Test-NetConnection 192.0.2.3 -Port 8080
    ```
 
    `TcpTestSucceeded : True` is the answer. `False` with the robot on means
    the router is keeping the two apart, and no `.env` line will fix that.
-2. Reserve `10.0.0.3` for the robot in the router (DHCP reservation), the
+2. Reserve `192.0.2.3` for the robot in the router (DHCP reservation), the
    same as the camera in step 4. Without it the address can change on the
    next reboot and the tab goes quiet without saying why.
 3. Edit `.env`:
 
    ```
-   KONA_ROBOT_SNAPSHOT_URL=http://10.0.0.3:8080/?action=snapshot
+   KONA_ROBOT_SNAPSHOT_URL=http://192.0.2.3:8080/?action=snapshot
    ```
 
    Restart `kona serve`. A **Robot** tab appears next to Camera. It says
@@ -288,13 +288,13 @@ app, because the thing it protects against is this app becoming unreachable.
 3. **From the PC** (PowerShell), confirm the machine can reach the gateway:
 
    ```
-   Test-NetConnection 10.0.0.3 -Port 9031
+   Test-NetConnection 192.0.2.3 -Port 9031
    ```
 
 4. **Then, and only then, edit `.env`:**
 
    ```
-   KONA_ROBOT_CONTROL_URL=http://10.0.0.3:9031
+   KONA_ROBOT_CONTROL_URL=http://192.0.2.3:9031
    KONA_ROBOT_TOKEN=<the secret the installer printed>
    ```
 
@@ -400,10 +400,10 @@ command.
   pytest parses `PYTEST_ADDOPTS` with `shlex.split()`, which treats a
   backslash as an escape character, so the obvious
   `--basetemp=$env:USERPROFILE\.pytest-tmp` arrives as
-  `C:Usersharim.pytest-tmp` — a path with no separators, which Windows reads
+  `C:Users<you>.pytest-tmp` — a path with no separators, which Windows reads
   as *relative to the current directory*. Combined with the warning below,
   that pointed a wipe-on-every-run flag at a folder inside the repo. Seen for
-  real on Chris's machine, 2026-09-16, as a stray `Usersharim.pytest-tmp/` in
+  real on Chris's machine, 2026-09-16, as a stray `Users<you>.pytest-tmp/` in
   `git status`. If you have one, it is safe to delete.
 
   Reopen PowerShell; `uv run pytest -q` then works normally. Note that pytest

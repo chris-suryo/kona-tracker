@@ -13,11 +13,11 @@ reason: **reading a template is not seeing what it renders.** A reviewer can
 now read `app.css` and still not know that the collar battery clips off the
 right edge at 390 px. Source answers "what did we write"; the capture answers
 "what does a phone draw". An audit wants both.
-(`docs/chatgpt-handoff.md` is the brief they go with.)
+(`docs/history/chatgpt-handoff.md` is the brief they go with.)
 
-**The dated directories** (`2026-09-13/`, `2026-09-14/`, …) are the opposite:
-a record of one specific change on one specific day, kept so a decision can be
-re-examined later. Never overwrite one.
+**The dated directories under `history/`** (`history/2026-09-13/`, …) are the
+opposite: a record of one specific change on one specific day, kept so a
+decision can be re-examined later. Never overwrite one.
 
 ## Regenerating `current-ui/`
 

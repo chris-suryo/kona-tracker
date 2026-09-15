@@ -37,7 +37,7 @@ can check on Kona, a Labrador. Three tabs: **Activity** from her Fi collar,
 TurboPi rover with its own camera, which they can drive around the house from
 a landscape-only page. Python, FastAPI, Jinja templates, plain CSS, no build
 step, no JavaScript framework, no npm. It runs on a Windows PC at home because
-the video originates there. `docs/design-brief.md` explains why it is HTML and
+the video originates there. `docs/history/design-brief.md` explains why it is HTML and
 not React, and is the block to paste into a design session.
 
 **The code being public does not make the deployment public.** Secrets live in
@@ -142,8 +142,8 @@ hardware) and open `http://localhost:8000`.
 and `/robot` are the two newest screens and **no human has ever looked at
 either on a real phone.** `/drive` is also the only screen in this app where
 a design mistake has a physical cost — it moves a four-wheeled robot around a
-house. Screenshots of every state are in `docs/screenshots/2026-09-15/` and
-`docs/screenshots/2026-09-14/`, including the failure states: the robot may
+house. Screenshots of every state are in `docs/screenshots/history/2026-09-15/` and
+`docs/screenshots/history/2026-09-14/`, including the failure states: the robot may
 still be moving, the picture frozen mid-drive, a rejected token, a flat
 battery, a stop that did not land.
 
@@ -196,7 +196,7 @@ Then, still open from the last pass:
 - Do not use `location.reload()` to refresh: pull-to-refresh repaints in
   place so the picture never blinks. The Camera tab no longer holds an MJPEG
   stream at all -- it fetches one frame at a time from `/snapshot.jpg?after=`
-  and hands the `<img>` an object URL. `docs/camera-black-screen-handoff.md`
+  and hands the `<img>` an object URL. `docs/history/camera-black-screen-handoff.md`
   is why, and `docs/scaling-limits.md` is what it costs.
 - Do not trust a forwarded-IP header from a non-loopback peer.
 - A mock that answers any query tests the parser, not the query.
@@ -249,7 +249,7 @@ Useful entry points:
 - `src/kona_tracker/web/static/app.css` — the entire stylesheet, hand-written
 - `src/kona_tracker/web/static/app.js`, `drive.js`, `camera.js`, `map*.js`
 - `src/kona_tracker/web/views.py` — where most user-facing strings are built
-- `PROJECT.md`, `docs/design-brief.md`, `docs/device-capabilities.md`
+- `PROJECT.md`, `docs/history/design-brief.md`, `docs/device-capabilities.md`
 
 ### Also look at the screenshots I attached
 

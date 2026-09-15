@@ -16,7 +16,7 @@ answer:
 powershell -ExecutionPolicy Bypass -File scripts\robot_check.ps1
 ```
 
-Add `-Address 10.0.0.42` if the Pi has moved.
+It checks the address in `.env`. Add `-Address 192.0.2.42` if the Pi has moved.
 
 ---
 
@@ -53,7 +53,7 @@ arp -a | Select-String "10.0.0"
 or try `http://turbopi.local:8080/?action=snapshot` in a browser — mDNS
 usually still finds it.
 
-**Fix it once, properly:** reserve `10.0.0.3` for the robot's MAC in the
+**Fix it once, properly:** reserve `192.0.2.3` for the robot's MAC in the
 router's DHCP settings. Everything else in this document is downstream of
 that not being done.
 

@@ -92,7 +92,7 @@ PUBLIC_PATHS = {"/login", "/healthz"}
 #: A blob URL can only be minted by script already running in the page, and
 #: with script-src 'self' and no inline that means only /static/*.js, so it
 #: concedes nothing `data:` did not already. `img-src` names OpenStreetMap's
-#: tile host, a decision already recorded in docs/handoff.md;
+#: tile host, a decision already recorded in docs/history/handoff.md;
 #: `Referrer-Policy: no-referrer` means it learns a tile area and nothing
 #: else, and map.js deliberately does NOT opt tile images back into sending an
 #: origin: an element-level referrerpolicy overrides this header, which would

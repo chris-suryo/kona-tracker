@@ -1,7 +1,7 @@
 # Next session — review, merge, and get it onto the phone
 
 Written 2026-09-10 after reviewing ChatGPT's two branches. Read
-`docs/handoff.md` first for the project; this file is only the immediate
+`docs/history/handoff.md` first for the project; this file is only the immediate
 queue. Decisions in here were made by Chris and are not open questions.
 
 ## What is waiting
@@ -127,8 +127,8 @@ launch is wanted.
   fix means required-argument messages now name the arguments for
   `overnightRestSummary` and the three history feeds.
 - ~~Archive the stale `docs/probe-fixes-handoff.md`.~~ **Done 2026-09-11**:
-  moved to `docs/archive/2026-09-09-probe-fixes-handoff.md` with a
-  superseded header. `docs/handoff.md` now names itself as current.
+  moved to `docs/history/2026-09-09-probe-fixes-handoff.md` with a
+  superseded header. `docs/history/handoff.md` now names itself as current.
 - The `?preview=1` sample-data page ChatGPT added deserves a careful look
   against this project's "never show data you do not have" rule. It is
   labelled sample-only; confirm that survives every state.

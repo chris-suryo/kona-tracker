@@ -1,6 +1,6 @@
 # What the data affords: a brief for UI work
 
-For a session doing design or front-end work. `docs/chatgpt-handoff.md`
+For a session doing design or front-end work. `docs/history/chatgpt-handoff.md`
 covers the constraints and the queue; this covers the thing underneath
 both. Every tile on that page is a claim about a live animal, and what Fi
 actually returns decides which claims we are entitled to make. Design that

@@ -163,5 +163,5 @@ is work today.
 - `docs/remote-access.md` — the tunnel, and the two settings it needs.
 - `docs/device-capabilities.md` §2c — the iOS Safari story and the camera
   measurements it came out of.
-- `docs/camera-black-screen-handoff.md` — why the design is snapshot polling
+- `docs/history/camera-black-screen-handoff.md` — why the design is snapshot polling
   rather than MJPEG.
