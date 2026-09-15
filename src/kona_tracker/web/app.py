@@ -618,9 +618,11 @@ def create_app(
     #: themselves rather than their `id()`s: a collected object's id can be
     #: reused, and a stale entry here would silently suppress a real stop.
     superseded: set[WebSocket] = set()
-    #: Strong references to the eviction tasks below. asyncio holds only a
-    #: weak one, so a task nobody keeps can be collected mid-await and the
-    #: close never happens -- a documented footgun, not a theoretical one.
+    #: Strong references to the tasks a closing connection leaves behind --
+    #: evicting a superseded socket, and the final stop. asyncio holds only
+    #: a weak reference, so a task nobody keeps can be collected mid-await
+    #: and never finish: a documented footgun, and on the stop path a
+    #: safety one.
     evictions: set[asyncio.Task] = set()
 
     @app.websocket("/robot/ws/drive")
@@ -783,7 +785,23 @@ def create_app(
             took_over = socket in superseded
             superseded.discard(socket)
             if not took_over:
-                await run_in_threadpool(gateway.stop_quietly)
+                # Scheduled, NOT awaited, and this is a safety fix rather than
+                # a tidy-up. Starlette cancels this handler's task when the
+                # socket closes, so by the time control reaches here the task
+                # is often already cancelling -- and an `await` in that state
+                # raises CancelledError *immediately*, before the call is
+                # made. The stop simply never happened. It showed up as
+                # `test_closing_the_page_stops_the_robot` failing on one CI
+                # run in three with a ten-second deadline, which is not a
+                # slow runner: the stop was never going to arrive.
+                #
+                # A task of its own is not cancelled with us, so it runs. The
+                # gateway's own watchdog still zeroes the motors half a second
+                # after commands cease -- that is the backstop, and it was
+                # doing the work this line was supposed to be doing.
+                task = asyncio.create_task(run_in_threadpool(gateway.stop_quietly))
+                evictions.add(task)
+                task.add_done_callback(evictions.discard)
 
     @app.get("/robot/led")
     def robot_led():
