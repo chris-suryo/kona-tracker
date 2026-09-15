@@ -752,25 +752,66 @@ def test_map_defaults_to_openstreetmap_and_carries_no_key():
     from kona_tracker.web.views import map_tile_config
 
     cfg = map_tile_config("osm")
-    assert cfg["url"].startswith("https://tile.openstreetmap.org")
-    assert "api_key" not in cfg["url"]
-    assert cfg["dark"] is False, "OSM raster is light; the CSS filter must still run"
+    for variant in ("light", "dark"):
+        assert cfg[variant]["url"].startswith("https://tile.openstreetmap.org")
+        assert "api_key" not in cfg[variant]["url"]
+        # There is no dark OSM raster, so both variants are the same light
+        # tiles and the CSS filter does the darkening. `dark` is "these tiles
+        # are already dark", not a copy of the theme name -- setting it True
+        # here would suppress the filter and leave a white map on a dark page.
+        assert cfg[variant]["dark"] is False, "OSM raster is light; the filter must still run"
 
     # Belt and braces: `stadia` without a key is refused at settings load, but
     # if it ever reached here it must fall back rather than emit a blank key.
-    assert map_tile_config("stadia", "")["url"].startswith("https://tile.openstreetmap.org")
+    fallback = map_tile_config("stadia", "")
+    assert fallback["light"]["url"].startswith("https://tile.openstreetmap.org")
 
 
 def test_stadia_config_names_the_style_the_retina_placeholder_and_attribution():
     from kona_tracker.web.views import map_tile_config
 
     cfg = map_tile_config("stadia", "NOT-A-REAL-KEY")
-    assert "alidade_smooth_dark" in cfg["url"]
-    assert "{r}" in cfg["url"], "Leaflet's retina placeholder; this is what sharpens it on a phone"
-    assert cfg["url"].endswith("?api_key=NOT-A-REAL-KEY")
-    assert "Stadia Maps" in cfg["attribution"] and "OpenMapTiles" in cfg["attribution"]
-    assert "OpenStreetMap" in cfg["attribution"], "required even on Stadia tiles"
-    assert cfg["dark"] is True, "already dark; the CSS filter must not darken it twice"
+    for variant in ("light", "dark"):
+        url = cfg[variant]["url"]
+        assert "{r}" in url, "Leaflet's retina placeholder; what sharpens it on a phone"
+        assert url.endswith("?api_key=NOT-A-REAL-KEY")
+        attribution = cfg[variant]["attribution"]
+        assert "Stadia Maps" in attribution and "OpenMapTiles" in attribution
+        assert "OpenStreetMap" in attribution, "required even on Stadia tiles"
+    assert cfg["dark"]["dark"] is True, "already dark; the CSS filter must not darken it twice"
+    assert cfg["light"]["dark"] is False, "Alidade Smooth is light; it may be filtered"
+
+
+def test_a_light_page_is_not_given_the_dark_basemap():
+    """The bug this shape exists to prevent, pinned by name.
+
+    `map_tile_config` returned one layer and it was always Alidade Smooth
+    *Dark*, so `KONA_MAP_TILES=stadia` served a black map under a light page
+    -- which is what Chris saw the night the Light theme shipped. The server
+    cannot choose, because the theme lives in the browser's localStorage, so
+    the fix is to send both and let `map_base.js` pick.
+    """
+    from kona_tracker.web.views import map_tile_config
+
+    cfg = map_tile_config("stadia", "NOT-A-REAL-KEY")
+    assert "alidade_smooth_dark" in cfg["dark"]["url"]
+    assert "alidade_smooth_dark" not in cfg["light"]["url"]
+    assert "alidade_smooth" in cfg["light"]["url"]
+
+
+def test_the_two_osm_variants_are_separate_objects():
+    """They hold the same values and must not be the same dict.
+
+    A shared object means `map_base.js` gets one entry twice after JSON
+    round-trips fine -- but any future code that edits one variant would
+    silently edit the other, which is the kind of aliasing bug that survives
+    review because the test data looks identical either way.
+    """
+    from kona_tracker.web.views import map_tile_config
+
+    cfg = map_tile_config("osm")
+    assert cfg["light"] == cfg["dark"]
+    assert cfg["light"] is not cfg["dark"]
 
 
 def test_stadia_selected_without_a_key_is_refused_by_name(tmp_path, monkeypatch):

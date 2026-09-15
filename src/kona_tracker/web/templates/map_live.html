@@ -68,6 +68,7 @@
 {% if map_points %}<script type="application/json" id="map-points">{{ map_points|tojson }}</script>{% endif %}
 {% if map_tiles %}<script type="application/json" id="map-config">{{ map_tiles|tojson }}</script>{% endif %}
 <script src="/static/leaflet/leaflet.js" defer></script>
+<script src="{{ asset('map_base.js') }}" defer></script>
 <script src="{{ asset('map_live.js') }}" defer></script>
 <script src="{{ asset('walk_mode.js') }}" defer></script>
 {% endblock %}

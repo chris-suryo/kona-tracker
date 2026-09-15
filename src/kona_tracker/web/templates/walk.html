@@ -39,5 +39,6 @@
 {% if map_tiles %}<script type="application/json" id="map-config">{{ map_tiles|tojson }}</script>{% endif %}
 {% endif %}
 <script src="/static/leaflet/leaflet.js" defer></script>
+<script src="{{ asset('map_base.js') }}" defer></script>
 <script src="{{ asset('map.js') }}" defer></script>
 {% endblock %}

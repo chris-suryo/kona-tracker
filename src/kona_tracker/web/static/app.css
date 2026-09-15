@@ -176,9 +176,16 @@ body.activity-page { overscroll-behavior-y: contain; }
              border-top: 1px solid var(--line); color: var(--ink2); text-align: center; font-size: 13px; line-height: 1.5; }
 .map-empty span { max-width: 28ch; }
 .map-empty svg { width: 28px; height: 28px; fill: none; stroke: var(--t4); stroke-width: 1.7; }
+/* Where she is now. Her Fi photo when there is one, the initial when there
+   is not -- the same pairing as .avatar, and the same `data-optional` img
+   that app.js removes if it 404s, so this never shows a broken-image icon.
+   `overflow: hidden` and `position: relative` are what make the square photo
+   a circle sitting exactly inside the white ring. */
 .kona-map-marker { border: 0; background: none; }
 .kona-map-marker span { width: 34px; height: 34px; display: grid; place-items: center; border: 3px solid #fff; border-radius: 50%;
-                        background: var(--t4); color: var(--on); box-shadow: 0 4px 14px rgba(0,0,0,.3); font: 800 13px var(--body); }
+                        background: var(--t4); color: var(--on); box-shadow: 0 4px 14px rgba(0,0,0,.3); font: 800 13px var(--body);
+                        position: relative; overflow: hidden; }
+.kona-map-marker img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 /* Required by Stadia and OSM, so it stays -- but it was a near-white strip
    across the foot of every map. Toned to sit in the picture rather than on
    top of it. Do not hide it: the tiles are licensed on the condition it is

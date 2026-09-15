@@ -545,7 +545,9 @@ def test_walk_positions_are_validated_sorted_and_exposed_behind_auth():
         assert 'id="kona-map"' in page and 'id="map-points"' in page
         from kona_tracker.web.app import HERE
 
-        assert "tile.openstreetmap.org" in (HERE / "static" / "map.js").read_text("utf-8")
+        # The fallback basemap moved to map_base.js on 2026-09-15, when the
+        # two maps stopped keeping their own copies of the tile layer.
+        assert "tile.openstreetmap.org" in (HERE / "static" / "map_base.js").read_text("utf-8")
         assert "Current walk" in page and "Collar reported" in page
         assert "30.2672" in page and len(api["positions"]) == 2
 

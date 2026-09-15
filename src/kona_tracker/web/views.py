@@ -391,8 +391,11 @@ def dial_offset(hours: float | None) -> float:
     return round(TRACK * (1.0 - fraction), 1)
 
 
-#: Alidade Smooth Dark. `{r}` is Leaflet's retina placeholder and is what
-#: makes this sharp on a phone; it resolves to "@2x" on a HiDPI screen.
+#: Alidade Smooth, light and dark. `{r}` is Leaflet's retina placeholder and
+#: is what makes these sharp on a phone; it resolves to "@2x" on a HiDPI
+#: screen. Both are sent to the page and the browser picks, because the theme
+#: is a client-side choice (localStorage) and the server cannot know it.
+STADIA_LIGHT = "https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}{r}.png"
 STADIA_DARK = "https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png"
 STADIA_ATTRIBUTION = (
     '&copy; <a href="https://stadiamaps.com/">Stadia Maps</a>, '
@@ -438,10 +441,24 @@ def scale_label(minutes: int | float | None, unit: str) -> str:
 def map_tile_config(map_tiles: str, stadia_api_key: str = "") -> dict[str, Any]:
     """Tile layer settings for `map.js`, rendered as a JSON data block.
 
+    **Both themes are sent, and the browser picks.** This used to return one
+    layer and it was always the dark one: `KONA_MAP_TILES=stadia` requested
+    Alidade Smooth *Dark* whatever the page looked like, so choosing Light in
+    Settings gave a light page sitting on a black map. The server cannot fix
+    that by choosing better, because since 2026-09-15 the theme is a
+    client-side choice living in `localStorage` -- the server does not know
+    it and must not guess. So it hands over both and `map.js` resolves the
+    theme the same way the CSS does.
+
     A separate function, and the only place the Stadia key is written into a
-    URL, so there is exactly one line to audit. `dark` says whether the CSS
-    filter that fakes a dark basemap should run: Alidade Smooth Dark already
-    is dark, and filtering it darkens it twice.
+    URL, so there is exactly one line to audit -- now two, and they are next
+    to each other on purpose.
+
+    `dark` says whether the CSS filter that fakes a dark basemap should be
+    suppressed: Alidade Smooth Dark already is dark, and filtering it darkens
+    it twice. OSM has no dark raster, so both of its variants are the same
+    light tiles and the filter does the work in a dark theme -- which is why
+    `dark` is False on both and not a copy of the theme name.
 
     Falls back to OpenStreetMap rather than raising. A missing key is refused
     at settings load (`settings.py`), so by the time a request renders, the
@@ -449,17 +466,26 @@ def map_tile_config(map_tiles: str, stadia_api_key: str = "") -> dict[str, Any]:
     """
     if map_tiles == "stadia" and stadia_api_key:
         return {
-            "url": STADIA_TILES_QUERY.format(base=STADIA_DARK, key=stadia_api_key),
-            "attribution": STADIA_ATTRIBUTION,
-            "maxZoom": 20,
-            "dark": True,
+            "light": {
+                "url": STADIA_TILES_QUERY.format(base=STADIA_LIGHT, key=stadia_api_key),
+                "attribution": STADIA_ATTRIBUTION,
+                "maxZoom": 20,
+                "dark": False,
+            },
+            "dark": {
+                "url": STADIA_TILES_QUERY.format(base=STADIA_DARK, key=stadia_api_key),
+                "attribution": STADIA_ATTRIBUTION,
+                "maxZoom": 20,
+                "dark": True,
+            },
         }
-    return {
+    osm = {
         "url": OSM_TILES,
         "attribution": OSM_ATTRIBUTION,
         "maxZoom": 19,
         "dark": False,
     }
+    return {"light": osm, "dark": dict(osm)}
 
 
 def activity_context(snapshot: FiSnapshot | None, configured: bool) -> dict[str, Any]:

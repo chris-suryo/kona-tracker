@@ -362,99 +362,195 @@ test('a new pull is not hidden by the previous dismissal timer', async () => {
   assert.equal(x.nodes.pull.style.transform, '');
 });
 
+// The two maps share map_base.js, which owns the tile layer, the theme it
+// picks and the "Map unavailable" message. Loading it first is not optional:
+// map.js returns early without window.KonaMapBase, exactly as it would in a
+// browser where the file 404'd.
+function mapContext(opts) {
+  opts = opts || {};
+  const handlers = {}, classes = new Set(), added = [], removed = [];
+  const observers = [];
+  let mapsRemoved = 0, resized = 0;
+  const layer = () => ({addTo(m) { added.push(this); return this; },
+                        on(name, fn) { handlers[name] = fn; return this; }});
+  const map = {
+    remove() { mapsRemoved++; }, setView() {}, fitBounds() {}, on() {},
+    invalidateSize() { resized++; },
+    removeLayer(l) { removed.push(l); }
+  };
+  const icons = [];
+  const L = {map: () => map, tileLayer: () => layer(),
+    marker: (_ll, o) => { icons.push(o.icon.className); return layer(); },
+    polyline: () => layer(), circle: () => layer(),
+    divIcon: spec => spec, control: {zoom: () => layer()}};
+  const mapEl = {hidden: false,
+    classList: {toggle: (n, on) => on ? classes.add(n) : classes.delete(n),
+                contains: n => classes.has(n)}};
+  const notice = {hidden: true};
+  let mediaListener = null;
+  const media = {
+    matches: !!opts.phoneIsDark,
+    addEventListener: (_n, fn) => { mediaListener = fn; },
+    removeEventListener: () => { mediaListener = null; }
+  };
+  const root = {
+    attr: opts.chosen || null,
+    getAttribute(n) { return n === 'data-theme' ? this.attr : null; },
+    setAttribute(n, v) { if (n === 'data-theme') { this.attr = v; fire(); } },
+    removeAttribute(n) { if (n === 'data-theme') { this.attr = null; fire(); } }
+  };
+  function fire() { observers.forEach(fn => fn()); }
+  const nodes = Object.assign({
+    'map-points': {textContent: opts.points || '[{"lat":30,"lon":-97}]'},
+    'kona-map': mapEl, 'map-unavailable': notice
+  }, opts.config ? {'map-config': {textContent: opts.config}} : {});
+  const document = {documentElement: root, getElementById: id => nodes[id] || null};
+  const window = {
+    matchMedia: () => media,
+    MutationObserver: function (fn) {
+      return {observe() { observers.push(fn); }, disconnect() {
+        const i = observers.indexOf(fn); if (i >= 0) { observers.splice(i, 1); }
+      }};
+    }
+  };
+  const ctx = {window, document, L, getComputedStyle: () => ({getPropertyValue: () => ''})};
+  vm.runInNewContext(fs.readFileSync(path.join(staticDir,'map_base.js'),'utf8'), ctx);
+  vm.runInNewContext(fs.readFileSync(path.join(staticDir,'map.js'),'utf8'), ctx);
+  return {window, document, nodes, mapEl, notice, handlers, classes, root, media,
+          added, removed, observers, icons,
+          setPoints: v => { nodes['map-points'] = v ? {textContent: v} : null; },
+          phoneGoesDark: () => { media.matches = true; if (mediaListener) { mediaListener(); } },
+          mapsRemoved: () => mapsRemoved, resized: () => resized,
+          tileUrls: () => added.filter(l => l.on).length};
+}
+
+const STADIA = JSON.stringify({
+  light: {url: 'https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}{r}.png?api_key=K',
+          attribution: 'a', maxZoom: 20, dark: false},
+  dark: {url: 'https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png?api_key=K',
+         attribution: 'a', maxZoom: 20, dark: true}
+});
+
 test('map init releases the previous Leaflet instance even when new points are absent', () => {
-  let removed = 0, points = '[{"lat":30,"lon":-97}]';
-  const window = {}, layer = {addTo() {}, on() {}}, map = {remove() { removed++; }, setView() {}};
-  const L = {map: () => map, tileLayer: () => layer, marker: () => layer,
-    divIcon: () => ({}), control: {zoom: () => layer}};
-  // A real element always has classList; map.js toggles `tiles-dark` on it so
-  // the CSS filter that fakes a dark basemap does not run over already-dark
-  // Stadia tiles. The stub needs it or the harness fails where a browser
-  // would not. No #map-config here on purpose: the OSM fallback must work
-  // when the block is absent.
-  const classes = new Set();
-  const mapEl = {classList: {toggle: (n, on) => on ? classes.add(n) : classes.delete(n),
-                             contains: n => classes.has(n)}};
-  const document = {getElementById: id => id === 'map-points'
-    ? (points ? {textContent:points} : null)
-    : (id === 'kona-map' ? mapEl : null)};
-  vm.runInNewContext(fs.readFileSync(path.join(staticDir,'map.js'),'utf8'), {window,document,L});
-  window.KonaMap.init(); assert.equal(removed, 1);
-  points = null; window.KonaMap.init(); assert.equal(removed, 2);
-  window.KonaMap.destroy(); assert.equal(removed, 2);
+  // No #map-config on purpose: the OSM fallback must work when it is absent.
+  const x = mapContext();
+  x.window.KonaMap.init(); assert.equal(x.mapsRemoved(), 1);
+  x.setPoints(null); x.window.KonaMap.init(); assert.equal(x.mapsRemoved(), 2);
+  x.window.KonaMap.destroy(); assert.equal(x.mapsRemoved(), 2);
 });
 
 // A map on screen with "Map unavailable" printed under it is the page
 // contradicting itself; that is what one failed tile used to produce.
 test('one failed tile does not hide a map that has already drawn', () => {
-  const handlers = {};
-  const window = {}, layer = {addTo() {}, on(name, fn) { handlers[name] = fn; }};
-  let resized = 0;
-  const map = {remove() {}, setView() {}, invalidateSize() { resized++; }};
-  const L = {map: () => map, tileLayer: () => layer, marker: () => layer,
-    divIcon: () => ({}), control: {zoom: () => layer}};
-  const classes = new Set();
-  const mapEl = {hidden: false,
-    classList: {toggle: (n, on) => on ? classes.add(n) : classes.delete(n), contains: n => classes.has(n)}};
-  const notice = {hidden: true};
-  const document = {getElementById: id => ({
-    'map-points': {textContent: '[{"lat":30,"lon":-97}]'},
-    'kona-map': mapEl, 'map-unavailable': notice
-  })[id] || null};
-  vm.runInNewContext(fs.readFileSync(path.join(staticDir,'map.js'),'utf8'), {window,document,L});
-  window.KonaMap.init();
-
-  handlers.tileload();
-  handlers.tileerror();
-  assert.equal(mapEl.hidden, false, 'a drawn map stays drawn');
-  assert.equal(notice.hidden, true);
+  const x = mapContext();
+  x.window.KonaMap.init();
+  x.handlers.tileload();
+  x.handlers.tileerror();
+  assert.equal(x.mapEl.hidden, false, 'a drawn map stays drawn');
+  assert.equal(x.notice.hidden, true);
 });
 
 test('a tile server that answers nothing says so, and recovers if it wakes up', () => {
-  const handlers = {};
-  const window = {}, layer = {addTo() {}, on(name, fn) { handlers[name] = fn; }};
-  let resized = 0;
-  const map = {remove() {}, setView() {}, invalidateSize() { resized++; }};
-  const L = {map: () => map, tileLayer: () => layer, marker: () => layer,
-    divIcon: () => ({}), control: {zoom: () => layer}};
-  const classes = new Set();
-  const mapEl = {hidden: false,
-    classList: {toggle: (n, on) => on ? classes.add(n) : classes.delete(n), contains: n => classes.has(n)}};
-  const notice = {hidden: true};
-  const document = {getElementById: id => ({
-    'map-points': {textContent: '[{"lat":30,"lon":-97}]'},
-    'kona-map': mapEl, 'map-unavailable': notice
-  })[id] || null};
-  vm.runInNewContext(fs.readFileSync(path.join(staticDir,'map.js'),'utf8'), {window,document,L});
-  window.KonaMap.init();
+  const x = mapContext();
+  x.window.KonaMap.init();
 
-  handlers.tileerror();
-  assert.equal(mapEl.hidden, true);
-  assert.equal(notice.hidden, false);
+  x.handlers.tileerror();
+  assert.equal(x.mapEl.hidden, true);
+  assert.equal(x.notice.hidden, false);
 
-  handlers.tileload();
-  assert.equal(mapEl.hidden, false);
-  assert.equal(notice.hidden, true);
-  assert.equal(resized, 1, 'Leaflet sized itself while hidden and must re-measure');
+  x.handlers.tileload();
+  assert.equal(x.mapEl.hidden, false);
+  assert.equal(x.notice.hidden, true);
+  assert.equal(x.resized(), 1, 'Leaflet sized itself while hidden and must re-measure');
+});
+
+// The bug this whole shape exists to prevent: choosing Light in Settings gave
+// a bright page sitting on Alidade Smooth *Dark*, because the server picked
+// the basemap and could not know what the browser had chosen.
+test('an explicit light choice gets the light basemap even on a dark phone', () => {
+  const x = mapContext({config: STADIA, chosen: 'light', phoneIsDark: true});
+  x.window.KonaMap.init();
+  assert.equal(x.classes.has('tiles-dark'), false,
+    'light tiles may be filtered; suppressing the filter leaves a white map on a dark page');
+});
+
+test('an explicit dark choice suppresses the filter that would darken it twice', () => {
+  const x = mapContext({config: STADIA, chosen: 'dark', phoneIsDark: false});
+  x.window.KonaMap.init();
+  assert.equal(x.classes.has('tiles-dark'), true);
+});
+
+test('with no choice made the phone decides', () => {
+  assert.equal(mapContext({config: STADIA, phoneIsDark: true}).window.KonaMapBase.wantsDark(), true);
+  assert.equal(mapContext({config: STADIA, phoneIsDark: false}).window.KonaMapBase.wantsDark(), false);
+});
+
+test('the basemap follows the theme changing while the page is open', () => {
+  const x = mapContext({config: STADIA, phoneIsDark: false});
+  x.window.KonaMap.init();
+  assert.equal(x.classes.has('tiles-dark'), false);
+
+  // The phone crossing into its dark hours, and then an explicit choice --
+  // both have to reach the map, which is why map_base.js watches the media
+  // query and the attribute rather than listening for one custom event.
+  x.phoneGoesDark();
+  assert.equal(x.classes.has('tiles-dark'), true, 'the phone went dark; the map did not follow');
+  assert.equal(x.removed.length, 1, 'the old layer must be dropped, not stacked under the new one');
+
+  x.root.setAttribute('data-theme', 'light');
+  assert.equal(x.classes.has('tiles-dark'), false, 'choosing Light must beat a dark phone');
+});
+
+test('a theme swap never flashes "Map unavailable" over a map that is fine', () => {
+  // The new layer starts with no tiles. If the arrived counter reset with it,
+  // changing theme on a working map would hide it and print the error.
+  const x = mapContext({config: STADIA, phoneIsDark: false});
+  x.window.KonaMap.init();
+  x.handlers.tileload();
+  x.phoneGoesDark();
+  x.handlers.tileerror();
+  assert.equal(x.mapEl.hidden, false);
+  assert.equal(x.notice.hidden, true);
+});
+
+test('destroy unsubscribes the theme listeners', () => {
+  // They hold a reference to a map that is about to be removed; left
+  // attached, the next theme change would add a tile layer to a dead map.
+  const x = mapContext({config: STADIA});
+  x.window.KonaMap.init();
+  assert.equal(x.observers.length, 1);
+  x.window.KonaMap.destroy();
+  assert.equal(x.observers.length, 0);
+});
+
+test('the here-marker offers her photo and keeps the initial behind it', () => {
+  // `data-optional` is the contract app.js removes a broken image by; an
+  // inline onerror= would be silently dropped by `script-src 'self'`.
+  const x = mapContext({config: STADIA});
+  const icon = x.window.KonaMapBase.hereIcon();
+  assert.match(icon.html, /src="\/avatar\.jpg"/);
+  assert.match(icon.html, /data-optional/);
+  assert.match(icon.html, /<span>K/, 'the initial must stay as the fallback');
+});
+
+test('an unparseable map-config falls back to OSM rather than drawing nothing', () => {
+  const x = mapContext({config: '{not json'});
+  x.window.KonaMap.init();
+  assert.equal(x.classes.has('tiles-dark'), false);
+  assert.equal(x.mapEl.hidden, false);
 });
 
 
 test('a route gets a start dot and a single point does not', () => {
-  const icons = [];
-  const layer = {addTo() {}, on() {}};
-  const L = {map: () => ({remove() {}, setView() {}, fitBounds() {}}), tileLayer: () => layer,
-    marker: (ll, opts) => { icons.push(opts.icon.className); return layer; },
-    polyline: () => layer, divIcon: (o) => o, control: {zoom: () => layer}};
-  const classes = new Set();
-  const mapEl = {hidden: false, classList: {toggle: (n, on) => on ? classes.add(n) : classes.delete(n), contains: n => classes.has(n)}};
-  let points = '[{"lat":30,"lon":-97},{"lat":30.001,"lon":-97.001}]';
-  const document = {getElementById: id => id === 'map-points' ? {textContent: points} : id === 'kona-map' ? mapEl : null};
-  const window = {};
-  vm.runInNewContext(fs.readFileSync(path.join(staticDir,'map.js'),'utf8'), {window,document,L});
-  assert.deepEqual(icons, ['kona-map-start', 'kona-map-marker']);
-  icons.length = 0; points = '[{"lat":30,"lon":-97}]';
-  window.KonaMap.init();
-  assert.deepEqual(icons, ['kona-map-marker'], 'one point is a place, not a route');
+  // map.js self-inits on load, so clear what that pass recorded first.
+  const x = mapContext({points: '[{"lat":30,"lon":-97},{"lat":30.001,"lon":-97.001}]'});
+  x.icons.length = 0;
+  x.window.KonaMap.init();
+  assert.deepEqual(x.icons, ['kona-map-start', 'kona-map-marker']);
+  x.icons.length = 0;
+  x.setPoints('[{"lat":30,"lon":-97}]');
+  x.window.KonaMap.init();
+  assert.deepEqual(x.icons, ['kona-map-marker'], 'one point is a place, not a route');
 });
 
 
