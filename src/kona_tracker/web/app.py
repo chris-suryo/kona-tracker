@@ -29,14 +29,13 @@ from fastapi.responses import (
     HTMLResponse,
     JSONResponse,
     RedirectResponse,
-    StreamingResponse,
 )
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.concurrency import run_in_threadpool
 
-from kona_tracker.camera.control import CameraControl, ControlUnsupported, FakeControl, NoControl
-from kona_tracker.camera.hub import BOUNDARY, MAX_STREAMS, CameraHub
+from kona_tracker.camera.control import CameraControl, FakeControl, NoControl
+from kona_tracker.camera.hub import CameraHub
 from kona_tracker.camera.placeholder import ROBOT_OFF_JPEG
 from kona_tracker.camera.source import (
     FakeSource,
@@ -65,6 +64,7 @@ from kona_tracker.web.heartbeat import Heartbeat
 from kona_tracker.web.history_preview import history_preview
 from kona_tracker.web.logs import attach_file_logging, detach_file_logging
 from kona_tracker.web.routes.auth import make_auth_router
+from kona_tracker.web.routes.camera import make_camera_router
 from kona_tracker.web.settings import Settings
 from kona_tracker.web.views import (
     activity_context,
@@ -347,17 +347,6 @@ def create_app(
     def authed(request: Request) -> bool:
         return auth.valid_cookie(request.cookies.get(COOKIE_NAME))
 
-    def hub_for(cam: str) -> CameraHub:
-        """The hub a `cam=` query names. `house` is the default and what
-        every pre-robot URL means; `robot` exists only when configured.
-        Anything else is a 404. The value is compared, never used: it
-        reaches no path, no filename and no log line."""
-        if cam == "house":
-            return hub
-        if cam == "robot" and robot_hub is not None:
-            return robot_hub
-        raise HTTPException(status_code=404, detail="no such camera")
-
     @app.middleware("http")
     async def gate(request: Request, call_next):
         path = request.url.path
@@ -405,12 +394,6 @@ def create_app(
         }
 
     app.state.health_summary = health_summary
-
-    @app.get("/camera", response_class=HTMLResponse)
-    def camera(request: Request):
-        return templates.TemplateResponse(
-            request, "camera.html", {"tab": "camera", "caps": capabilities}
-        )
 
     @app.get("/robot", response_class=HTMLResponse)
     def robot_page(request: Request):
@@ -934,116 +917,6 @@ def create_app(
         snapshot = fi.snapshot() if fi else None
         return activity_json(snapshot, configured=fi is not None)
 
-    @app.get("/stream.mjpg")
-    def stream(frames: int | None = None):
-        # `frames` caps the stream (curl debugging, tests); browsers omit it.
-        # The phone no longer uses this; it polls /snapshot.jpg. What remains
-        # is for curl and a desktop, and it is capped so abandoned streams can
-        # never again pile up silently until nothing can start. The check
-        # lives here and not in the generator because by the time the
-        # generator runs, the 200 and the multipart headers are already on
-        # the wire. The check-then-act gap is real and benign for a household.
-        if hub.status()["streams"] >= MAX_STREAMS:
-            return Response(
-                content=f"{MAX_STREAMS} streams are already open; poll /snapshot.jpg instead.\n",
-                status_code=503,
-                media_type="text/plain",
-                headers={"Retry-After": "5"},
-            )
-        return StreamingResponse(
-            hub.mjpeg(max_frames=frames),
-            media_type=f"multipart/x-mixed-replace; boundary={BOUNDARY}",
-            headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
-        )
-
-    @app.get("/snapshot.jpg")
-    def snapshot(after: int = Query(0, ge=0), cam: str = Query("house")):
-        """One frame, and the truth about it in the same response.
-
-        `after` is the seq the caller last received. The hub holds the
-        request until a newer frame exists, for at most `stale_after`, so a
-        polling page costs one request per frame and a slow link skips
-        frames rather than queueing them. `after=0` returns the current
-        frame at once; that is the capture button and a page's first poll.
-
-        The body is always an image so an <img> can show it; the headers are
-        the truth. `X-Kona-State: live` means a real frame. The placeholder
-        never travels as live, because the hub waits at least `stale_after`
-        before giving up and a frame older than that is stale by definition.
-        `X-Kona-Error` is the hub's last error *kind*, a short token, never
-        the message, which can carry a redacted camera host.
-
-        `cam` picks the camera; a query rather than a path prefix because
-        the gate's bare-401 rule for an <img> is keyed on the path.
-        """
-        snap = hub_for(cam).snapshot(after_seq=after)
-        headers = {
-            "Cache-Control": "no-store",
-            "X-Kona-State": snap.state,
-            "X-Kona-Seq": str(snap.seq),
-            "X-Kona-Error": snap.error_kind or "",
-        }
-        if snap.frame_age is not None:
-            headers["X-Kona-Frame-Age"] = f"{snap.frame_age:.2f}"
-        return Response(content=snap.jpeg, media_type="image/jpeg", headers=headers)
-
-    @app.get("/status.json")
-    def status(cam: str = Query("house")):
-        if cam != "house":
-            # The robot has no control driver in this phase: its status is
-            # the hub's alone, with none of the house camera's numbers.
-            return hub_for(cam).status()
-        pan, tilt = control.position()
-        return {
-            **hub.status(),
-            "capabilities": capabilities.as_dict(),
-            "position": {"pan": round(pan, 3), "tilt": round(tilt, 3)},
-        }
-
-    @app.get("/control/settings")
-    def control_settings():
-        """The camera's switches as they are now. 409 when there are none,
-        502 when the camera did not answer -- the page says which."""
-        try:
-            state = control.settings()
-        except ControlUnsupported as e:
-            return JSONResponse({"error": str(e)}, status_code=409)
-        except Exception as e:  # TapoError and anything the driver let through
-            return JSONResponse({"error": str(e)[:200]}, status_code=502)
-        if not state:
-            return JSONResponse(
-                {"error": "this camera has no settings that can be changed from here"},
-                status_code=409,
-            )
-        return {"settings": state}
-
-    @app.post("/control/setting")
-    def control_setting(name: str = Form(...), value: str = Form(...)):
-        try:
-            return {"settings": control.apply(name, value)}
-        except ControlUnsupported as e:
-            return JSONResponse({"error": str(e)}, status_code=409)
-        except Exception as e:
-            return JSONResponse({"error": str(e)[:200]}, status_code=502)
-
-    @app.post("/control/move")
-    def control_move(pan: float = Form(0.0), tilt: float = Form(0.0)):
-        # A camera that cannot pan must say so; a dead button is worse than
-        # an honest error.
-        try:
-            new_pan, new_tilt = control.move(pan=pan, tilt=tilt)
-        except ControlUnsupported as e:
-            return JSONResponse({"error": str(e)}, status_code=409)
-        return {"pan": round(new_pan, 3), "tilt": round(new_tilt, 3)}
-
-    @app.post("/control/preset")
-    def control_preset(number: int = Form(...)):
-        try:
-            new_pan, new_tilt = control.goto_preset(number)
-        except ControlUnsupported as e:
-            return JSONResponse({"error": str(e)}, status_code=409)
-        return {"pan": round(new_pan, 3), "tilt": round(new_tilt, 3)}
-
     deps = AppDeps(
         settings=settings,
         templates=templates,
@@ -1060,5 +933,6 @@ def create_app(
         health_summary=health_summary,
     )
     app.include_router(make_auth_router(deps))
+    app.include_router(make_camera_router(deps))
 
     return app
