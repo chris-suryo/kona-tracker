@@ -76,15 +76,40 @@ NODE_PATH=/opt/node22/lib/node_modules node scripts/check_overflow.js
 Not a CI gate: CI has no browser, for the same reason the Node harness is not
 one either.
 
-## Two things about the capture that are not bugs in the app
+## What in a capture is not the app
 
-- **Maps say "Map unavailable."** The capture machine has no route to the
-  tile server. On a phone a map renders there. Say so in the brief, or a
-  reviewer will spend a section on it.
 - **The camera picture is a synthetic test pattern** from `FakeSource`. The
   frame, the overlays and the controls around it are real and worth judging;
   the image is not.
+- **The maps are flat colour.** The capture machine has no route to a tile
+  server, so `audit_shots.js` fulfils every basemap request with a 1×1 tile —
+  light or dark, so a screenshot still says which basemap the page asked for.
+  Drive-mode shots dated before 2026-09-15 show "Map unavailable" instead:
+  the landscape context was the one that had been missed.
+- **The data is fixtures.** A frozen snapshot, a green square in place of
+  Kona's photo, four synthetic walks on one hand-drawn route, and states that
+  never occur — the collar is never stale, the robot is never low on battery.
+- **The engine is Chromium, not Safari.** WebKit cannot be installed in this
+  environment. A capture can show that a layout works and that the copy is
+  right; it cannot show how the app feels on the phone.
+- **`env(safe-area-inset-*)` is 0 here and about 59 px on the phone.** Every
+  screenshot in this set has its header that much closer to the top edge than
+  the real thing. A capture limit, not a layout bug.
 
-Playwright must use `waitUntil: 'domcontentloaded'`. With `'load'` every page
-hangs 30–60 s waiting on `fonts.googleapis.com`, which is unreachable here —
-this cost two timed-out runs before anyone noticed.
+Since 2026-09-15 the capture is taken at the iPhone 14 Pro's metrics — 393
+wide, the screen's full 852 height because this app is opened from the home
+screen and has no browser toolbar, `isMobile` and `hasTouch` so hover queries
+resolve the way the phone resolves them.
+
+Playwright uses `waitUntil: 'domcontentloaded'`. It used to have to: with
+`'load'` every page hung 30–60 s on the webfont host, which cost two
+timed-out runs before anyone noticed. The font is vendored now
+(`src/kona_tracker/web/static/fonts/`, declared by `@font-face` at the top of
+`app.css`), so that hang is gone — but the setting stays, because these pages
+poll and stream by design and `'load'` waits on work that is not meant to
+finish.
+
+The capture now waits on `document.fonts.ready` and **throws** if Bricolage
+Grotesque did not load. The failure it replaces was silent: every screenshot
+in this directory taken before 2026-09-15 was rendered in the fallback font
+while the phone rendered the real one, and nothing in the set said so.
