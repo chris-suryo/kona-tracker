@@ -1,0 +1,47 @@
+{# One bucket's reading, said the way the line under the chart says it.
+
+   These exist so that the text `chart_scrub.js` swaps in and the text the
+   server rendered for the selected bucket come from the same place. Written
+   twice they would drift, and the drift would be invisible: you only ever see
+   one of them at a time, and only the server's version without JavaScript.
+
+   They deliberately produce *markup* -- `minutes()` emits `<small>` -- which
+   is why the scrubbed readings are rendered into a hidden list and cloned
+   rather than carried in a `data-` attribute and assigned with innerHTML.
+   Nothing in this app assigns innerHTML from an attribute, and a formatted
+   duration is not a good enough reason to start. #}
+{% from "_duration.html" import minutes %}
+
+{% macro steps_reading(b) -%}
+{%- if b.future -%}Not yet
+{%- elif b.value is none -%}No reading
+{%- else -%}{{ '{:,}'.format(b.value) }} steps
+{%- endif -%}
+{%- endmacro %}
+
+{% macro rest_hour_reading(b) -%}
+{%- if b.future -%}Not yet
+{%- elif b.value is none -%}No reading
+{%- else -%}{{ minutes(b.value) }} of rest
+{%- if b.sleep is not none or b.nap is not none %} · sleep {{ minutes(b.sleep or 0) }}, naps {{ minutes(b.nap or 0) }}{% endif -%}
+{%- endif -%}
+{%- endmacro %}
+
+{% macro rest_day_reading(b) -%}
+{%- if b.value is none -%}No reading
+{%- else -%}{{ minutes(b.value) }} of rest
+{%- if b.sleep is not none or b.nap is not none %} · sleep {{ minutes(b.sleep or 0) }}, naps {{ minutes(b.nap or 0) }}{% endif -%}
+{%- endif -%}
+{%- if b.in_progress %} · still in progress
+{%- elif b.partial_first_day %} · collar set up this day, so part of it was not measured{% endif -%}
+{%- endmacro %}
+
+{# The hidden list the scrubber clones from. One entry per bucket, in the same
+   order as the bars, each already formatted. `hidden` and not `display:none`
+   in CSS, so it is out of the accessibility tree too: the readings are
+   already announced through the chart's own links and the live region. #}
+{% macro readings_list(id, buckets, render) -%}
+<div id="{{ id }}" class="chart-readings-data" hidden>
+{%- for b in buckets %}<span><strong>{{ b.label }}</strong> · {{ render(b) }}</span>{% endfor -%}
+</div>
+{%- endmacro %}

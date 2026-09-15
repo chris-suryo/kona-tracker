@@ -1177,3 +1177,141 @@ test('a socket that never opens is never used', async () => {
   press(x, 64, 8);
   assert.equal(drives(x).length, 1, 'a half-open socket swallowed the command');
 });
+
+// -- scrubbing a chart -----------------------------------------------------
+//
+// The readings are rendered by the server and cloned across, so what this
+// file can get wrong is *which* one it shows. Off by one and the page states
+// the wrong hour's number with total confidence.
+// A minimum viable DOM node: enough of firstChild / appendChild /
+// removeChild / cloneNode for chart_scrub.js to move children between two
+// elements, which is the only DOM work it does.
+function node(text) {
+  const self = {
+    kids: [], textContent: text || '',
+    get firstChild() { return self.kids[0] || null; },
+    // Reparents, as the real DOM does: appending a node that already has a
+    // parent removes it from that parent first. A stub that only copied
+    // would let a move-children loop pass here and hang in a browser.
+    appendChild(child) {
+      if (child.parent) { child.parent.removeChild(child); }
+      child.parent = self;
+      self.kids.push(child);
+      return child;
+    },
+    removeChild(child) {
+      const i = self.kids.indexOf(child);
+      if (i >= 0) { self.kids.splice(i, 1); child.parent = null; }
+      return child;
+    },
+    cloneNode() {
+      const copy = node(self.textContent);
+      self.kids.forEach(k => copy.appendChild(k.cloneNode()));
+      return copy;
+    }
+  };
+  return self;
+}
+
+function scrubContext(opts = {}) {
+  const count = opts.count === undefined ? 4 : opts.count;
+  const readingCount = opts.readingCount === undefined ? count : opts.readingCount;
+  const entries = [];
+  for (let i = 0; i < readingCount; i++) {
+    const entry = node('');
+    entry.appendChild(node('bucket ' + i));
+    entries.push(entry);
+  }
+  const links = [];
+  for (let i = 0; i < count; i++) {
+    const a = element();
+    // Four 40px columns starting at x=0.
+    a.getBoundingClientRect = () => ({left: i * 40, right: (i + 1) * 40, top: 0, bottom: 100});
+    links.push(a);
+  }
+  const selection = node('');
+  const readings = {children: entries};
+  const chart = element();
+  chart.dataset.readings = 'the-readings';
+  chart.getElementsByTagName = () => links;
+  const section = element();
+  section.querySelector = sel => sel === '.chart-selection' ? selection : null;
+  chart.parentNode = section;
+  const document = {
+    ...element(),
+    getElementById: id => id === 'the-readings' ? readings : null,
+    querySelectorAll: () => [chart]
+  };
+  vm.runInNewContext(fs.readFileSync(path.join(staticDir,'chart_scrub.js'),'utf8'),
+    {document, window: {...element()}, console});
+  function fire(name, x) {
+    const handler = chart.events[name];
+    assert.ok(handler, `chart never listened for ${name}`);
+    handler({clientX: x, pointerId: 1, cancelable: true, preventDefault() {}});
+  }
+  return {
+    chart, links, selection, entries,
+    attached: () => !!chart.events.pointerdown,
+    shown: () => (selection.firstChild ? selection.firstChild.textContent : null),
+    current: () => links.findIndex(a => a.getAttribute('aria-current') === 'true'),
+    down: x => fire('pointerdown', x),
+    move: x => fire('pointermove', x)
+  };
+}
+
+test('a finger dragged across the chart moves the reading with it', () => {
+  const x = scrubContext();
+  x.down(20);
+  assert.equal(x.shown(), 'bucket 0');
+  x.move(60);
+  assert.equal(x.shown(), 'bucket 1');
+  x.move(140);
+  assert.equal(x.shown(), 'bucket 3');
+});
+
+test('the current bar is marked as the reading moves, and only one is', () => {
+  const x = scrubContext();
+  x.down(20);
+  assert.equal(x.current(), 0);
+  x.move(100);
+  assert.equal(x.current(), 2);
+  assert.equal(x.links.filter(a => a.getAttribute('aria-current') === 'true').length, 1);
+});
+
+test('moving without a finger down changes nothing', () => {
+  const x = scrubContext();
+  x.move(100);
+  assert.equal(x.shown(), null);
+});
+
+test('overshooting either end holds the end bar rather than losing the reading', () => {
+  // A thumb that runs three pixels past the last bar has not stopped asking.
+  const x = scrubContext();
+  x.down(20);
+  x.move(-30);
+  assert.equal(x.shown(), 'bucket 0');
+  x.move(9999);
+  assert.equal(x.shown(), 'bucket 3');
+});
+
+test('a tap does not follow the link, because the reading is already showing', () => {
+  const x = scrubContext();
+  let defaulted = true;
+  x.chart.events.click({cancelable: true, preventDefault() { defaulted = false; }});
+  assert.equal(defaulted, false, 'a page load that changes nothing on screen');
+});
+
+test('focusing a bar with the keyboard brings its reading with it', () => {
+  // Without this a keyboard user gets the focus ring and no number.
+  const x = scrubContext();
+  x.links[2].events.focus();
+  assert.equal(x.shown(), 'bucket 2');
+});
+
+test('a readings list that does not match the bars disables the scrub entirely', () => {
+  // Rather than scrub the wrong bucket. A page confidently showing the wrong
+  // hour is worse than a page that still needs a tap and a reload.
+  const x = scrubContext({count: 4, readingCount: 3});
+  assert.equal(x.attached(), false, 'it attached to a list it could not trust');
+  assert.equal(x.shown(), null);
+});

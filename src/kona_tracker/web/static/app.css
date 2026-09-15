@@ -462,7 +462,16 @@ body.activity-page { overscroll-behavior-y: contain; }
 .chart-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .chart-heading h2 { font-size: 15px; font-weight: 600; }
 .chart-heading > span { font-size: 11px; color: var(--ink2); }
-.bar-chart { display: block; width: 100%; overflow: visible; }
+/* `pan-y`, and neither `none` nor the default. The default lets the browser
+   claim a horizontal drag for its own gesture, so the scrub in chart_scrub.js
+   would never see the moves; `none` would take vertical scrolling with it,
+   and the chart is nearly the full width of a phone, so the page would feel
+   stuck wherever a thumb landed on it. */
+.bar-chart { display: block; width: 100%; overflow: visible; touch-action: pan-y; }
+/* Not display:none: `hidden` keeps it out of the accessibility tree as well,
+   and these readings are already announced through the bars' own labels and
+   the live region under the chart. */
+.chart-readings-data { display: none; }
 .chart-rule { stroke: var(--line); fill: none; stroke-width: .6; }
 .step-bar { fill: var(--t4); }
 .sleep-bar, .sleep-key { fill: var(--t4); background: var(--t4); }

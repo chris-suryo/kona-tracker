@@ -3,6 +3,7 @@
 {% block pageclass %}history-page{% endblock %}
 {% block body %}
 {% from "_duration.html" import minutes %}
+{% from "_readings.html" import rest_hour_reading, rest_day_reading, readings_list %}
 <nav class="subnav" aria-label="Back"><a class="back" href="/activity">{% include "_chevron.svg" %}<span>Activity</span></a></nav>
 <header class="history-heading"><h1>Rest</h1></header>
 
@@ -41,7 +42,7 @@
 {% if hours %}
 <section class="history-chart" aria-labelledby="hours-title">
   <div class="chart-heading"><h2 id="hours-title">Today by hour</h2><span>{{ hours_maximum_label }}{% if hours_through %} · {{ hours_through }}{% endif %}</span></div>
-  <svg class="bar-chart rest" viewBox="0 0 340 178" role="group" aria-label="Today's rest by hour. Select an hour for its reading.">
+  <svg class="bar-chart rest" data-readings="hour-readings" viewBox="0 0 340 178" role="group" aria-label="Today's rest by hour. Select an hour for its reading.">
     <path class="chart-rule" d="M0 12H340 M0 87H340 M0 162H340"/>
     {% for b in hours %}
     <a href="{{ b.href }}" aria-label="{{ b.label }}: {{ 'not yet' if b.future else 'no reading' if b.value is none else (b.value|string) ~ ' minutes' }}"{% if hour == loop.index0 %} aria-current="true"{% endif %}>
@@ -54,13 +55,14 @@
   </svg>
   {# Midnight to midnight, in the clock the rest of the app now uses. #}
   <div class="chart-axis"><span>12 am</span><span>6 am</span><span>noon</span><span>6 pm</span><span>12 am</span></div>
-  <p class="chart-selection" aria-live="polite">{% if hour_chosen %}<strong>{{ hour_chosen.label }}</strong> · {% if hour_chosen.future %}Not yet{% elif hour_chosen.value is none %}No reading{% else %}{{ minutes(hour_chosen.value) }} of rest{% if hour_chosen.sleep is not none or hour_chosen.nap is not none %} · sleep {{ minutes(hour_chosen.sleep or 0) }}, naps {{ minutes(hour_chosen.nap or 0) }}{% endif %}{% endif %}{% else %}Tap an hour to see its reading. So far today: {% if hours_total is not none %}{{ minutes(hours_total) }}{% else %}&ndash;{% endif %} of rest.{% endif %}</p>
+  {{ readings_list('hour-readings', hours, rest_hour_reading) }}
+  <p class="chart-selection" aria-live="polite">{% if hour_chosen %}<strong>{{ hour_chosen.label }}</strong> · {{ rest_hour_reading(hour_chosen) }}{% else %}Drag across the chart, or tap an hour, to see its reading. So far today: {% if hours_total is not none %}{{ minutes(hours_total) }}{% else %}&ndash;{% endif %} of rest.{% endif %}</p>
 </section>
 {% endif %}
 
 <section class="history-chart" aria-labelledby="chart-title">
   <div class="chart-heading"><h2 id="chart-title">Rest by day</h2><span>{{ maximum_label }}</span></div>
-  <svg class="bar-chart rest" viewBox="0 0 340 178" role="group" aria-label="Daily rest chart. Select a day for its reading.">
+  <svg class="bar-chart rest" data-readings="day-readings" viewBox="0 0 340 178" role="group" aria-label="Daily rest chart. Select a day for its reading.">
     <path class="chart-rule" d="M0 12H340 M0 87H340 M0 162H340"/>
     {% for bucket in buckets %}
     <a href="{{ bucket.href }}" aria-label="{{ bucket.label }}: {{ 'no reading' if bucket.value is none else (bucket.value|string) ~ ' minutes' }}{% if bucket.in_progress %}, still in progress{% elif bucket.partial_first_day %}, collar set up this day{% endif %}"{% if selected == loop.index0 %} aria-current="true"{% endif %}>
@@ -71,7 +73,8 @@
     </a>{% endfor %}
   </svg>
   <div class="chart-axis">{% for b in buckets %}<span>{{ b.short }}</span>{% endfor %}</div>
-  <p class="chart-selection" aria-live="polite">{% if chosen %}<strong>{{ chosen.label }}</strong> · {% if chosen.value is none %}No reading{% else %}{{ minutes(chosen.value) }} of rest{% if chosen.sleep is not none or chosen.nap is not none %} · sleep {{ minutes(chosen.sleep or 0) }}, naps {{ minutes(chosen.nap or 0) }}{% endif %}{% endif %}{% if chosen.in_progress %} · still in progress{% elif chosen.partial_first_day %} · collar set up this day, so part of it was not measured{% endif %}{% else %}Tap a day to see its reading.{% endif %}</p>
+  {{ readings_list('day-readings', buckets, rest_day_reading) }}
+  <p class="chart-selection" aria-live="polite">{% if chosen %}<strong>{{ chosen.label }}</strong> · {{ rest_day_reading(chosen) }}{% else %}Drag across the chart, or tap a day, to see its reading.{% endif %}</p>
   <details class="history-readings"><summary>View readings</summary>
     <p class="chart-footnote">These are the values plotted above, as Fi reported them. Dots mean zero; dashed marks mean no reading. Days marked incomplete are not averaged.</p>
     <table><thead><tr><th>Day</th><th>Sleep</th><th>Naps</th><th>Rest</th></tr></thead><tbody>
@@ -80,4 +83,5 @@
   </details>
 </section>
 {% endif %}
+<script src="{{ asset('chart_scrub.js') }}" defer></script>
 {% endblock %}
