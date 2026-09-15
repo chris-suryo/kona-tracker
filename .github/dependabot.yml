@@ -1,0 +1,22 @@
+# Two ecosystems, monthly. This is a two-person app on a home LAN, not a
+# service: a weekly cadence would be noise, and a PR nobody reviews is worse
+# than no PR. Monthly is often enough to see a security advisory in time and
+# rare enough that the PRs get read.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    commit-message:
+      prefix: "ci"
+
+  # uv.lock and pyproject.toml. Grouped: ten separate bumps for a lockfile
+  # refresh is ten CI runs and ten reviews of the same change.
+  - package-ecosystem: "uv"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    groups:
+      python-dependencies:
+        patterns: ["*"]

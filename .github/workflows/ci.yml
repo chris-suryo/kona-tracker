@@ -4,6 +4,20 @@ on:
   push:
   pull_request:
 
+# Read-only by default. This workflow only runs tests; nothing here needs to
+# write to the repo, and a token that cannot write is a token that cannot be
+# turned against it.
+permissions:
+  contents: read
+
+# A push to a branch with an open PR triggers this twice. Cancel the older
+# run: a result for a commit that has already been replaced is four cells of
+# runner time spent answering a question nobody is asking any more. Never
+# cancel on main, where each run is the record for that commit.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 jobs:
   test:
     strategy:
