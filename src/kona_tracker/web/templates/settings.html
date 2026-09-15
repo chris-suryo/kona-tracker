@@ -47,6 +47,21 @@
 </section>
 {% endif %}
 
+<section class="settings-group" aria-labelledby="appearance-title">
+  <h2 id="appearance-title">Appearance</h2>
+  {# Three choices, not a switch: "follow the phone" is the default and has
+     to be reachable again after picking one, which a two-state toggle
+     cannot express. Rendered with the phone's option first for that reason.
+     theme.js sets the pressed state on load -- the server has no idea which
+     is chosen, because the choice lives in localStorage on the phone. #}
+  <div class="theme-choice" role="group" aria-labelledby="appearance-title">
+    <button type="button" data-theme-choice="" aria-pressed="false">Automatic</button>
+    <button type="button" data-theme-choice="light" aria-pressed="false">Light</button>
+    <button type="button" data-theme-choice="dark" aria-pressed="false">Dark</button>
+  </div>
+  <p class="settings-note">Automatic follows your phone's light and dark setting.</p>
+</section>
+
 <section class="settings-group" aria-labelledby="display-settings-title">
   <h2 id="display-settings-title">Dashboard</h2>
   <a class="settings-link" href="/activity?preview=1">

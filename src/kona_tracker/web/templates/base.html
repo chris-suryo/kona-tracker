@@ -21,6 +21,10 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ asset('app.css') }}">
+  {# NOT deferred, and before the body: it sets data-theme from the saved
+     choice, and anything later paints the phone's theme first and then
+     snaps. Inline would be the usual way and the CSP forbids it. #}
+  <script src="{{ asset('theme.js') }}"></script>
   <script src="{{ asset('app.js') }}" defer></script>
   {% block head %}{% endblock %}
 </head>
