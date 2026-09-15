@@ -290,7 +290,10 @@ class StubRobot:
     def stop(self):
         return {"ok": True}
 
-    def look(self, pan_deg=None, tilt_deg=None, move_ms=None):
+    # `look_at`, which is what the gateway client calls. This was `look`, so
+    # /robot/look answered 502 against the audit server and nobody noticed,
+    # because no screenshot moves the camera.
+    def look_at(self, pan_deg=None, tilt_deg=None, move_ms=None):
         return {"ok": True}
 
     # The lights, remembering what they were told -- the real gateway does,

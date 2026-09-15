@@ -36,6 +36,12 @@
   var volts = document.getElementById('volts'), sonar = document.getElementById('sonar');
   var picture = document.getElementById('picture');
   var wireLabel = document.getElementById('wire');
+  var legend = document.getElementById('legend');
+
+  // The watchdog window, stated on the HUD as a fact about the robot and
+  // never sent back to it: this page does not choose its own dead-man
+  // switch. Both numbers come from robot/gateway.py through the template.
+  var TTL = parseInt(root.dataset.ttl, 10) || 0;
 
   // The send interval comes from the server so it cannot drift away from
   // the TTL it has to stay under. Both live in robot/gateway.py.
@@ -618,9 +624,18 @@
     if (data.sonar_usable === false) {
       words.push('The robot cannot read its distance sensor, so the obstacle guard is off.');
     }
-    note.textContent = words.join(' ');
-    note.hidden = words.length === 0;
-    note.className = 'drive-note';
+    if (words.length) {
+      note.textContent = words.join(' ');
+      note.className = 'drive-note';
+    } else {
+      // Nothing wrong is worth a line too. Before this the HUD was blank
+      // until something failed, so a second driver had no way to tell "all
+      // good" from "not connected yet". The one fact worth stating is the
+      // dead-man window, because it is the thing that makes letting go safe.
+      note.textContent = 'Ready' + (TTL ? ' \u00b7 let go and she stops within ' + (TTL / 1000) + ' s' : '');
+      note.className = 'drive-note calm';
+    }
+    note.hidden = false;
 
     allow(!data.low_battery && !data.demo, 'refused');
   }
@@ -676,6 +691,40 @@
       lost('No answer from the robot for a few seconds.');
     }
   }, SILENT_MS);
+
+  // -- the first-drive legend --------------------------------------------
+  // Shown the first time this page opens on a phone, and never again unless
+  // the Robot tab's "Show me the controls again" link asks (?legend=1). The
+  // choice lives in localStorage like the theme does, with the same rule:
+  // storage that throws (private browsing, blocked site data) is never worth
+  // a broken page, and on the side of saying too much -- a legend that shows
+  // again is a nuisance, a driver who never saw it is the problem.
+  var SEEN = 'kona-drive-seen';
+  function legendSeen() {
+    try { return window.localStorage.getItem(SEEN) === '1'; } catch (e) { return false; }
+  }
+  function legendDismissed() {
+    try { window.localStorage.setItem(SEEN, '1'); } catch (e) { /* lasts until the page closes */ }
+  }
+  function askedForLegend() {
+    var search = (window.location && window.location.search) || '';
+    return /(^\?|&)legend=1(&|$)/.test(search);
+  }
+  if (legend) {
+    if (askedForLegend() || !legendSeen()) { legend.hidden = false; }
+    legend.addEventListener('click', function (e) {
+      legend.hidden = true;
+      legendDismissed();
+      // The legend covers STOP for as long as it is up. A first-time driver
+      // whose first instinct is the big red button must get a stop, not a
+      // dismissal and a second tap: if the tap landed where STOP is, it is
+      // a STOP. The security review of this page named the one-tap window;
+      // this closes it. (elementsFromPoint is everywhere the page runs; the
+      // guard is for the test harness.)
+      var under = document.elementsFromPoint ? document.elementsFromPoint(e.clientX, e.clientY) : [];
+      if (under.indexOf(estop) !== -1) { stopNow('e-stop'); }
+    });
+  }
 
   // Opened last, once everything it can call into exists. Failing to open
   // costs nothing: every command falls back to the HTTP path above.
