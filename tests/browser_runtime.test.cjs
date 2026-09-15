@@ -47,7 +47,7 @@ function element() {
 function setup(script, preview = false, opts = {}) {
   const names = ['cam', 'cap', 'dot', 'livetxt', 'capture', 'capture-hint', 'activity-body', 'pull', 'zoom-level',
     'drive', 'stick', 'knob', 'estop', 'estop-alarm', 'speed', 'rot-left', 'rot-right', 'shout', 'shout-text', 'note',
-    'volts', 'sonar', 'picture', 'wire'];
+    'volts', 'sonar', 'picture', 'wire', 'look', 'look-knob'];
   const nodes = Object.fromEntries(names.map(name => [name, element()]));
   const page = element(), label = element(), note = element(), freshness = element(), camFrame = element();
   // A 400x225 frame at the page origin, so the zoom maths can be checked in px.
@@ -147,6 +147,15 @@ function setup(script, preview = false, opts = {}) {
     fire(delay) {
       const entry = [...timers].find(([, t]) => t.delay === delay);
       assert.ok(entry, `missing timer ${delay}`);
+      timers.delete(entry[0]); entry[1].fn();
+    },
+    // The look throttle picks its own delay from how long ago it last sent,
+    // so a test cannot name it. This fires the most recently scheduled
+    // timeout -- Map keeps insertion order, and older pending timers from
+    // poll.js and the telemetry loop are sitting in front of it.
+    firePending() {
+      const entry = [...timers].pop();
+      assert.ok(entry, 'no timeout was pending');
       timers.delete(entry[0]); entry[1].fn();
     }
   };
@@ -1369,4 +1378,107 @@ test('it does not stack sockets when one is already open', async () => {
   const before = x.socket();
   x.document.events.visibilitychange();
   assert.equal(x.socket(), before);
+});
+
+// -- the look stick --------------------------------------------------------
+//
+// The second joystick Chris asked for twice. Its rules are deliberately the
+// opposite of the drive stick's, which is the thing most likely to be "fixed"
+// by someone reading only one of them.
+function looks(x) { return x.requests.filter(r => r.url === '/robot/look'); }
+function lookAt(x, clientX, clientY, id = 9) {
+  x.nodes.look.events.pointerdown({pointerId: id, clientX, clientY, preventDefault() {}});
+}
+
+test('the camera does not recentre when you let go', async () => {
+  // The whole difference from the drive stick. A servo holds where it is put,
+  // and a camera that snapped back to level on every release would be useless
+  // for looking around a room -- which is what this page is for.
+  const x = await ready();
+  lookAt(x, 100, 64);          // right of centre (the pad is 128 wide at 0,0)
+  const moved = x.nodes['look-knob'].style.transform;
+  assert.notEqual(moved, '', 'the knob did not move');
+  x.nodes.look.events.pointerup({pointerId: 9});
+  assert.equal(x.nodes['look-knob'].style.transform, moved,
+    'it snapped back to centre, which is the drive stick rule and wrong here');
+});
+
+test('letting go of the look stick never stops the robot', async () => {
+  // The drive stick's release is a stop. If these two ever share that path,
+  // aiming the camera while driving would cut the throttle.
+  const x = await ready();
+  press(x, 64, 8);
+  const stopsBefore = stops(x).length;
+  lookAt(x, 100, 64);
+  x.nodes.look.events.pointerup({pointerId: 9});
+  assert.equal(stops(x).length, stopsBefore, 'looking around stopped the robot');
+});
+
+test('it sends absolute degrees, clamped to the servo limit', async () => {
+  const x = await ready();
+  // Far outside the pad: the unit-disk clamp then the degree clamp.
+  lookAt(x, 9999, 64);
+  x.firePending();
+  const body = looks(x)[0].options.body;
+  const pan = parseFloat(body.match(/pan_deg=(-?[\d.]+)/)[1]);
+  assert.ok(pan <= 45 && pan >= 44.9, `pan was ${pan}; the servo limit is 45`);
+});
+
+test('a drag is throttled rather than one request per pointermove', async () => {
+  // Five servo writes a second into an RPC server that handles one request at
+  // a time and already carries the drive loop.
+  const x = await ready();
+  lookAt(x, 70, 64);
+  for (let i = 0; i < 12; i++) {
+    x.nodes.look.events.pointermove({pointerId: 9, clientX: 70 + i * 3, clientY: 64, preventDefault() {}});
+  }
+  assert.equal(looks(x).length, 0, 'it sent before the throttle even fired');
+  x.firePending();
+  assert.equal(looks(x).length, 1, 'twelve moves became more than one request');
+});
+
+test('a move smaller than the servo backlash is not sent at all', async () => {
+  const x = await ready();
+  lookAt(x, 70, 64);
+  x.firePending();
+  looks(x)[0].resolve(response({ok: true}));
+  const after = looks(x).length;
+  // One pixel is well under LOOK_EPSILON_DEG once scaled.
+  x.nodes.look.events.pointermove({pointerId: 9, clientX: 70.4, clientY: 64, preventDefault() {}});
+  assert.equal(looks(x).length, after, 'it asked the servo to move less than it can');
+});
+
+test('double-tapping the middle levels the camera', async () => {
+  // The only way back: dragging to exactly zero by thumb is not a thing
+  // anyone manages.
+  const x = await ready();
+  lookAt(x, 100, 30);
+  assert.notEqual(x.nodes['look-knob'].style.transform, '');
+  x.nodes.look.events.pointerup({pointerId: 9});
+  lookAt(x, 64, 64, 10);
+  lookAt(x, 64, 64, 11);   // within the 300ms window; the clock is stopped
+  assert.equal(x.nodes['look-knob'].style.transform, '', 'it did not return to level');
+});
+
+test('a look that fails says so without letting go of the drive', async () => {
+  // A camera that did not turn is a disappointment; a robot that did not stop
+  // is a hazard. They must not share an error path.
+  const x = await ready();
+  press(x, 64, 8);
+  lookAt(x, 100, 64);
+  x.firePending();
+  looks(x)[0].reject(new Error('The robot did not answer.'));
+  await new Promise(r => setImmediate(r));
+  assert.equal(x.nodes.shout.hidden, false, 'it failed silently');
+  assert.ok([...x.intervals].some(([, t]) => t.delay === 200), 'it stopped driving over a camera error');
+});
+
+test('the look stick is disabled with everything else when the robot is not answering', async () => {
+  // `/look` goes through the RPC server that owns the motors, unlike the LEDs.
+  const x = setup('drive.js');
+  assert.equal(x.nodes.look.getAttribute('aria-disabled'), 'true');
+  lookAt(x, 100, 64);
+  assert.equal(looks(x).length, 0, 'a disabled stick moved a servo');
+  await telemetry(x);
+  assert.equal(x.nodes.look.getAttribute('aria-disabled'), 'false');
 });

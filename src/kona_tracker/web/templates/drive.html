@@ -64,8 +64,27 @@
         <div class="knob" id="knob"></div>
       </div>
       <div class="drive-right">
-        <button class="spin" id="rot-left" type="button" aria-label="Rotate left">↺</button>
-        <button class="spin" id="rot-right" type="button" aria-label="Rotate right">↻</button>
+        {# The second stick, which is what Chris asked for twice: left thumb
+           drives, right thumb looks, the way a twin-stick game lays it out.
+
+           It is NOT a dead-man control and deliberately does not recentre on
+           release. A servo holds where it is put, and a camera that snapped
+           back to centre every time you lifted your thumb would be unusable
+           for the thing this page exists for -- looking around a room. The
+           dot in the middle is the way back: double-tap to level it.
+
+           Rotation stays on the two buttons. On a holonomic robot the left
+           stick's sideways axis is a genuine strafe, so there is no spare
+           axis for turning, and a button press is unambiguous where a stick
+           corner is not. #}
+        <div class="stick look" id="look" role="application"
+             aria-label="Look around: drag to aim the camera, double-tap to level it">
+          <div class="knob" id="look-knob"></div>
+        </div>
+        <div class="drive-spins">
+          <button class="spin" id="rot-left" type="button" aria-label="Rotate left">↺</button>
+          <button class="spin" id="rot-right" type="button" aria-label="Rotate right">↻</button>
+        </div>
         <button class="estop" id="estop" type="button" aria-label="Stop the robot now">STOP</button>
       </div>
     </div>

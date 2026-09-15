@@ -891,6 +891,20 @@ body.activity-page { overscroll-behavior-y: contain; }
 .stick.held .knob { transition: none; }
 .stick[aria-disabled="true"] { opacity: .4; }
 .drive-right { display: flex; align-items: center; gap: 12px; }
+/* The two rotate buttons stack now that a second stick shares this corner.
+   At 667px landscape -- the narrowest phone this page is used on -- a row of
+   stick + 2 buttons + STOP does not fit beside the picture; a column of two
+   62px buttons is the same height as the 128px stick beside it and costs one
+   button's width instead of two. */
+.drive-spins { display: flex; flex-direction: column; gap: 8px; }
+/* Smaller than the drive stick and quieter, because it is the less urgent of
+   the two and must never be the one a thumb lands on by mistake. */
+.look { width: 104px; height: 104px; background: rgba(0,0,0,.30); }
+.look .knob { width: 44px; height: 44px; margin: -22px 0 0 -22px; background: rgba(255,255,255,.72); }
+/* The centre dot is the way back to level, so it is a target rather than a
+   decoration: brighter than the drive stick's, and the double-tap that uses
+   it is announced in the stick's own aria-label. */
+.look::after { width: 8px; height: 8px; margin: -4px 0 0 -4px; background: rgba(255,255,255,.6); }
 .spin { width: 62px; height: 62px; flex: none; border-radius: 50%; border: 1px solid rgba(255,255,255,.35);
   background: rgba(0,0,0,.42); color: #fff; font-size: 22px; font-weight: 700;
   touch-action: none; transition: transform .1s ease-out; }

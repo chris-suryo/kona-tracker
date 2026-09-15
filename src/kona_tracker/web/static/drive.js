@@ -30,6 +30,7 @@
   // alarm is most likely to be raised in, since rotating upright is a stop.
   var estopAlarm = document.getElementById('estop-alarm');
   var rotL = document.getElementById('rot-left'), rotR = document.getElementById('rot-right');
+  var look = document.getElementById('look'), lookKnob = document.getElementById('look-knob');
   var shout = document.getElementById('shout'), shoutText = document.getElementById('shout-text');
   var note = document.getElementById('note');
   var volts = document.getElementById('volts'), sonar = document.getElementById('sonar');
@@ -49,6 +50,21 @@
   var PICTURE_STALE_MS = 600;
   var PICTURE_TICK_MS = 250;
   var RADIUS = 56;          // px of travel before the stick is at full tilt
+  var LOOK_RADIUS = 44;     // the look stick is smaller; its own travel
+  // The gateway clamps pan and tilt to this and so do we, for the same
+  // reason it does: a servo driven into its mechanical stop stalls, draws
+  // full current and strips its own gears. Kept equal to LOOK_LIMIT_DEG in
+  // robot/gateway.py -- if that ever moves, this moves with it.
+  var LOOK_LIMIT_DEG = 45;
+  // A servo command every 200ms would be five writes a second into an RPC
+  // server that handles one request at a time and already carries the drive
+  // loop. Aiming a camera does not need that rate: the eye cannot tell 6 Hz
+  // from 20, and a dropped intermediate position is invisible because the
+  // last one sent is the one that sticks.
+  var LOOK_INTERVAL_MS = 160;
+  // Below this the servo would be asked to move less than its own backlash,
+  // so the request is noise. In degrees.
+  var LOOK_EPSILON_DEG = 1.5;
   // The speed control caps the *velocity command*, not a pace. It used to be
   // labelled "Slow", which stopped being true on 2026-09-14: the gateway now
   // lifts every command above the motors' static-friction floor
@@ -74,6 +90,12 @@
   // The drive socket, when one is open. Null means every command goes over
   // HTTP, which is the original path and still the fallback.
   var wire = null;
+  // Where the camera is pointed, in degrees, as far as we know. Not reset
+  // on release: a servo holds where it is put, and this is our record of
+  // that rather than a command in flight.
+  var lookPan = 0, lookTilt = 0;
+  var lookPointer = null, lookSent = 0, lookTimer = null, lookInFlight = false;
+  var lookLastTap = 0;
   // Two independent reasons to shout, kept apart so neither can erase the
   // other: `owed` is the gateway telling us the board may still hold duty,
   // `failure` is our own last stop or drive that did not land.
@@ -334,6 +356,133 @@
     });
   });
 
+  // -- looking around ------------------------------------------------------
+  //
+  // The second stick. Chris asked for it twice: "I'd rather have two
+  // joysticks: one controls the movement, and the other two control pan and
+  // look around", and later "the pan up and down with the camera hasn't been
+  // done". Left thumb drives, right thumb looks, the way a twin-stick game
+  // lays it out.
+  //
+  // **It is not a dead-man control, and that is the important difference.**
+  // Everything else on this page stops when you let go, because everything
+  // else moves a two-kilogram robot across a floor. A servo holds where it is
+  // put, and a camera that snapped back to level on every release would be
+  // useless for the one thing this is for: looking around a room. So the knob
+  // stays where you left it and `lookPan`/`lookTilt` are our record of where
+  // the camera is, not of a command in flight.
+  //
+  // Degrees are absolute and sent as such. The gateway's `/look` takes a
+  // position, not a rate, so there is no integration here and no drift.
+  function placeLook() {
+    var x = lookPan / LOOK_LIMIT_DEG;
+    var y = -lookTilt / LOOK_LIMIT_DEG;
+    lookKnob.style.transform = x || y
+      ? 'translate(' + (x * LOOK_RADIUS).toFixed(1) + 'px,' + (y * LOOK_RADIUS).toFixed(1) + 'px)'
+      : '';
+  }
+
+  function sendLook() {
+    // One in flight at a time, and the newest wins. Unlike a drive command,
+    // a superseded look is genuinely worthless: only the last position
+    // matters, and queueing them would walk the servo through every
+    // intermediate point a thumb passed over.
+    if (lookInFlight) { return; }
+    var pan = lookPan, tilt = lookTilt;
+    lookInFlight = true;
+    lookSent = Date.now();
+    post('/robot/look', 'pan_deg=' + pan.toFixed(1) + '&tilt_deg=' + tilt.toFixed(1))
+      .then(function () { quiet(); })
+      .catch(function (e) {
+        if (e.message === 'signed out') { return; }
+        // Said, but not escalated: a camera that did not turn is a
+        // disappointment, where a robot that did not stop is a hazard. It
+        // does not call letGo(), because driving is unaffected.
+        shoutAt(e.message);
+      })
+      .then(function () {
+        lookInFlight = false;
+        // A move that arrived while the last one was in flight is still
+        // pending; land it now rather than leave the camera short of where
+        // the thumb finished.
+        if (pan !== lookPan || tilt !== lookTilt) { scheduleLook(); }
+      }, function () { lookInFlight = false; });
+  }
+
+  function scheduleLook() {
+    if (lookTimer) { return; }
+    var wait = Math.max(0, LOOK_INTERVAL_MS - (Date.now() - lookSent));
+    lookTimer = setTimeout(function () { lookTimer = null; sendLook(); }, wait);
+  }
+
+  function aim(pan, tilt) {
+    pan = Math.max(-LOOK_LIMIT_DEG, Math.min(LOOK_LIMIT_DEG, pan));
+    tilt = Math.max(-LOOK_LIMIT_DEG, Math.min(LOOK_LIMIT_DEG, tilt));
+    // The knob moves immediately and the request is throttled behind it.
+    // This is the one place on this page where drawing ahead of the robot is
+    // right: the alternative is a stick that lags a thumb by 160ms, which
+    // feels broken, and a wrong camera angle costs nothing.
+    var moved = Math.abs(pan - lookPan) >= LOOK_EPSILON_DEG ||
+                Math.abs(tilt - lookTilt) >= LOOK_EPSILON_DEG;
+    lookPan = pan;
+    lookTilt = tilt;
+    placeLook();
+    if (moved) { scheduleLook(); }
+  }
+
+  function aimAt(e) {
+    var box = look.getBoundingClientRect();
+    var x = (e.clientX - (box.left + box.width / 2)) / LOOK_RADIUS;
+    var y = (e.clientY - (box.top + box.height / 2)) / LOOK_RADIUS;
+    var length = Math.hypot(x, y);
+    // The unit disk, as the drive stick does it: a corner would ask for 1.41x
+    // and clamping the two axes separately would bend the direction.
+    if (length > 1) { x /= length; y /= length; }
+    // Screen up is tilt up. The gateway's sign convention for tilt is not
+    // documented and has never been checked on hardware -- which is exactly
+    // what docs/robot-measurements.md asks Chris to find out. If it comes
+    // back inverted it is one minus sign, here.
+    aim(x * LOOK_LIMIT_DEG, -y * LOOK_LIMIT_DEG);
+  }
+
+  if (look && lookKnob) {
+    look.addEventListener('pointerdown', function (e) {
+      if (look.getAttribute('aria-disabled') === 'true') { return; }
+      // Double-tap near the middle levels the camera. The centre dot is the
+      // target, and it is the only way back once you have aimed somewhere --
+      // dragging to exactly zero by thumb is not a thing anyone manages.
+      var now = Date.now();
+      if (now - lookLastTap < 300) {
+        lookLastTap = 0;
+        aim(0, 0);
+        scheduleLook();
+        e.preventDefault();
+        return;
+      }
+      lookLastTap = now;
+      lookPointer = e.pointerId;
+      look.setPointerCapture(e.pointerId);
+      look.classList.add('held');
+      aimAt(e);
+      e.preventDefault();
+    });
+    look.addEventListener('pointermove', function (e) {
+      if (lookPointer !== e.pointerId) { return; }
+      aimAt(e);
+      e.preventDefault();
+    });
+    ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(function (name) {
+      look.addEventListener(name, function (e) {
+        if (lookPointer !== e.pointerId) { return; }
+        lookPointer = null;
+        look.classList.remove('held');
+        // One last send, so the camera ends where the thumb did rather than
+        // wherever the throttle happened to last fire.
+        scheduleLook();
+      });
+    });
+  }
+
   // Rotate left is POSITIVE omega. The gateway's frame is "vx forward, vy
   // left, omega counter-clockwise" (robot_gateway.py, wheel_duties), and
   // counter-clockwise seen from above is a left turn -- so the left button
@@ -399,6 +548,18 @@
   function allow(enabled, why) {
     stick.setAttribute('aria-disabled', String(!enabled));
     rotL.disabled = rotR.disabled = !enabled;
+    // The look stick goes with them. Unlike the LEDs -- which the gateway
+    // drives straight over I2C and which therefore survive the robot's own
+    // software dying -- `/look` goes through the RPC server on port 9030,
+    // the same one that owns the motors. Every reason this is called with
+    // false means that server is unreachable or busy.
+    //
+    // The arguable case is `low_battery`: the gateway's refusal is about the
+    // motors, and a servo on a flat pack might well still answer. Nobody has
+    // checked, so it is disabled with everything else -- a control that is
+    // dead when it need not be is a smaller fault than one that silently
+    // does nothing, and it is the state the battery reading already explains.
+    if (look) { look.setAttribute('aria-disabled', String(!enabled)); }
     if (!enabled && driving) { stopNow(why); }
   }
 
