@@ -42,6 +42,24 @@ and are not worth installing on the Windows PC — the cloud session has them,
 so ask it to regenerate the set rather than setting up a browser stack to take
 pictures of your own phone's app.
 
+## Marking up the UI from a phone
+
+For a round of nitpicks, `scripts/contact_sheet.js` turns the audit set into
+one sheet per page -- light and dark side by side, with a lettered-and-numbered
+100 px grid over both, the page name burned in -- under
+`docs/screenshots/contact/` (gitignored: generated on demand, not a record).
+
+```bash
+NODE_PATH=/opt/node22/lib/node_modules node scripts/contact_sheet.js
+```
+
+Open a sheet on the phone and either circle things in Markup and send the
+image back, or just say the grid reference: *"steps, light, C4, too much gap
+under the ring."* A grid cell maps to a selector in a minute; a description
+of a screenshot does not. This exists because the alternative that was asked
+about -- an image model annotating the UI -- describes pictures and does not
+reliably draw on them.
+
 ## The overflow check
 
 `scripts/check_overflow.js` runs against the same server and measures whether

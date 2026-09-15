@@ -21,3 +21,7 @@ probe-out/
 *.db
 *.db-wal
 *.db-shm
+
+# Contact sheets for a nitpick round (scripts/contact_sheet.js): generated
+# from current-ui/ on demand and sent to a phone, not a record.
+docs/screenshots/contact/
