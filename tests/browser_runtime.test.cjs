@@ -44,12 +44,78 @@ function element() {
   };
 }
 
+// An element with children, for the Activity refresh, which walks the
+// top-level sections of #activity-body and replaces only the ones that
+// differ. `html` stands in for outerHTML: the swap compares strings, so
+// here the string is the whole content. Nothing else about the DOM is
+// modelled -- one selector deep, id or class, no combinators.
+function tree(spec) {
+  const el = element();
+  el.tagName = (spec.tag || 'section').toUpperCase();
+  el.id = spec.id || ''; el.className = spec.cls || '';
+  el.html = spec.html || ''; el.textContent = spec.text || '';
+  el.parentNode = null;
+  el.children = (spec.kids || []).map(tree);
+  el.children.forEach(kid => { kid.parentNode = el; });
+  // Serialised the way the DOM does it: the children are part of the string.
+  Object.defineProperty(el, 'outerHTML', {get: () => el.html + el.children.map(kid => kid.outerHTML).join('')});
+  const hit = (node, selector) => {
+    const m = /^([a-z]*)(?:([#.])([\w-]+))?$/.exec(selector);
+    if (!m || (m[1] && node.tagName !== m[1].toUpperCase())) { return false; }
+    if (m[2] === '#') { return node.id === m[3]; }
+    if (m[2] === '.') { return (node.className || '').split(' ').includes(m[3]); }
+    return true;
+  };
+  el.querySelector = selector => {
+    for (const kid of el.children) {
+      if (hit(kid, selector)) { return kid; }
+      const deep = kid.querySelector(selector);
+      if (deep) { return deep; }
+    }
+    return null;
+  };
+  // The real DOM moves a node out of wherever it was; a stub that merely
+  // copied would let a section sit in two places at once.
+  const adopt = node => { if (node.parentNode) { node.parentNode.removeChild(node); } node.parentNode = el; };
+  el.insertBefore = (node, ref) => {
+    adopt(node);
+    el.children.splice(ref ? el.children.indexOf(ref) : el.children.length, 0, node);
+    return node;
+  };
+  el.replaceChild = (node, old) => {
+    const at = el.children.indexOf(old);
+    assert.notEqual(at, -1, 'replaceChild of a node that is not a child');
+    adopt(node); el.children[at] = node; old.parentNode = null;
+    return old;
+  };
+  el.removeChild = old => {
+    const at = el.children.indexOf(old);
+    assert.notEqual(at, -1, 'removeChild of a node that is not a child');
+    el.children.splice(at, 1); old.parentNode = null;
+    return old;
+  };
+  return el;
+}
+// The Activity page as rendered: the sections in template order. A test that
+// wants a different fresh render passes `render` returning a variation.
+const ACTIVITY = () => [
+  {tag: 'section', cls: 'steps-hero', html: '<steps 100>'},
+  {tag: 'section', cls: 'rest-grid', html: '<rest>'},
+  {tag: 'section', cls: 'location-card', html: '<card reported 4:31 pm>', kids: [
+    {tag: 'div', id: 'kona-map', html: '<map>'}, {tag: 'p', id: 'map-unavailable', html: '<unavailable>'}]},
+  {tag: 'div', cls: 'freshness', html: '<freshness>'},
+  {tag: 'p', cls: 'note', html: '<note>'},
+  {tag: 'script', id: 'map-points', html: '<points>', text: '[{"lat":1,"lon":2}]'}
+];
+// The default fresh render: the step count moved, nothing else did.
+const STEPS_MOVED = () => ACTIVITY().map(s => s.cls === 'steps-hero' ? {...s, html: '<steps 200>'} : s);
+
 function setup(script, preview = false, opts = {}) {
-  const names = ['cam', 'cap', 'dot', 'livetxt', 'capture', 'capture-hint', 'activity-body', 'pull', 'zoom-level',
+  const names = ['cam', 'cap', 'dot', 'livetxt', 'capture', 'capture-hint', 'pull', 'zoom-level',
     'drive', 'stick', 'knob', 'estop', 'estop-alarm', 'speed', 'rot-left', 'rot-right', 'shout', 'shout-text', 'note',
-    'volts', 'sonar', 'picture', 'wire', 'look', 'look-knob', 'legend'];
+    'volts', 'sonar', 'picture', 'wire', 'look', 'look-knob', 'walk-toggle', 'walk-note', 'legend'];
   const nodes = Object.fromEntries(names.map(name => [name, element()]));
-  const page = element(), label = element(), note = element(), freshness = element(), camFrame = element();
+  const page = element(), label = element(), camFrame = element();
   // A 400x225 frame at the page origin, so the zoom maths can be checked in px.
   camFrame.clientWidth = 400; camFrame.clientHeight = 225;
   camFrame.getBoundingClientRect = () => ({left: 0, top: 0});
@@ -60,9 +126,12 @@ function setup(script, preview = false, opts = {}) {
   if (opts.ttl) { nodes.drive.dataset.ttl = opts.ttl; }
   // Both start `hidden` in drive.html; drive.js only ever reveals them.
   nodes.legend.hidden = true; nodes.note.hidden = true;
-  nodes['activity-body'].querySelector = selector => ({
-    '.preview-banner': preview ? element() : null, '.freshness': freshness, 'p.note': note
-  })[selector] || null;
+  const body = tree({tag: 'div', id: 'activity-body', kids: (opts.body || ACTIVITY)()});
+  nodes['activity-body'] = body;
+  const freshness = body.querySelector('.freshness'), note = body.querySelector('p.note');
+  const find = body.querySelector;
+  body.querySelector = selector => selector === '.preview-banner' ? (preview ? element() : null) : find(selector);
+  const render = opts.render || STEPS_MOVED;
   const document = {...element(), hidden: false,
     getElementById: id => nodes[id], querySelectorAll: () => [],
     querySelector: s => s === 'main.activity-page' ? page : s === '.cam' ? camFrame : null,
@@ -90,7 +159,7 @@ function setup(script, preview = false, opts = {}) {
     location: {href: '', protocol: 'http:', host: 'pi.local', search: opts.search || ''}};
   let nextTimer = 0, files = 0;
   const env = {
-    document, window, AbortController, Date: StoppedDate, console,
+    document, window, AbortController, URLSearchParams, Date: StoppedDate, console,
     setTimeout: (fn, delay) => { timers.set(++nextTimer, {fn, delay}); return nextTimer; },
     clearTimeout: id => timers.delete(id),
     // Intervals are kept apart from timeouts so `fire(delay)` cannot reach
@@ -110,7 +179,9 @@ function setup(script, preview = false, opts = {}) {
     File: class { constructor() { files++; } },
     Blob: class { constructor(parts) { this.parts = parts; } },
     navigator: {sendBeacon: (url) => { beacons.push(url); return true; }},
-    DOMParser: class { parseFromString() { return {getElementById: () => ({innerHTML:'new render'}), querySelector: () => null}; } }
+    DOMParser: class { parseFromString() {
+      return {getElementById: id => id === 'activity-body' ? tree({tag: 'div', kids: render()}) : null, querySelector: () => null};
+    } }
   };
   // The drive socket. Absent unless a test asks for one, because "no
   // WebSocket in this environment" is exactly the fallback path that every
@@ -135,6 +206,9 @@ function setup(script, preview = false, opts = {}) {
   scripts.forEach(s => vm.runInNewContext(fs.readFileSync(path.join(staticDir, s), 'utf8'), env));
   return {nodes, page, label, note, document, window, requests, timers, intervals, created, revoked, camFrame, beacons, storage,
     files: () => files,
+    // The Activity page's sections, by selector, as they stand right now.
+    section: selector => body.querySelector(selector),
+    sections: () => body.children.slice(),
     socket: () => sockets[sockets.length - 1],
     // A socket the browser has finished opening: readyState 1 and onopen fired.
     openSocket() {
@@ -369,7 +443,7 @@ test('an open page asks again on its own, quietly, without forcing a Fi call', a
   assert.equal(x.nodes.pull.classList.contains('busy'), false, 'a quiet tick shows no pull bar');
   assert.notEqual(x.label.textContent, 'Refreshing\u2026');
   x.requests[0].resolve(response({})); await settle();
-  assert.equal(x.nodes['activity-body'].innerHTML, 'new render');
+  assert.equal(x.section('.steps-hero').outerHTML, '<steps 200>');
   assert.equal(x.nodes.pull.classList.contains('finished'), false);
 });
 
@@ -404,12 +478,115 @@ test('refresh timeout unlocks retry and explains failure', async () => {
   x.window.KonaRefresh(); assert.equal(x.requests.length, 2);
 });
 
-test('refresh disposes the old map before installing a new one', async () => {
+// The refresh used to replace the whole of #activity-body, and the page
+// looked like it reloaded every minute: the entry animations ran again, the
+// goal ring redrew from zero, the map lost its pan, and the walk button lost
+// the handler bound to the node that had just been thrown away. It now swaps
+// only the sections whose markup differs.
+test('a refresh that changes nothing touches nothing', async () => {
+  const x = setup('app.js', false, {render: ACTIVITY}), calls = [];
+  x.window.KonaMap = {destroy() { calls.push('destroy'); }, init() { calls.push('init'); }};
+  const before = x.sections();
+  x.window.KonaRefresh(); x.requests[0].resolve(response({})); await settle();
+  assert.deepEqual(x.sections(), before, 'every node is the one that was there');
+  assert.deepEqual(calls, []);
+  assert.equal(before.some(n => n.classList.contains('refreshed')), false);
+});
+
+test('a refresh that changes the steps replaces only the steps hero', async () => {
   const x = setup('app.js'), calls = [];
   x.window.KonaMap = {destroy() { calls.push('destroy'); }, init() { calls.push('init'); }};
+  const before = x.sections();
   x.window.KonaRefresh(); x.requests[0].resolve(response({})); await settle();
-  assert.deepEqual(calls, ['destroy', 'init']);
-  assert.equal(x.nodes['activity-body'].innerHTML, 'new render');
+  const after = x.sections();
+  assert.equal(after.length, before.length);
+  assert.notEqual(after[0], before[0]);
+  assert.equal(after[0].outerHTML, '<steps 200>');
+  assert.equal(after[0].classList.contains('refreshed'), true, 'a swapped-in section must not animate in');
+  assert.deepEqual(after.slice(1), before.slice(1), 'the rest of the page is untouched');
+  assert.deepEqual(calls, [], 'the map was not rebuilt');
+});
+
+test('the map is carried across a changed location card and rebuilt only when the points change', async () => {
+  const x = setup('app.js', false, {
+    render: () => ACTIVITY().map(s => s.cls === 'location-card' ? {...s, html: '<card reported 4:32 pm>'} : s)
+  }), calls = [];
+  x.window.KonaMap = {destroy() { calls.push('destroy'); }, init() { calls.push('init'); }};
+  const map = x.section('#kona-map'), unavailable = x.section('#map-unavailable');
+  x.window.KonaRefresh(); x.requests[0].resolve(response({})); await settle();
+  assert.equal(x.section('.location-card').html, '<card reported 4:32 pm>');
+  assert.equal(x.section('#kona-map'), map, 'the Leaflet container keeps its pan and zoom');
+  assert.equal(x.section('#map-unavailable'), unavailable, 'map_base.js still holds this node');
+  assert.equal(map.parentNode, x.section('.location-card'));
+  assert.deepEqual(calls, []);
+});
+
+// Leaflet rewrites #kona-map as soon as it draws -- classes, panes, tiles --
+// so the card's markup never again matches what the server renders. Found in
+// Chromium: with a naive compare the location card was replaced on every
+// tick, with the map carried across each time, and "nothing changed" never
+// once held for the one section that holds the map.
+test('what Leaflet did to the map element does not count as a change', async () => {
+  const x = setup('app.js', false, {render: ACTIVITY}), calls = [];
+  x.window.KonaMap = {destroy() { calls.push('destroy'); }, init() { calls.push('init'); }};
+  x.section('#kona-map').html = '<map class="leaflet-container" tabindex="0"><panes/>';
+  x.section('#map-unavailable').html = '<unavailable hidden>';
+  const card = x.section('.location-card');
+  x.window.KonaRefresh(); x.requests[0].resolve(response({})); await settle();
+  assert.equal(x.section('.location-card'), card, 'the card is the one that was there');
+  assert.deepEqual(calls, []);
+});
+
+test('a refresh rebuilds the map when the points behind it changed', async () => {
+  const x = setup('app.js', false, {
+    render: () => ACTIVITY().map(s => s.id === 'map-points'
+      ? {...s, html: '<points 2>', text: '[{"lat":1,"lon":2},{"lat":3,"lon":4}]'} : s)
+  }), calls = [];
+  x.window.KonaMap = {destroy() { calls.push('destroy'); }, init() { calls.push('init'); }};
+  x.window.KonaRefresh(); x.requests[0].resolve(response({})); await settle();
+  assert.deepEqual(calls, ['destroy', 'init'], 'torn down before the swap, rebuilt after it');
+  assert.equal(x.section('#map-points').textContent, '[{"lat":1,"lon":2},{"lat":3,"lon":4}]');
+});
+
+test('sections that appear or disappear are added and removed in place', async () => {
+  const x = setup('app.js', false, {
+    render: () => [{tag: 'section', cls: 'safety-alert', html: '<alert>'}, ...ACTIVITY().filter(s => s.cls !== 'note')]
+  });
+  x.window.KonaRefresh(); x.requests[0].resolve(response({})); await settle();
+  const keys = x.sections().map(n => n.id || n.className);
+  assert.deepEqual(keys, ['safety-alert', 'steps-hero', 'rest-grid', 'location-card', 'freshness', 'map-points']);
+  assert.equal(x.section('.safety-alert').classList.contains('refreshed'), true);
+});
+
+// The bug the rewrite was for: walk_mode.js bound its handler to the button
+// at load, and the first refresh replaced that node. The button looked fine
+// and did nothing.
+test('the walk button still works after a refresh has replaced it', async () => {
+  const x = setup('walk_mode.js');
+  const first = x.nodes['walk-toggle'];
+  first.dataset.on = 'false';
+  const tap = button => x.document.events.click({target: {closest: s => s === '#walk-toggle' ? button : null}});
+  tap(first);
+  assert.equal(x.requests.length, 1);
+  assert.equal(x.requests[0].url, '/live');
+  // A refresh lands while the request is in flight and swaps the button.
+  const second = element(); second.dataset.on = 'false';
+  x.nodes['walk-toggle'] = second;
+  x.requests[0].resolve(response({live: true, seconds_left: 1200})); await settle();
+  assert.equal(second.textContent, 'Stop walk', 'drawn onto the button that is on the page now');
+  assert.equal(second.dataset.on, 'true');
+  assert.equal(second.disabled, false);
+  assert.equal(first.disabled, false);
+  tap(second);
+  assert.equal(x.requests.length, 2, 'the swapped-in button is live without any rebinding');
+  assert.equal(x.requests[1].options.body.get('on'), 'false');
+});
+
+test('a tap somewhere else on the page is not a walk press', () => {
+  const x = setup('walk_mode.js');
+  x.document.events.click({target: {closest: () => null}});
+  x.document.events.click({target: {}});
+  assert.equal(x.requests.length, 0);
 });
 
 test('cancelled touch never triggers a refresh', () => {
@@ -759,6 +936,20 @@ test('the legend shows on the first drive, is dismissed by a tap, and stays dism
   assert.equal(first.storage.get('kona-drive-seen'), '1');
   const again = setup('drive.js', false, {seen: true});
   assert.equal(again.nodes.legend.hidden, true, 'seen once is seen');
+});
+
+// The legend covers STOP while it is up. A tap where STOP is must be a stop.
+test('a first tap on STOP through the legend is a stop, not just a dismissal', async () => {
+  const x = setup('drive.js');
+  assert.equal(x.nodes.legend.hidden, false);
+  x.document.elementsFromPoint = () => [x.nodes.legend, x.nodes.estop];
+  x.nodes.legend.events.click({clientX: 700, clientY: 300});
+  assert.equal(x.nodes.legend.hidden, true);
+  assert.equal(x.requests.filter(q => q.url === '/robot/stop').length, 1, 'the tap stopped the robot too');
+  const elsewhere = setup('drive.js');
+  elsewhere.document.elementsFromPoint = () => [elsewhere.nodes.legend];
+  elsewhere.nodes.legend.events.click({clientX: 10, clientY: 10});
+  assert.equal(elsewhere.requests.filter(q => q.url === '/robot/stop').length, 0, 'a tap elsewhere only dismisses');
 });
 
 test('the Robot tab can ask for the legend again, and a blocked storage errs towards showing it', () => {

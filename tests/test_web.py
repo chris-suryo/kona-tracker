@@ -396,6 +396,13 @@ def test_motion_is_opt_in_and_respects_the_accessibility_setting():
     for name in ("kona-header", "kona-tab", "kona-frame", "kona-hero"):
         assert css.count(f"view-transition-name: {name}") == 1, "names must stay unique"
 
+    # The entry animations are for a page appearing. The Activity refresh
+    # swaps sections in on a page that is already on screen, marks each one
+    # `refreshed`, and the stylesheet must leave those alone -- or every
+    # quiet tick looks like a reload (the ring redrawing from zero, the hero
+    # fading in again). Both selectors have to outrank the animating rules.
+    assert "#activity-body .refreshed, .refreshed .goal-ring .value { animation: none; }" in css
+
     reduce = css[css.index("@media (prefers-reduced-motion: reduce)") :]
     assert "@view-transition { navigation: none; }" in reduce
     assert ".dial .val, .stat { animation: none; }" in reduce

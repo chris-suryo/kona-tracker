@@ -261,6 +261,10 @@ body.activity-page { overscroll-behavior-y: contain; }
 .location-card { animation-delay: .12s; }
 .week-row { animation-delay: .16s; }
 @keyframes rise { from { opacity: 0; transform: translateY(10px); } }
+/* Sections the Activity refresh swapped in (app.js marks them) arrive on a
+   page that is already on screen. Rising in again, or redrawing the goal
+   ring from zero, is what made a quiet tick look like a reload. */
+#activity-body .refreshed, .refreshed .goal-ring .value { animation: none; }
 
 /* camera */
 .cam-page { padding: 0; }
