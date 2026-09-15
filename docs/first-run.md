@@ -81,6 +81,22 @@ the passcode. To force every phone to log in again, change `KONA_SECRET` too.
 
 ## 3. Run it (no camera needed, anywhere)
 
+> **If a command dies with "An Application Control policy has blocked this
+> file" (os error 4551):** Windows is refusing to run the small unsigned
+> launcher that `uv` generates in `.venv\Scripts\` for every console script.
+> It is not a problem with this project or with `uv`. Put `python -m` in front
+> and drop the `kona`:
+>
+> ```powershell
+> uv run python -m kona_tracker serve
+> uv run python -m pytest -q
+> ```
+>
+> `python -m` imports the module instead of spawning a new executable, so
+> there is nothing for the policy to judge. Every `uv run kona ...` command in
+> this document has that form available. Seen on Chris's PC, 2026-09-15.
+
+
 ```
 uv run kona serve --fake-camera
 ```
