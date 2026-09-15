@@ -10,11 +10,17 @@ running state.
 kit: 3e06b156508b881bef26345c0bb7a63c90db4824 · stamped by dos new
 ---
 
-## Status (2026-09-13, chapter 2)
+## Status (2026-09-15, chapter 2)
 
-**Start from `main`.** Every PR through #28 is merged; nothing is stacked or
-waiting. Branch from `main`, open a PR, CI green, merge. ChatGPT's UI pass
-(PR #7) was reconciled in as #14 and #7 closed.
+**Start from `main`.** Every PR through #60 is merged and `main` is tagged
+`v0.1.0`; nothing is stacked or waiting. Branch from `main`, open a PR, CI
+green (four cells: ubuntu + windows, 3.11 + 3.12), merge.
+
+Since 2026-09-15 the app is also its own front door: `README.md` is written
+for a visitor, and `CHANGELOG.md` records what v0.1.0 contains. Three things
+are waiting on Chris rather than on code -- the robot measurements in
+`docs/robot-measurements.md`, phone screenshots taken with `KONA_PREVIEW=true`
+for the README, and the repository's own About panel and branch protection.
 
 `docs/history/production-punchlist.md` is the queue and carries the reasoning behind
 every item; `docs/scaling-limits.md` is the standing list of ceilings;
@@ -211,10 +217,13 @@ ipconfig                        # IPv4 of the PC; iPhone opens http://<that-ip>:
 - `src/kona_tracker/fi/` — Fi API client + GraphQL documents
 - `src/kona_tracker/probe/` — probe orchestration, redaction, schema scan
 - `src/kona_tracker/camera/` — sources (USB, RTSP, steerable fake), capabilities, control protocol, credential redaction, placeholder frame, the supervisor/reader hub
-- `src/kona_tracker/web/` — FastAPI app, passcode auth, settings, templates, CSS
-- `src/kona_tracker/cli.py` — `kona probe | serve | cameras | camera-test`; `cli_env.py` reads `.env`
-- `tests/` + `tests/fixtures/` — mocked Fi responses; fake camera
-- `docs/` — per-slice plans; `fi-api-fields.md` once the probe has run
+- `src/kona_tracker/robot/` — the gateway client; the only code that moves the robot
+- `src/kona_tracker/store/` — the optional SQLite recorder of what the collar reported
+- `src/kona_tracker/web/` — `app.py` builds the app and owns the CSP, the gate and the lifespan; `routes/` is one router per domain (auth, camera, robot, activity, profile); `views/` turns a snapshot into the exact strings the templates print, one module per page; `deps.py` is the frozen `AppDeps` they are all built from; `static/` holds the CSS, the plain JavaScript, vendored Leaflet and the vendored webfont
+- `src/kona_tracker/cli.py` — `kona probe | serve | cameras | camera-test | camera-doctor`; `cli_env.py` reads `.env`; `__main__.py` is the `python -m kona_tracker` entry point for a PC where Application Control blocks the venv shims
+- `tests/` + `tests/fixtures/` — mocked Fi responses; fake camera. `browser_runtime.test.cjs` runs the page scripts under Node and is manual, not a CI gate
+- `scripts/` — `audit_server.py` + `audit_shots.js` (the screenshot set), `check_overflow.js`, `contact_sheet.js` (grid overlays for a nitpick round), `robot_check.ps1`
+- `docs/` — the living documents; `docs/history/` is the dated record
 - `.dos/outbox/` — session artifacts (wrap)
 
 ## Facts that constrain design
