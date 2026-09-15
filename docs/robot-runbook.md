@@ -1,5 +1,11 @@
 # The robot will not connect. Now what?
 
+> Looking for the three measurements the robot session asked for -- the
+> strafe stand test, the battery sag at full throttle, and the camera --
+> they are in **`docs/robot-measurements.md`**, written as steps to follow
+> with the robot in front of you.
+
+
 `docs/robot-bringup.md` is the one-time setup. This is the everyday one: it
 was on yesterday and today the tab says **ROBOT OFF**.
 
