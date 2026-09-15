@@ -64,7 +64,7 @@ def test_buckets_mark_hours_still_to_come_and_never_read_them_as_zero():
     day = hourly_from(fixture("hourly")["data"])
     rest = hourly_buckets(day, "rest", FIXTURE_NOW, CHICAGO, "/rest")
     assert len(rest) == 24
-    assert rest[0]["label"] == "00:00–01:00" and rest[0]["short"] == "00"
+    assert rest[0]["label"] == "12–1 am" and rest[0]["short"] == "00"
     assert rest[0]["value"] == 60 and rest[0]["sleep"] == 60 and rest[0]["nap"] == 0
     assert rest[9]["value"] == 22 and rest[9]["nap"] == 22
     assert not rest[10]["future"], "10:00 is the hour in progress, and Fi has begun counting it"
@@ -97,7 +97,7 @@ def test_rest_page_shows_today_by_hour_above_the_days():
     assert "So far today:" in body
     with _client(_service()) as c:
         body = c.get("/rest?hour=9").text
-    assert "09:00–10:00" in body and "of rest" in body and "naps" in body
+    assert "9–10 am" in body and "of rest" in body and "naps" in body
 
 
 def test_steps_page_reads_fi_s_total_and_the_hour_buckets():
@@ -107,7 +107,7 @@ def test_steps_page_reads_fi_s_total_and_the_hour_buckets():
         assert "Through 10:00" in body and "View readings" in body
         assert body.count("future-bar") == 13, "hours 11-23 have not happened"
         chosen = c.get("/steps?hour=7").text
-        assert "07:00–08:00" in chosen and "1,480 steps" in chosen
+        assert "7–8 am" in chosen and "1,480 steps" in chosen
         assert c.get("/steps?hour=24").status_code == 422
         home = c.get("/activity").text
         assert 'href="/steps"' in home and "View steps" in home

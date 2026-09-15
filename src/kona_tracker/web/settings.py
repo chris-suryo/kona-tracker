@@ -109,7 +109,12 @@ class Settings:
     robot_name: str = "Robot"
     #: Lower than the house camera: every frame is one HTTP GET to the Pi,
     #: and ten a second of ~50 KB is plenty on a LAN.
-    robot_fps: float = 10.0
+    #: Raised from 10 on 2026-09-15: driving it for the first time, Chris
+    #: said the picture lag was the worst part. The robot's own ceiling is
+    #: about 19, and the camera is a separate process from the gateway, so
+    #: this buys smoothness from the Pi's camera without taking anything
+    #: from the control path. Raise it further in .env if the Wi-Fi holds.
+    robot_fps: float = 15.0
     #: Phase 2, declared now so the shape is settled: the Pi-side safety
     #: service (never the raw motor port) and the shared token it wants.
     robot_control_url: str = ""
@@ -321,7 +326,7 @@ def load_settings(env_file: Path | None = Path(".env"), fake_camera: bool = Fals
         stadia_api_key=stadia_api_key,
         robot_snapshot_url=robot_snapshot_url,
         robot_name=get("KONA_ROBOT_NAME", "Robot").strip() or "Robot",
-        robot_fps=float(get("KONA_ROBOT_FPS", "10")),
+        robot_fps=float(get("KONA_ROBOT_FPS", "15")),
         robot_control_url=robot_control_url,
         robot_token=get("KONA_ROBOT_TOKEN").strip(),
     )

@@ -25,7 +25,7 @@ from kona_tracker.fi.parse import (
 from kona_tracker.fi.service import FiService, FiSnapshot, fetch_snapshot
 from kona_tracker.web.app import create_app
 from kona_tracker.web.settings import Settings
-from kona_tracker.web.views import TRACK, activity_context, activity_json, dial_offset
+from kona_tracker.web.views import TRACK, _hhmm, activity_context, activity_json, dial_offset
 
 EMAIL, PASSWORD = "chris@example.com", "correct"
 
@@ -1023,7 +1023,7 @@ def test_times_are_konas_when_fi_names_her_timezone_and_say_so():
         page = c.get("/activity").text
     if chicago is not None:
         expected = NOW.astimezone(chicago)
-        assert ctx["as_of"] == expected.strftime("%H:%M")
+        assert ctx["as_of"] == _hhmm(expected)
         assert ctx["clock_zone"] == expected.strftime("%Z") and ctx["clock_zone"]
         assert data["clock"] == "fi" and data["timezone"] == "America/Chicago"
         assert f"Checked Fi {ctx['as_of']} {ctx['clock_zone']}" in page
@@ -1042,7 +1042,7 @@ def test_an_unloadable_timezone_falls_back_to_the_servers_clock():
         profile=PetProfile(name="Kona", timezone="Mars/Olympus_Mons"),
     )
     ctx = activity_context(snap, configured=True)
-    assert ctx["as_of"] == NOW.astimezone().strftime("%H:%M") and ctx["clock_zone"] is None
+    assert ctx["as_of"] == _hhmm(NOW.astimezone()) and ctx["clock_zone"] is None
     assert activity_json(snap, configured=True)["clock"] == "server"
     assert activity_json(None, configured=False)["clock"] is None
 

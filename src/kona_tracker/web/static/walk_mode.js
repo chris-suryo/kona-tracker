@@ -48,10 +48,12 @@
           offered: true,
           on: !!state.live,
           label: state.live ? 'Stop walk' : 'Start walk',
+          // Must match live_button() in views.py: the server renders this
+          // caption on load and this redraws it after a press.
           note: state.live
-            ? 'Asking Fi every ' + state.every_seconds + ' s · stops in '
+            ? 'Stops on its own in '
               + Math.max(1, Math.round((state.seconds_left || 0) / 60)) + ' min'
-            : 'Ask Fi every ' + state.every_seconds + ' s while you are out'
+            : ''
         });
         // The map page has a poller; wake it so the first fast fix is not
         // one whole resting interval away.
