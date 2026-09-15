@@ -643,7 +643,12 @@ body.activity-page { overscroll-behavior-y: contain; }
           background: var(--swatch); cursor: pointer; }
 .swatch[aria-pressed="true"] { border-color: var(--ink); box-shadow: 0 0 0 2px var(--bg2), 0 0 0 4px var(--ink); }
 .swatch:disabled { opacity: .4; }
-.swatch.white { --swatch: #FFFFFF; }
+/* The one swatch that needs its own border. `--line` is a 13% black hairline,
+   which is fine around a saturated colour and nearly invisible around white
+   sitting on the light theme's cream ground -- a colour button you cannot see
+   reads as a dead button. `--ink3` is the app's small-label colour and already
+   carries a measured contrast against --bg. */
+.swatch.white { --swatch: #FFFFFF; border-color: var(--ink3); }
 .swatch.warm { --swatch: #FFAA3C; }
 .swatch.green { --swatch: #78DC5A; }
 .swatch.blue { --swatch: #4696FF; }
