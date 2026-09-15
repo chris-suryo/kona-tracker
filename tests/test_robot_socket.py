@@ -84,11 +84,51 @@ def driving():
     app.state.robot_hub.stop()
 
 
-def settle(pi: Pi, want: int, timeout: float = 3.0) -> None:
+def settle(pi: Pi, want: int, timeout: float = 10.0) -> None:
     """Wait for the pump to have sent `want` commands, or give up loudly."""
+    wait_for(lambda: len(pi.drives) >= want, timeout)
+
+
+def holding(socket, frame: str, condition, timeout: float = 10.0) -> bool:
+    """Wait for `condition` while a thumb stays down.
+
+    The pump deliberately lets go after DRIVE_HOLD_MS of silence, so any test
+    that waits longer than that WITHOUT sending gets a robot that has
+    correctly stopped -- and an assertion that fails for a reason the product
+    is right about. A real drive page sends five frames a second; so does
+    this.
+    """
     deadline = time.monotonic() + timeout
-    while len(pi.drives) < want and time.monotonic() < deadline:
+    while time.monotonic() < deadline:
+        if condition():
+            return True
+        socket.send_text(frame)
+        time.sleep(DRIVE_INTERVAL_MS / 2000.0)
+    return False
+
+
+def wait_for(condition, timeout: float = 10.0) -> bool:
+    """Poll until `condition` holds, or the deadline passes.
+
+    **Every timing assertion in this file goes through here, and the deadlines
+    are deliberately generous.** Two of these tests were written as "sleep a
+    bit, then assert", and both flaked on CI within an hour of landing: the
+    takeover test saw an in-flight command arrive out of order on Windows, and
+    the teardown test gave the stop two seconds on a loaded Ubuntu runner and
+    got 0. They passed on the next two runs, which is the worst outcome --
+    a test that fails one run in three is a test nobody trusts, and the
+    instinct it teaches is to re-run CI rather than read it.
+
+    A long deadline costs nothing when the condition holds, because this
+    returns as soon as it does. It only costs time on a genuine failure,
+    which is the one case worth being slow about.
+    """
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if condition():
+            return True
         time.sleep(0.02)
+    return False
 
 
 def test_a_signed_out_phone_cannot_open_the_socket():
@@ -143,12 +183,16 @@ def test_the_pump_lets_go_when_the_phone_goes_quiet(driving):
         socket.send_text('{"vx":1,"vy":0,"omega":0}')
         settle(pi, 2)
         sent_while_held = len(pi.drives)
-        time.sleep((DRIVE_HOLD_MS + 4 * DRIVE_INTERVAL_MS) / 1000.0)
-        assert pi.stops >= 1, "the pump kept holding the throttle for a phone that is gone"
+        assert wait_for(lambda: pi.stops >= 1), (
+            "the pump kept holding the throttle for a phone that is gone"
+        )
         quiet = len(pi.drives)
+        # Now prove it STAYS let go. This one is a fixed sleep on purpose:
+        # the assertion is that nothing happens, and there is no condition to
+        # wait for. A slow runner only makes it a stronger check.
         time.sleep(3 * DRIVE_INTERVAL_MS / 1000.0)
         assert len(pi.drives) == quiet, "it must stay let go, not resume"
-    assert quiet > sent_while_held - 1
+    assert quiet >= sent_while_held
 
 
 def test_the_stop_it_sends_on_going_quiet_is_sent_once_not_every_tick(driving):
@@ -159,7 +203,9 @@ def test_the_stop_it_sends_on_going_quiet_is_sent_once_not_every_tick(driving):
     with client.websocket_connect("/robot/ws/drive") as socket:
         socket.send_text('{"vx":1,"vy":0,"omega":0}')
         settle(pi, 2)
-        time.sleep((DRIVE_HOLD_MS + 6 * DRIVE_INTERVAL_MS) / 1000.0)
+        assert wait_for(lambda: pi.stops >= 1), "the pump never let go"
+        # Then give it several more ticks to send the duplicates it must not.
+        time.sleep(6 * DRIVE_INTERVAL_MS / 1000.0)
         assert pi.stops == 1, f"sent {pi.stops} stops where one was needed"
 
 
@@ -183,10 +229,7 @@ def test_closing_the_page_stops_the_robot(driving):
     with client.websocket_connect("/robot/ws/drive") as socket:
         socket.send_text('{"vx":1,"vy":0,"omega":0}')
         settle(pi, 1)
-    deadline = time.monotonic() + 2.0
-    while pi.stops == 0 and time.monotonic() < deadline:
-        time.sleep(0.02)
-    assert pi.stops >= 1
+    assert wait_for(lambda: pi.stops >= 1), "the socket closed and the robot was never told to stop"
 
 
 def test_a_refusal_reaches_the_phone_and_the_pump_lets_go():
@@ -235,15 +278,18 @@ def test_a_second_driver_takes_over_rather_than_fighting(driving):
         settle(pi, 1)
         with client.websocket_connect("/robot/ws/drive") as second:
             second.send_text('{"vx":0.9,"vy":0,"omega":0}')
-            # Past the handover: a 0.2 already in flight when the second page
-            # connected is not the first page still driving, so the window
-            # starts after the first pump has certainly been cancelled.
-            settle(pi, len(pi.drives) + 2)
-            mark = len(pi.drives)
-            settle(pi, mark + 2)
-            recent = [d["vx"] for d in pi.drives[mark:]]
-            assert recent and all(v == 0.9 for v in recent), (
-                f"the first page is still driving: {recent}"
+
+            # A 0.2 already in flight when the second page connected is not
+            # the first page still driving, and on Windows one arrived AFTER
+            # a 0.9 -- two threadpool calls completing out of order. So this
+            # waits for a clean run rather than assuming a fixed window
+            # contains no straggler.
+            def only_the_new_one() -> bool:
+                tail = [d["vx"] for d in pi.drives[-3:]]
+                return len(tail) == 3 and all(v == 0.9 for v in tail)
+
+            assert holding(second, '{"vx":0.9,"vy":0,"omega":0}', only_the_new_one), (
+                f"the first page is still driving: {[d['vx'] for d in pi.drives]}"
             )
 
 
@@ -289,11 +335,17 @@ def test_a_page_that_was_taken_over_does_not_stop_the_page_that_replaced_it(driv
         with client.websocket_connect("/robot/ws/drive") as second:
             second.send_text('{"vx":0.9,"vy":0,"omega":0}')
             settle(pi, len(pi.drives) + 2)
-            # The first socket has been closed by the takeover by now. If its
-            # teardown stopped the robot, that stop is already recorded.
-            assert pi.stops == 0, "the superseded page stopped the robot mid-drive"
-            # And the robot is still being driven by the second page.
+            # Keep the second page's thumb down throughout. Without that the
+            # observation window is longer than DRIVE_HOLD_MS, both pumps
+            # correctly let go, and each sends the very stop this test is
+            # asserting the absence of -- a test failing on behaviour the
+            # product gets right.
             mark = len(pi.drives)
-            settle(pi, mark + 2)
-            still = [d["vx"] for d in pi.drives[mark:]]
+            assert holding(
+                second,
+                '{"vx":0.9,"vy":0,"omega":0}',
+                lambda: len(pi.drives) >= mark + 4,
+            ), "the second page never took over the pump"
+            assert pi.stops == 0, "the superseded page stopped the robot mid-drive"
+            still = [d["vx"] for d in pi.drives[mark + 1 :]]
             assert still and all(v == 0.9 for v in still), still

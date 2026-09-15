@@ -681,6 +681,15 @@ def create_app(
             stopped = True
             while running:
                 await asyncio.sleep(DRIVE_INTERVAL_MS / 1000.0)
+                # A superseded connection does nothing further to the robot.
+                # Its close is scheduled rather than awaited, so this pump can
+                # outlive the takeover by a tick or two -- long enough, under
+                # load, to reach its own hold expiry below and send a stop
+                # that lands on the page which replaced it. The teardown flag
+                # alone did not cover this: that guards the stop at the end,
+                # and this is a stop in the middle.
+                if socket in superseded:
+                    return
                 silent = (time.monotonic() - last_frame) * 1000.0
                 if silent > DRIVE_HOLD_MS:
                     # The phone has gone quiet. Let go once, then stay quiet:
