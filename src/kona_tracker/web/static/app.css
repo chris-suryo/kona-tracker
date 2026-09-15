@@ -444,6 +444,21 @@ body.activity-page { overscroll-behavior-y: contain; }
 .history-total { padding: 26px 0 22px; }
 .history-total > strong { display: block; margin: 12px 0; font-size: clamp(40px, 13vw, 56px); }
 .history-total p { font-size: 12px; color: var(--ink2); margin: 0; }
+/* The hero used to be one paragraph of middot-joined facts that wrapped to
+   three lines and read as a self-contradicting sentence. Now it is a small
+   hierarchy: the fact worth reading, the supporting one, then housekeeping,
+   then the explanation -- each a step quieter than the last. .total-lead
+   uses --ink rather than --ink2 because it is the line the page is for. */
+.history-total .total-lead { margin-top: 2px; font-size: 13px; color: var(--ink); }
+.history-total .total-aside { margin-top: 5px; }
+.history-total .total-checked { margin-top: 5px; color: var(--ink3); }
+.history-total .total-checked:empty { display: none; }
+/* Set in the reading colour, not the faint one: this sentence exists because
+   a number above it looks wrong without it, and a reader who cannot see the
+   explanation is left with the contradiction. It sits below the key rather
+   than beside the number so it never competes for the first glance. */
+.history-total .total-explain { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line);
+                                color: var(--ink2); line-height: 1.45; max-width: 46ch; }
 .chart-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .chart-heading h2 { font-size: 15px; font-weight: 600; }
 .chart-heading > span { font-size: 11px; color: var(--ink2); }

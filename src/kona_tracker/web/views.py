@@ -188,6 +188,48 @@ def distance_label(metres: int | float | None) -> str | None:
     return f"{metres / 1609.344:.1f} mi"
 
 
+#: Said next to a step count, so the two numbers cannot be read as rivals.
+#:
+#: This is the sentence `docs/device-capabilities.md` made a condition of
+#: showing the figure at all. Fi's own assistant settled what it measures:
+#: *"Fi counts distance based on GPS tracking during outdoor movement, not
+#: just step count from the collar's accelerometer."* So a day of 46,725
+#: steps and 0.6 mi is not a contradiction and not a bug -- it is a dog who
+#: moved all day indoors and went out once. Printed bare, as it was until
+#: 2026-09-15, it reads as one of those two numbers being wrong.
+DISTANCE_NOTE = (
+    "Distance is GPS, so only time outdoors adds to it. "
+    "Her steps are counted everywhere, indoors included."
+)
+
+#: The same job for the rest chart. Fi splits rest into sleep and naps and
+#: never says how; this at least stops the reader inventing a rule.
+REST_NOTE = (
+    "Fi calls her longest settled stretch overnight sleep, and the shorter "
+    "daytime ones naps. The split is Fi's, not ours."
+)
+
+
+def outdoor_distance(metres: int | float | None) -> str | None:
+    """`6449` -> `4.0 mi outdoors`. None when Fi did not say.
+
+    The word is load-bearing and is why this exists rather than the page
+    calling `distance_label` directly: `docs/device-capabilities.md` lifted
+    the block on showing distance "provided it is labelled as outdoor or
+    walk distance and a zero is never presented as 'she did not move'".
+    A bare "0.6 mi" beside five figures of steps met neither half.
+
+    Zero gets words rather than "0 ft" for the second half of that rule: on a
+    day she never left the house the true statement is that there is no
+    outdoor distance, not that she was still.
+    """
+    if metres is None or metres < 0:
+        return None
+    if metres == 0:
+        return "No time outdoors yet"
+    return f"{distance_label(metres)} outdoors"
+
+
 def _span(start: datetime | None, end: datetime | None, zone: tzinfo | None) -> str | None:
     """`14:23 – 15:06` on Kona's clock; None unless both ends are known."""
     if start is None or end is None:
@@ -801,6 +843,7 @@ def rest_history_context(
         "fetched_label": _hhmm(fetched_local) if fetched_local else None,
         "clock_zone": fetched_local.strftime("%Z") if zone and fetched_local else None,
         "excluded_note": excluded_note,
+        "rest_note": REST_NOTE,
         "range_label": (
             f"{first['label']} – {last['label']}"
             if first and last and first != last
@@ -1256,7 +1299,8 @@ def steps_context(
             "ring": step_ring(
                 activity.steps if activity else None, activity.step_goal if activity else None
             ),
-            "distance": distance_label(activity.distance if activity else None),
+            "distance": outdoor_distance(activity.distance if activity else None),
+            "distance_note": DISTANCE_NOTE,
             "fetched_label": _hhmm(fetched_local) if fetched_local else None,
             "clock_zone": fetched_local.strftime("%Z") if zone and fetched_local else None,
         }

@@ -103,7 +103,10 @@ def test_rest_page_shows_today_by_hour_above_the_days():
 def test_steps_page_reads_fi_s_total_and_the_hour_buckets():
     with _client(_service()) as c:
         body = c.get("/steps").text
-        assert "Steps by hour" in body and "4,210" in body and "of 9,000" in body
+        assert "Steps by hour" in body and "4,210" in body
+        # The hero was one middot-joined paragraph until 2026-09-15; the
+        # goal now leads its own line and says whose day it belongs to.
+        assert "of today's 9,000 goal" in body
         assert "Through 10:00" in body and "View readings" in body
         assert body.count("future-bar") == 13, "hours 11-23 have not happened"
         chosen = c.get("/steps?hour=7").text

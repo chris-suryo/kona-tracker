@@ -14,7 +14,15 @@
 <section class="history-total {{ 'dimmed' if stale else '' }}" aria-label="Steps today">
   <span class="eyebrow">Steps today{% if hours_date %} · {{ hours_date }}{% endif %}</span>
   <strong class="d {{ '' if steps else 'empty' }}">{{ steps or '&ndash;'|safe }}</strong>
-  <p>{% if step_goal %}of {{ step_goal }} · {{ ring.percent }}% of today's goal{% else %}No goal available{% endif %}{% if distance %} · {{ distance }}{% endif %}{% if stale %} · last good reading{% elif fetched_label %} · checked Fi {{ fetched_label }}{% if clock_zone %} {{ clock_zone }}{% endif %}{% endif %}</p>
+  {# Was one paragraph carrying five unrelated facts: the goal, the percent,
+     the distance and when Fi was last asked, separated by middots. At five
+     figures of steps it wrapped to three lines and read as a single
+     sentence that contradicted itself. One fact per line, most important
+     first, and the housekeeping last and quiet. #}
+  <p class="total-lead">{% if step_goal %}{{ ring.percent }}% of today's {{ step_goal }} goal{% else %}No goal available{% endif %}</p>
+  {% if distance %}<p class="total-aside">{{ distance }}</p>{% endif %}
+  <p class="total-checked">{% if stale %}Last good reading{% elif fetched_label %}Checked Fi {{ fetched_label }}{% if clock_zone %} {{ clock_zone }}{% endif %}{% endif %}</p>
+  {% if distance %}<p class="total-explain">{{ distance_note }}</p>{% endif %}
 </section>
 {% if hours %}
 <section class="history-chart" aria-labelledby="hours-title">

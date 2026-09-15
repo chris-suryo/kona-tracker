@@ -157,12 +157,12 @@ def test_rest_page_renders_real_days_and_never_the_sample_vocabulary():
     assert "1 complete day of 2" in body
     # The mock has no collar cutoff, so only today is excluded -- and the
     # page must not claim a "first day" exclusion that did not happen.
-    assert "today is excluded" in body and "first day" not in body
+    assert "Today is excluded" in body and "first day" not in body
     # Days are named as the hero names them: the window's start date as Fi
     # sent it. The fixture's windows start on the 9th and 10th; the mock's
     # Chicago timezone must not pull them back a day.
     assert "9 Sep – 10 Sep" in body
-    assert "checked Fi 10:00 am CDT" in body
+    assert "Checked Fi 10:00 am CDT" in body
     # Nothing from the design-preview page may appear here. "by hour" is no
     # longer on the list: since 2026-09-13 the hours are Fi's own
     # (restFeed period: DAY), and the page draws them above the days.

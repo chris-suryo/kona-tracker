@@ -26,11 +26,17 @@
 <section class="history-total {{ 'dimmed' if stale else '' }}" aria-label="Average daily rest">
   <span class="eyebrow">Average daily rest</span>
   <strong class="d">{% if average is not none %}{{ minutes(average) }}{% else %}&ndash;{% endif %}</strong>
-  <p>Across {{ complete_days }} complete day{{ '' if complete_days == 1 else 's' }} of {{ total_days }}{% if excluded_note %} · {{ excluded_note }}{% endif %}{% if stale %} · last good reading{% elif fetched_label %} · checked Fi {{ fetched_label }}{% if clock_zone %} {{ clock_zone }}{% endif %}{% endif %}</p>
+  {# Same treatment as the Steps hero: what the average is across, then what
+     was left out, then when we asked -- rather than one middot-joined line
+     that wrapped and read as a sentence. #}
+  <p class="total-lead">Across {{ complete_days }} complete day{{ '' if complete_days == 1 else 's' }} of {{ total_days }}</p>
+  {% if excluded_note %}<p class="total-aside">{{ excluded_note|capitalize }}</p>{% endif %}
+  <p class="total-checked">{% if stale %}Last good reading{% elif fetched_label %}Checked Fi {{ fetched_label }}{% if clock_zone %} {{ clock_zone }}{% endif %}{% endif %}</p>
   <div class="rest-key">
     <span><i class="sleep-key"></i>Avg sleep <strong>{% if average_sleep is not none %}{{ minutes(average_sleep) }}{% else %}&ndash;{% endif %}</strong></span>
     <span><i class="nap-key"></i>Avg naps <strong>{% if average_nap is not none %}{{ minutes(average_nap) }}{% else %}&ndash;{% endif %}</strong></span>
   </div>
+  <p class="total-explain">{{ rest_note }}</p>
 </section>
 {% if hours %}
 <section class="history-chart" aria-labelledby="hours-title">
