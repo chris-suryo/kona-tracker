@@ -48,7 +48,7 @@
           offered: true,
           on: !!state.live,
           label: state.live ? 'Stop walk' : 'Start walk',
-          // Must match live_button() in views.py: the server renders this
+          // Must match live_button() in views/map.py: the server renders this
           // caption on load and this redraws it after a press.
           note: state.live
             ? 'Stops on its own in '

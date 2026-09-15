@@ -36,7 +36,7 @@ carrier connection yet; see "The measurement that settles this" below.
 JPEG quality is hard-coded at **80**, and not in a place anyone would find
 it. It is a constructor default on both real sources —
 `camera/source.py:228` (`OpenCVSource`) and `camera/source.py:286`
-(`RtspSource`) — and **no caller ever passes it**: `web/app.py:138` builds
+(`RtspSource`) — and **no caller ever passes it**: `web/app.py`'s `default_source_factory` builds
 the source from index, width, height and fps only. There is no environment
 variable. Reaching quality at all needs a code change.
 
@@ -60,7 +60,7 @@ softened.
 
 ### The fix, when it is wanted
 
-`KONA_CAMERA_QUALITY`, threaded from settings through `app.py:138` into the
+`KONA_CAMERA_QUALITY`, threaded from settings through `default_source_factory` in `app.py` into the
 source constructors that already accept it. Small, testable, and deliberately
 not built today: the ask was to record the limit, not to spend the evening on
 it.
@@ -69,7 +69,7 @@ it.
 
 ## 2. About 40 simultaneous viewers, and the pool is shared
 
-`/snapshot.jpg` is a **sync** `def` handler (`web/app.py:406`), so Starlette
+`/snapshot.jpg` is a **sync** `def` handler (`web/routes/camera.py`), so Starlette
 runs it in anyio's default worker thread pool. Each poller waiting for a new
 frame holds one of those threads for up to `stale_after`, which is 3 seconds
 (`camera/hub.py:87`). anyio's default limiter is **40 threads**, verified:

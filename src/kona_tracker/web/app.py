@@ -1,4 +1,11 @@
-"""FastAPI app: passcode gate + Camera tab (live MJPEG) + Activity from the Fi collar."""
+"""Building the app: settings in, a FastAPI instance out.
+
+`create_app()` owns everything that exists once per process -- the security
+headers, the passcode gate, the camera hubs, the robot gateway, the Fi
+service, the lifespan that stops them -- and hands it to the routers in
+`routes/` through `deps.AppDeps`. The handlers themselves live there, one
+module per domain; the strings they render are built in `views/`.
+"""
 
 from __future__ import annotations
 
@@ -50,9 +57,7 @@ from kona_tracker.web.routes.camera import make_camera_router
 from kona_tracker.web.routes.profile import make_profile_router
 from kona_tracker.web.routes.robot import make_robot_router
 from kona_tracker.web.settings import Settings
-from kona_tracker.web.views import (
-    map_tile_config,
-)
+from kona_tracker.web.views import map_tile_config
 
 HERE = Path(__file__).parent
 PUBLIC_PATHS = {"/login", "/healthz"}
