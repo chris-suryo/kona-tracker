@@ -52,6 +52,21 @@ also a one-line sign flip on their side, and nothing we built changes.
 **Write down what you saw for each of the four:** stick left, stick right,
 and the wheel pattern for each. That is what they need.
 
+### While you are on the stand: the new look stick
+
+Drive mode now has a **second joystick** on the right — the one you asked for
+twice. It aims the camera and nothing else: it does not stop the robot when
+you let go, and the camera stays where you point it (double-tap the centre dot
+to level it). Two things to check while she is safely on a box:
+
+- **Push it up. Does the camera look up?** Screen-up maps to tilt-up in our
+  code, but the gateway's sign convention for tilt has never been checked on
+  hardware. If it is inverted, that is one minus sign on our side, not theirs.
+- **Push it right. Does the camera pan right?** Same question for pan.
+
+Either being backwards is a two-minute fix; both being right means the whole
+control is done.
+
 ---
 
 ## 2. Can `MAX_DUTY` go above 55? (10 minutes, needs a full charge)
