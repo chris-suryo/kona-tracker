@@ -176,9 +176,16 @@ body.activity-page { overscroll-behavior-y: contain; }
              border-top: 1px solid var(--line); color: var(--ink2); text-align: center; font-size: 13px; line-height: 1.5; }
 .map-empty span { max-width: 28ch; }
 .map-empty svg { width: 28px; height: 28px; fill: none; stroke: var(--t4); stroke-width: 1.7; }
+/* Where she is now. Her Fi photo when there is one, the initial when there
+   is not -- the same pairing as .avatar, and the same `data-optional` img
+   that app.js removes if it 404s, so this never shows a broken-image icon.
+   `overflow: hidden` and `position: relative` are what make the square photo
+   a circle sitting exactly inside the white ring. */
 .kona-map-marker { border: 0; background: none; }
 .kona-map-marker span { width: 34px; height: 34px; display: grid; place-items: center; border: 3px solid #fff; border-radius: 50%;
-                        background: var(--t4); color: var(--on); box-shadow: 0 4px 14px rgba(0,0,0,.3); font: 800 13px var(--body); }
+                        background: var(--t4); color: var(--on); box-shadow: 0 4px 14px rgba(0,0,0,.3); font: 800 13px var(--body);
+                        position: relative; overflow: hidden; }
+.kona-map-marker img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 /* Required by Stadia and OSM, so it stays -- but it was a near-white strip
    across the foot of every map. Toned to sit in the picture rather than on
    top of it. Do not hide it: the tiles are licensed on the condition it is
@@ -437,10 +444,34 @@ body.activity-page { overscroll-behavior-y: contain; }
 .history-total { padding: 26px 0 22px; }
 .history-total > strong { display: block; margin: 12px 0; font-size: clamp(40px, 13vw, 56px); }
 .history-total p { font-size: 12px; color: var(--ink2); margin: 0; }
+/* The hero used to be one paragraph of middot-joined facts that wrapped to
+   three lines and read as a self-contradicting sentence. Now it is a small
+   hierarchy: the fact worth reading, the supporting one, then housekeeping,
+   then the explanation -- each a step quieter than the last. .total-lead
+   uses --ink rather than --ink2 because it is the line the page is for. */
+.history-total .total-lead { margin-top: 2px; font-size: 13px; color: var(--ink); }
+.history-total .total-aside { margin-top: 5px; }
+.history-total .total-checked { margin-top: 5px; color: var(--ink3); }
+.history-total .total-checked:empty { display: none; }
+/* Set in the reading colour, not the faint one: this sentence exists because
+   a number above it looks wrong without it, and a reader who cannot see the
+   explanation is left with the contradiction. It sits below the key rather
+   than beside the number so it never competes for the first glance. */
+.history-total .total-explain { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line);
+                                color: var(--ink2); line-height: 1.45; max-width: 46ch; }
 .chart-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .chart-heading h2 { font-size: 15px; font-weight: 600; }
 .chart-heading > span { font-size: 11px; color: var(--ink2); }
-.bar-chart { display: block; width: 100%; overflow: visible; }
+/* `pan-y`, and neither `none` nor the default. The default lets the browser
+   claim a horizontal drag for its own gesture, so the scrub in chart_scrub.js
+   would never see the moves; `none` would take vertical scrolling with it,
+   and the chart is nearly the full width of a phone, so the page would feel
+   stuck wherever a thumb landed on it. */
+.bar-chart { display: block; width: 100%; overflow: visible; touch-action: pan-y; }
+/* Not display:none: `hidden` keeps it out of the accessibility tree as well,
+   and these readings are already announced through the bars' own labels and
+   the live region under the chart. */
+.chart-readings-data { display: none; }
 .chart-rule { stroke: var(--line); fill: none; stroke-width: .6; }
 .step-bar { fill: var(--t4); }
 .sleep-bar, .sleep-key { fill: var(--t4); background: var(--t4); }
@@ -591,6 +622,38 @@ body.activity-page { overscroll-behavior-y: contain; }
 .setting-label strong { font-size: 15px; letter-spacing: -.02em; }
 .setting-label span { font-size: 12px; color: var(--ink2); line-height: 1.35; }
 .seg.small { flex: none; padding: 3px; }
+
+/* The robot's front lights. Colours live here and not in a `style=` attribute
+   on the button: the page sends `style-src 'self'` with no 'unsafe-inline',
+   so an inline style is dropped silently and every swatch would come out
+   colourless with nothing in the console to explain it. */
+/* Stacked, not side by side. Six 34px dots plus their gaps need about 254px,
+   and beside a label on a 390px phone they wrapped to 4 + 2 -- a ragged
+   second row that read as two groups of colours rather than one. */
+.led-colours { flex-direction: column; align-items: stretch; gap: 12px; }
+.swatches { display: flex; gap: 10px; justify-content: space-between; }
+/* 34px, not the 24px a swatch wants to be: this is a phone, and a colour is
+   not worth a second tap.
+
+   Solid, with no inset ring. The first version had `inset 0 0 0 3px var(--bg2)`
+   meaning it as a subtle rim, and on a dark phone it read as a dark disc with
+   a coloured edge -- the swatch inverted, and white came out grey. A control
+   whose whole job is to show a colour has to show the colour. */
+.swatch { width: 34px; height: 34px; padding: 0; border: 2px solid var(--line); border-radius: 50%;
+          background: var(--swatch); cursor: pointer; }
+.swatch[aria-pressed="true"] { border-color: var(--ink); box-shadow: 0 0 0 2px var(--bg2), 0 0 0 4px var(--ink); }
+.swatch:disabled { opacity: .4; }
+/* The one swatch that needs its own border. `--line` is a 13% black hairline,
+   which is fine around a saturated colour and nearly invisible around white
+   sitting on the light theme's cream ground -- a colour button you cannot see
+   reads as a dead button. `--ink3` is the app's small-label colour and already
+   carries a measured contrast against --bg. */
+.swatch.white { --swatch: #FFFFFF; border-color: var(--ink3); }
+.swatch.warm { --swatch: #FFAA3C; }
+.swatch.green { --swatch: #78DC5A; }
+.swatch.blue { --swatch: #4696FF; }
+.swatch.red { --swatch: #DC3C3C; }
+.swatch.purple { --swatch: #BE50DC; }
 .seg.small .opt { min-width: 52px; height: 34px; padding: 0 12px; border: 0; border-radius: 999px; background: none; color: var(--ink2); font: inherit; font-size: 13px; font-weight: 600; }
 .seg.small .opt[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
 .seg.small .opt:disabled { opacity: .5; }
@@ -649,13 +712,39 @@ body.activity-page { overscroll-behavior-y: contain; }
    other component in this file carries the same guard; this one was missed
    (found in ChatGPT's visual audit, 2026-09-13, by reading the DOM). */
 .live-stat[hidden], .live-walk[hidden], .live-recentre[hidden], .live-note[hidden] { display: none; }
-.live-stat strong { font-size: 19px; font-weight: 700; letter-spacing: -.03em;
+/* Three panels share the width of a phone, so each gets about 92px of
+   content -- and "41 min ago" at 19px bold is wider than that. It did not
+   wrap, because it must not; it simply painted over the panel to its right,
+   which is what the 2026-09-15 capture shows. So: shrink with the viewport,
+   and clip inside this panel rather than over the next one if a string ever
+   defeats even that. The words stay -- this is the one number on the page
+   that can be bad news, and "41 min" without "ago" invites reading it as a
+   duration. */
+.live-stat { overflow: hidden; }
+.live-stat strong { font-size: clamp(15px, 4.4vw, 19px); font-weight: 700; letter-spacing: -.03em;
                     font-variant-numeric: tabular-nums; white-space: nowrap; }
 .live-stat strong small { font-size: 12px; font-weight: 600; margin: 0 4px 0 1px; color: var(--ink2); }
 /* The fix age is the one number that can be bad news, so it is the one
    number allowed to change colour. Amber past two minutes, red past five. */
 .live-stat strong.warn { color: var(--warn); }
 .live-stat strong.bad { color: var(--bad); }
+
+/* Leaflet's own bottom-right controls and this page's stat panels both sit
+   at the bottom of the map, so the zoom buttons drew directly on top of the
+   WALKING panel (visible the moment the capture script started stubbing tiles
+   on 2026-09-15 -- before that every map screenshot was the "unavailable"
+   state, which is precisely why it had gone unnoticed). Lift them clear of
+   the stats row, on this page only: the small maps elsewhere have no stats
+   under them and their controls are correctly placed.
+
+   It lifts the zoom control and NOT the whole `.leaflet-bottom.leaflet-right`
+   corner, which was the first attempt: the attribution lives in that same
+   corner, so raising it moved the licence strip straight onto the Start walk
+   button. Leaflet's tiles are licensed on the condition the attribution is
+   shown, so it stays exactly where it was, at the foot of the page. */
+.map-page .leaflet-bottom.leaflet-right .leaflet-control-zoom {
+  margin-bottom: calc(env(safe-area-inset-bottom, 0px) + 74px);
+}
 
 /* One column, not three things pinned to the same offset. The recentre
    button, the stale note and the walk control all sat at +76px, so a stale
@@ -714,6 +803,18 @@ body.activity-page { overscroll-behavior-y: contain; }
   padding: 24px; text-align: center; }
 .drive-turn .d { font-size: 26px; }
 .drive-turn p { margin: 0; color: var(--ink2); font-size: 14px; line-height: 1.5; max-width: 30ch; }
+/* The only bare `<a>` left in the app, and it showed: on the portrait prompt
+   it rendered in the browser's default link blue -- purple once visited --
+   on a near-black ground. Nothing else needed a global `a` rule because every
+   other link in this app belongs to a component that colours it; this one
+   belongs to nothing.
+
+   It is also the single control on that screen, so it gets a target rather
+   than a 14px line of text: 44px is the minimum a thumb should be asked to
+   hit, and the underline stays because it is the only thing marking it as a
+   link at all. Found in the dark-theme screenshot, 2026-09-15. */
+.drive-turn a { display: inline-block; min-height: 44px; padding: 11px 4px;
+  color: var(--t4); font-size: 15px; font-weight: 600; }
 .drive { display: none; }
 @media (orientation: landscape) {
   .drive-turn { display: none; }
@@ -807,6 +908,20 @@ body.activity-page { overscroll-behavior-y: contain; }
 .stick.held .knob { transition: none; }
 .stick[aria-disabled="true"] { opacity: .4; }
 .drive-right { display: flex; align-items: center; gap: 12px; }
+/* The two rotate buttons stack now that a second stick shares this corner.
+   At 667px landscape -- the narrowest phone this page is used on -- a row of
+   stick + 2 buttons + STOP does not fit beside the picture; a column of two
+   62px buttons is the same height as the 128px stick beside it and costs one
+   button's width instead of two. */
+.drive-spins { display: flex; flex-direction: column; gap: 8px; }
+/* Smaller than the drive stick and quieter, because it is the less urgent of
+   the two and must never be the one a thumb lands on by mistake. */
+.look { width: 104px; height: 104px; background: rgba(0,0,0,.30); }
+.look .knob { width: 44px; height: 44px; margin: -22px 0 0 -22px; background: rgba(255,255,255,.72); }
+/* The centre dot is the way back to level, so it is a target rather than a
+   decoration: brighter than the drive stick's, and the double-tap that uses
+   it is announced in the stick's own aria-label. */
+.look::after { width: 8px; height: 8px; margin: -4px 0 0 -4px; background: rgba(255,255,255,.6); }
 .spin { width: 62px; height: 62px; flex: none; border-radius: 50%; border: 1px solid rgba(255,255,255,.35);
   background: rgba(0,0,0,.42); color: #fff; font-size: 22px; font-weight: 700;
   touch-action: none; transition: transform .1s ease-out; }

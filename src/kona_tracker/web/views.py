@@ -188,6 +188,48 @@ def distance_label(metres: int | float | None) -> str | None:
     return f"{metres / 1609.344:.1f} mi"
 
 
+#: Said next to a step count, so the two numbers cannot be read as rivals.
+#:
+#: This is the sentence `docs/device-capabilities.md` made a condition of
+#: showing the figure at all. Fi's own assistant settled what it measures:
+#: *"Fi counts distance based on GPS tracking during outdoor movement, not
+#: just step count from the collar's accelerometer."* So a day of 46,725
+#: steps and 0.6 mi is not a contradiction and not a bug -- it is a dog who
+#: moved all day indoors and went out once. Printed bare, as it was until
+#: 2026-09-15, it reads as one of those two numbers being wrong.
+DISTANCE_NOTE = (
+    "Distance is GPS, so only time outdoors adds to it. "
+    "Her steps are counted everywhere, indoors included."
+)
+
+#: The same job for the rest chart. Fi splits rest into sleep and naps and
+#: never says how; this at least stops the reader inventing a rule.
+REST_NOTE = (
+    "Fi calls her longest settled stretch overnight sleep, and the shorter "
+    "daytime ones naps. The split is Fi's, not ours."
+)
+
+
+def outdoor_distance(metres: int | float | None) -> str | None:
+    """`6449` -> `4.0 mi outdoors`. None when Fi did not say.
+
+    The word is load-bearing and is why this exists rather than the page
+    calling `distance_label` directly: `docs/device-capabilities.md` lifted
+    the block on showing distance "provided it is labelled as outdoor or
+    walk distance and a zero is never presented as 'she did not move'".
+    A bare "0.6 mi" beside five figures of steps met neither half.
+
+    Zero gets words rather than "0 ft" for the second half of that rule: on a
+    day she never left the house the true statement is that there is no
+    outdoor distance, not that she was still.
+    """
+    if metres is None or metres < 0:
+        return None
+    if metres == 0:
+        return "No time outdoors yet"
+    return f"{distance_label(metres)} outdoors"
+
+
 def _span(start: datetime | None, end: datetime | None, zone: tzinfo | None) -> str | None:
     """`14:23 – 15:06` on Kona's clock; None unless both ends are known."""
     if start is None or end is None:
@@ -391,8 +433,11 @@ def dial_offset(hours: float | None) -> float:
     return round(TRACK * (1.0 - fraction), 1)
 
 
-#: Alidade Smooth Dark. `{r}` is Leaflet's retina placeholder and is what
-#: makes this sharp on a phone; it resolves to "@2x" on a HiDPI screen.
+#: Alidade Smooth, light and dark. `{r}` is Leaflet's retina placeholder and
+#: is what makes these sharp on a phone; it resolves to "@2x" on a HiDPI
+#: screen. Both are sent to the page and the browser picks, because the theme
+#: is a client-side choice (localStorage) and the server cannot know it.
+STADIA_LIGHT = "https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}{r}.png"
 STADIA_DARK = "https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png"
 STADIA_ATTRIBUTION = (
     '&copy; <a href="https://stadiamaps.com/">Stadia Maps</a>, '
@@ -438,10 +483,24 @@ def scale_label(minutes: int | float | None, unit: str) -> str:
 def map_tile_config(map_tiles: str, stadia_api_key: str = "") -> dict[str, Any]:
     """Tile layer settings for `map.js`, rendered as a JSON data block.
 
+    **Both themes are sent, and the browser picks.** This used to return one
+    layer and it was always the dark one: `KONA_MAP_TILES=stadia` requested
+    Alidade Smooth *Dark* whatever the page looked like, so choosing Light in
+    Settings gave a light page sitting on a black map. The server cannot fix
+    that by choosing better, because since 2026-09-15 the theme is a
+    client-side choice living in `localStorage` -- the server does not know
+    it and must not guess. So it hands over both and `map.js` resolves the
+    theme the same way the CSS does.
+
     A separate function, and the only place the Stadia key is written into a
-    URL, so there is exactly one line to audit. `dark` says whether the CSS
-    filter that fakes a dark basemap should run: Alidade Smooth Dark already
-    is dark, and filtering it darkens it twice.
+    URL, so there is exactly one line to audit -- now two, and they are next
+    to each other on purpose.
+
+    `dark` says whether the CSS filter that fakes a dark basemap should be
+    suppressed: Alidade Smooth Dark already is dark, and filtering it darkens
+    it twice. OSM has no dark raster, so both of its variants are the same
+    light tiles and the filter does the work in a dark theme -- which is why
+    `dark` is False on both and not a copy of the theme name.
 
     Falls back to OpenStreetMap rather than raising. A missing key is refused
     at settings load (`settings.py`), so by the time a request renders, the
@@ -449,17 +508,26 @@ def map_tile_config(map_tiles: str, stadia_api_key: str = "") -> dict[str, Any]:
     """
     if map_tiles == "stadia" and stadia_api_key:
         return {
-            "url": STADIA_TILES_QUERY.format(base=STADIA_DARK, key=stadia_api_key),
-            "attribution": STADIA_ATTRIBUTION,
-            "maxZoom": 20,
-            "dark": True,
+            "light": {
+                "url": STADIA_TILES_QUERY.format(base=STADIA_LIGHT, key=stadia_api_key),
+                "attribution": STADIA_ATTRIBUTION,
+                "maxZoom": 20,
+                "dark": False,
+            },
+            "dark": {
+                "url": STADIA_TILES_QUERY.format(base=STADIA_DARK, key=stadia_api_key),
+                "attribution": STADIA_ATTRIBUTION,
+                "maxZoom": 20,
+                "dark": True,
+            },
         }
-    return {
+    osm = {
         "url": OSM_TILES,
         "attribution": OSM_ATTRIBUTION,
         "maxZoom": 19,
         "dark": False,
     }
+    return {"light": osm, "dark": dict(osm)}
 
 
 def activity_context(snapshot: FiSnapshot | None, configured: bool) -> dict[str, Any]:
@@ -775,6 +843,7 @@ def rest_history_context(
         "fetched_label": _hhmm(fetched_local) if fetched_local else None,
         "clock_zone": fetched_local.strftime("%Z") if zone and fetched_local else None,
         "excluded_note": excluded_note,
+        "rest_note": REST_NOTE,
         "range_label": (
             f"{first['label']} – {last['label']}"
             if first and last and first != last
@@ -1230,7 +1299,8 @@ def steps_context(
             "ring": step_ring(
                 activity.steps if activity else None, activity.step_goal if activity else None
             ),
-            "distance": distance_label(activity.distance if activity else None),
+            "distance": outdoor_distance(activity.distance if activity else None),
+            "distance_note": DISTANCE_NOTE,
             "fetched_label": _hhmm(fetched_local) if fetched_local else None,
             "clock_zone": fetched_local.strftime("%Z") if zone and fetched_local else None,
         }

@@ -752,25 +752,66 @@ def test_map_defaults_to_openstreetmap_and_carries_no_key():
     from kona_tracker.web.views import map_tile_config
 
     cfg = map_tile_config("osm")
-    assert cfg["url"].startswith("https://tile.openstreetmap.org")
-    assert "api_key" not in cfg["url"]
-    assert cfg["dark"] is False, "OSM raster is light; the CSS filter must still run"
+    for variant in ("light", "dark"):
+        assert cfg[variant]["url"].startswith("https://tile.openstreetmap.org")
+        assert "api_key" not in cfg[variant]["url"]
+        # There is no dark OSM raster, so both variants are the same light
+        # tiles and the CSS filter does the darkening. `dark` is "these tiles
+        # are already dark", not a copy of the theme name -- setting it True
+        # here would suppress the filter and leave a white map on a dark page.
+        assert cfg[variant]["dark"] is False, "OSM raster is light; the filter must still run"
 
     # Belt and braces: `stadia` without a key is refused at settings load, but
     # if it ever reached here it must fall back rather than emit a blank key.
-    assert map_tile_config("stadia", "")["url"].startswith("https://tile.openstreetmap.org")
+    fallback = map_tile_config("stadia", "")
+    assert fallback["light"]["url"].startswith("https://tile.openstreetmap.org")
 
 
 def test_stadia_config_names_the_style_the_retina_placeholder_and_attribution():
     from kona_tracker.web.views import map_tile_config
 
     cfg = map_tile_config("stadia", "NOT-A-REAL-KEY")
-    assert "alidade_smooth_dark" in cfg["url"]
-    assert "{r}" in cfg["url"], "Leaflet's retina placeholder; this is what sharpens it on a phone"
-    assert cfg["url"].endswith("?api_key=NOT-A-REAL-KEY")
-    assert "Stadia Maps" in cfg["attribution"] and "OpenMapTiles" in cfg["attribution"]
-    assert "OpenStreetMap" in cfg["attribution"], "required even on Stadia tiles"
-    assert cfg["dark"] is True, "already dark; the CSS filter must not darken it twice"
+    for variant in ("light", "dark"):
+        url = cfg[variant]["url"]
+        assert "{r}" in url, "Leaflet's retina placeholder; what sharpens it on a phone"
+        assert url.endswith("?api_key=NOT-A-REAL-KEY")
+        attribution = cfg[variant]["attribution"]
+        assert "Stadia Maps" in attribution and "OpenMapTiles" in attribution
+        assert "OpenStreetMap" in attribution, "required even on Stadia tiles"
+    assert cfg["dark"]["dark"] is True, "already dark; the CSS filter must not darken it twice"
+    assert cfg["light"]["dark"] is False, "Alidade Smooth is light; it may be filtered"
+
+
+def test_a_light_page_is_not_given_the_dark_basemap():
+    """The bug this shape exists to prevent, pinned by name.
+
+    `map_tile_config` returned one layer and it was always Alidade Smooth
+    *Dark*, so `KONA_MAP_TILES=stadia` served a black map under a light page
+    -- which is what Chris saw the night the Light theme shipped. The server
+    cannot choose, because the theme lives in the browser's localStorage, so
+    the fix is to send both and let `map_base.js` pick.
+    """
+    from kona_tracker.web.views import map_tile_config
+
+    cfg = map_tile_config("stadia", "NOT-A-REAL-KEY")
+    assert "alidade_smooth_dark" in cfg["dark"]["url"]
+    assert "alidade_smooth_dark" not in cfg["light"]["url"]
+    assert "alidade_smooth" in cfg["light"]["url"]
+
+
+def test_the_two_osm_variants_are_separate_objects():
+    """They hold the same values and must not be the same dict.
+
+    A shared object means `map_base.js` gets one entry twice after JSON
+    round-trips fine -- but any future code that edits one variant would
+    silently edit the other, which is the kind of aliasing bug that survives
+    review because the test data looks identical either way.
+    """
+    from kona_tracker.web.views import map_tile_config
+
+    cfg = map_tile_config("osm")
+    assert cfg["light"] == cfg["dark"]
+    assert cfg["light"] is not cfg["dark"]
 
 
 def test_stadia_selected_without_a_key_is_refused_by_name(tmp_path, monkeypatch):
@@ -823,3 +864,51 @@ def test_the_rendered_page_carries_the_tile_config_as_data_not_code():
     assert "alidade_smooth_dark" in body
     # Data, never code: it must not arrive as an executable script.
     assert "<script>" not in body.split('id="map-config"')[0][-200:]
+
+
+def test_no_template_uses_an_inline_style_attribute():
+    """`style-src 'self'` has no 'unsafe-inline', so a `style="..."` attribute
+    is dropped by the browser with nothing in the console to say why.
+
+    Caught during review on 2026-09-15: the robot's colour swatches were
+    written as `style="--swatch:#FFAA3C"` and would have rendered six
+    identical colourless circles on Chris's phone, working perfectly in every
+    test here. The colours moved into app.css, keyed off class names.
+
+    This is the same trap as inline `<script>` under `script-src 'self'`,
+    which this project has already been bitten by twice (theme.js, app.js's
+    onerror handler). It fails silently, which is why it needs a test rather
+    than a comment.
+    """
+    import re  # noqa: PLC0415 - test-only
+    from pathlib import Path  # noqa: PLC0415
+
+    web = Path(__file__).resolve().parent.parent / "src" / "kona_tracker" / "web"
+    templates = web / "templates"
+    offenders = []
+    for path in sorted(templates.glob("*.html")):
+        source = path.read_text()
+        # Jinja comments are stripped first: one of them quotes the very
+        # attribute it is warning against, and a naive scan flagged it.
+        source = re.sub(r"\{#.*?#\}", "", source, flags=re.DOTALL)
+        for match in re.finditer(r"\sstyle\s*=", source):
+            line = source[: match.start()].count("\n") + 1
+            offenders.append(f"{path.name}:{line}")
+    assert not offenders, "inline style attributes are dropped by this app's CSP: " + ", ".join(
+        offenders
+    )
+
+
+def test_no_page_still_tells_the_reader_to_look_for_a_K_on_the_map():
+    """The marker became her photo on 2026-09-15 and this caption did not.
+
+    A page that names a landmark the map no longer draws sends the reader
+    hunting for something that is not there -- and it is the kind of stale
+    sentence that survives forever, because the change that invalidated it
+    was in a different file and every test still passed.
+    """
+    from pathlib import Path  # noqa: PLC0415 - test-only
+
+    web = Path(__file__).resolve().parent.parent / "src" / "kona_tracker" / "web"
+    for path in sorted((web / "templates").glob("*.html")):
+        assert "end with K" not in path.read_text(), f"{path.name} still describes the old marker"

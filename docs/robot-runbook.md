@@ -1,5 +1,11 @@
 # The robot will not connect. Now what?
 
+> Looking for the three measurements the robot session asked for -- the
+> strafe stand test, the battery sag at full throttle, and the camera --
+> they are in **`docs/robot-measurements.md`**, written as steps to follow
+> with the robot in front of you.
+
+
 `docs/robot-bringup.md` is the one-time setup. This is the everyday one: it
 was on yesterday and today the tab says **ROBOT OFF**.
 
@@ -71,13 +77,56 @@ Two things to know before relying on that:
   commands stopping, and that is a guard against a lost connection — not
   against a robot tipping down a step with nobody there to pick it up.
 
+## The front lights work when nothing else does
+
+The two front RGBs are on the ultrasonic module at **I2C `0x77`**, not on the
+serial bus that owns the motors, and the gateway writes them directly. So
+`POST /led` answers while `/health` says `turbopi: false` — it is the one
+control on the Robot tab that survives the robot's own software being down.
+
+Two consequences worth knowing:
+
+- **Lights on but the robot will not move** is a real and informative state,
+  not a contradiction. It says the gateway and the Pi are fine and
+  `TurboPi.py` is the thing that died: `sudo systemctl restart turbopi`.
+- **`Functions/Avoidance.py` writes these same LEDs**, and `TurboPi.py` turns
+  them off at startup. While the obstacle-avoidance demo is running it will
+  fight the app for them and win intermittently. A colour is three sequential
+  byte writes, so a write interleaved with the demo's can show a wrong colour
+  for one frame. Cosmetic, not dangerous.
+
+Current draw is roughly 120 mA at full white [INFERRED by the robot session,
+not measured] against motors that draw amps, so there is no ceiling on our
+side. If one is ever wanted it belongs on the **sum** of the three channels,
+since white is all three lit at once.
+
 ## Driving over Tailscale, from away
 
-It will stutter, and that is measured rather than guessed. At a 700 ms round
-trip the robot session recorded the watchdog firing **seven times in six
-seconds** with the stick held down, because the HTTP client can only send as
-fast as the round trip allows.
+**Built 2026-09-15, untested on real hardware.** Before that it stuttered, and
+that was measured rather than guessed: at a 700 ms round trip the robot session
+recorded the watchdog firing **seven times in six seconds** with the stick held
+down, because the HTTP client can only send as fast as the round trip allows.
 
-Watching from away is fine. Driving properly from away needs the WebSocket
-transport (`GET /ws/drive` already exists on their side; our client does not
-use it yet). Until then, drive on the home Wi-Fi.
+The fix is a WebSocket on the **phone → PC** leg, which is the slow one. The
+PC → Pi leg is wired Ethernet at about 1 ms and stays on plain HTTP at 200 ms
+against the 500 ms TTL, which is what the robot session asked us to keep; their
+own `/ws/drive` optimises a leg that is already fast and is deliberately unused.
+
+**How to tell which one you are on.** The telemetry strip in drive mode has a
+**Link** reading: `socket` or `polling`. That is not decoration — this app is
+served over `connect-src 'self'`, and whether a given Safari version will open
+a `ws:` connection under that policy is a question no test here can answer. If
+it says `polling` on your phone but `socket` on a laptop, the CSP is the first
+suspect, and the fallback means everything still works meanwhile.
+
+Two things the socket changes that are worth knowing:
+
+- **The server holds the last command and re-sends it** every 200 ms, so a
+  frame delayed by LTE jitter lands on a command that is still being refreshed
+  instead of a gap. The Pi sees one steady rate whatever the phone's connection
+  is doing.
+- **That hold expires after 600 ms of silence**, and then the server sends one
+  stop of its own. This is a safety number, not a tuning one: a watchdog that
+  fires when commands *stop* arriving is defeated by anything that keeps
+  sending on the operator's behalf. Worst case, a phone that dies mid-throttle
+  leaves the robot moving 600 ms rather than 500 ms.

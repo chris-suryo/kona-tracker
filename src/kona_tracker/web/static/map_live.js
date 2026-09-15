@@ -24,6 +24,10 @@
   var TIMEOUT_MS = 8000;
 
   var map = null;
+  // Held, not used: this map is built once and lives as long as the
+  // document, so its theme listeners die with the page. If this page ever
+  // grows a teardown, call base.destroy() from it.
+  var base = null;
   var trail = null;
   var here = null;
   var halo = null;
@@ -45,22 +49,6 @@
   }
 
   function el(id) { return document.getElementById(id); }
-
-  function tileConfig() {
-    var cfg = {
-      url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-      maxZoom: 19,
-      dark: false,
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-    };
-    var block = el('map-config');
-    if (!block) { return cfg; }
-    try {
-      var parsed = JSON.parse(block.textContent);
-      if (parsed && parsed.url) { return parsed; }
-    } catch (e) { /* the OSM default beats rendering nothing */ }
-    return cfg;
-  }
 
   function readPoints() {
     var block = el('map-points');
@@ -91,28 +79,11 @@
 
   function buildMap(points) {
     var host = el('kona-map');
-    if (!host || typeof L === 'undefined' || !points.length) { return false; }
-    var cfg = tileConfig();
+    if (!host || typeof L === 'undefined' || !points.length || !window.KonaMapBase) { return false; }
     map = L.map(host, { zoomControl: false, scrollWheelZoom: true, attributionControl: true });
-    host.classList.toggle('tiles-dark', !!cfg.dark);
-    var tiles = L.tileLayer(cfg.url, { maxZoom: cfg.maxZoom || 19, attribution: cfg.attribution });
-    var unavailable = el('map-unavailable');
-    var arrived = 0;
-    // Same rule as the small map: a single dead tile is not a dead server,
-    // and hiding a map that has already drawn is worse than one grey square.
-    tiles.on('tileerror', function () {
-      if (arrived > 0) { return; }
-      host.hidden = true;
-      if (unavailable) { unavailable.hidden = false; }
-    });
-    tiles.on('tileload', function () {
-      arrived += 1;
-      if (!host.hidden) { return; }
-      host.hidden = false;
-      if (unavailable) { unavailable.hidden = true; }
-      map.invalidateSize();
-    });
-    tiles.addTo(map);
+    // The basemap, its theme and the "Map unavailable" message all live in
+    // map_base.js, shared with the small map so the two cannot drift apart.
+    base = window.KonaMapBase.tiles({ map: map, host: host, unavailable: el('map-unavailable') });
     L.control.zoom({ position: 'bottomright' }).addTo(map);
     // Panning by hand means "I want to look over here". Stop recentring
     // until they ask for it back, or the map will yank itself away from
@@ -136,7 +107,7 @@
       if (start) { start.setLatLng(latlngs[0]); }
       else {
         start = L.marker(latlngs[0], {
-          icon: L.divIcon({ className: 'kona-map-start', html: '<span></span>', iconSize: [14, 14], iconAnchor: [7, 7] }),
+          icon: window.KonaMapBase.startIcon(),
           interactive: false
         }).addTo(map);
       }
@@ -144,7 +115,7 @@
     if (here) { here.setLatLng([last.lat, last.lon]); }
     else {
       here = L.marker([last.lat, last.lon], {
-        icon: L.divIcon({ className: 'kona-map-marker', html: '<span>K</span>', iconSize: [34, 34], iconAnchor: [17, 17] })
+        icon: window.KonaMapBase.hereIcon()
       }).addTo(map);
     }
     // The accuracy circle is the honest part of the picture: Fi's own error

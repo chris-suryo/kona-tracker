@@ -44,10 +44,10 @@ function element() {
   };
 }
 
-function setup(script, preview = false) {
+function setup(script, preview = false, opts = {}) {
   const names = ['cam', 'cap', 'dot', 'livetxt', 'capture', 'capture-hint', 'activity-body', 'pull', 'zoom-level',
     'drive', 'stick', 'knob', 'estop', 'estop-alarm', 'speed', 'rot-left', 'rot-right', 'shout', 'shout-text', 'note',
-    'volts', 'sonar', 'picture'];
+    'volts', 'sonar', 'picture', 'wire', 'look', 'look-knob'];
   const nodes = Object.fromEntries(names.map(name => [name, element()]));
   const page = element(), label = element(), note = element(), freshness = element(), camFrame = element();
   // A 400x225 frame at the page origin, so the zoom maths can be checked in px.
@@ -74,7 +74,7 @@ function setup(script, preview = false) {
   function StoppedDate(...args) { return new RealDate(...args); }
   StoppedDate.now = () => RealDate.now() + clock.offset;
   StoppedDate.prototype = RealDate.prototype;
-  const window = {...element(), location: {href: ''}};
+  const window = {...element(), location: {href: '', protocol: 'http:', host: 'pi.local'}};
   let nextTimer = 0, files = 0;
   const env = {
     document, window, AbortController, Date: StoppedDate, console,
@@ -99,12 +99,38 @@ function setup(script, preview = false) {
     navigator: {sendBeacon: (url) => { beacons.push(url); return true; }},
     DOMParser: class { parseFromString() { return {getElementById: () => ({innerHTML:'new render'}), querySelector: () => null}; } }
   };
+  // The drive socket. Absent unless a test asks for one, because "no
+  // WebSocket in this environment" is exactly the fallback path that every
+  // other drive test in this file is then exercising for free.
+  const sockets = [];
+  if (opts.websocket) {
+    window.WebSocket = function (url) {
+      this.url = url;
+      this.readyState = 0;   // CONNECTING
+      this.sent = [];
+      this.send = frame => {
+        if (this.readyState !== 1) { throw new Error('not open'); }
+        this.sent.push(frame);
+      };
+      this.close = () => { this.readyState = 3; };
+      sockets.push(this);
+    };
+  }
   // The two picture pages load poll.js first, as their templates do; the
   // loop lives there and camera.js / robot.js call window.KonaPoll.
   const scripts = ['camera.js', 'robot.js', 'drive.js'].includes(script) ? ['poll.js', script] : [script];
   scripts.forEach(s => vm.runInNewContext(fs.readFileSync(path.join(staticDir, s), 'utf8'), env));
   return {nodes, page, label, note, document, window, requests, timers, intervals, created, revoked, camFrame, beacons,
     files: () => files,
+    socket: () => sockets[sockets.length - 1],
+    // A socket the browser has finished opening: readyState 1 and onopen fired.
+    openSocket() {
+      const ws = sockets[sockets.length - 1];
+      assert.ok(ws, 'no socket was created');
+      ws.readyState = 1;
+      ws.onopen();
+      return ws;
+    },
     advance(ms) { clock.offset += ms; },
     // `tick()` fires whichever interval is first; a page with three of them
     // needs to name the one it means.
@@ -121,6 +147,15 @@ function setup(script, preview = false) {
     fire(delay) {
       const entry = [...timers].find(([, t]) => t.delay === delay);
       assert.ok(entry, `missing timer ${delay}`);
+      timers.delete(entry[0]); entry[1].fn();
+    },
+    // The look throttle picks its own delay from how long ago it last sent,
+    // so a test cannot name it. This fires the most recently scheduled
+    // timeout -- Map keeps insertion order, and older pending timers from
+    // poll.js and the telemetry loop are sitting in front of it.
+    firePending() {
+      const entry = [...timers].pop();
+      assert.ok(entry, 'no timeout was pending');
       timers.delete(entry[0]); entry[1].fn();
     }
   };
@@ -362,99 +397,195 @@ test('a new pull is not hidden by the previous dismissal timer', async () => {
   assert.equal(x.nodes.pull.style.transform, '');
 });
 
+// The two maps share map_base.js, which owns the tile layer, the theme it
+// picks and the "Map unavailable" message. Loading it first is not optional:
+// map.js returns early without window.KonaMapBase, exactly as it would in a
+// browser where the file 404'd.
+function mapContext(opts) {
+  opts = opts || {};
+  const handlers = {}, classes = new Set(), added = [], removed = [];
+  const observers = [];
+  let mapsRemoved = 0, resized = 0;
+  const layer = () => ({addTo(m) { added.push(this); return this; },
+                        on(name, fn) { handlers[name] = fn; return this; }});
+  const map = {
+    remove() { mapsRemoved++; }, setView() {}, fitBounds() {}, on() {},
+    invalidateSize() { resized++; },
+    removeLayer(l) { removed.push(l); }
+  };
+  const icons = [];
+  const L = {map: () => map, tileLayer: () => layer(),
+    marker: (_ll, o) => { icons.push(o.icon.className); return layer(); },
+    polyline: () => layer(), circle: () => layer(),
+    divIcon: spec => spec, control: {zoom: () => layer()}};
+  const mapEl = {hidden: false,
+    classList: {toggle: (n, on) => on ? classes.add(n) : classes.delete(n),
+                contains: n => classes.has(n)}};
+  const notice = {hidden: true};
+  let mediaListener = null;
+  const media = {
+    matches: !!opts.phoneIsDark,
+    addEventListener: (_n, fn) => { mediaListener = fn; },
+    removeEventListener: () => { mediaListener = null; }
+  };
+  const root = {
+    attr: opts.chosen || null,
+    getAttribute(n) { return n === 'data-theme' ? this.attr : null; },
+    setAttribute(n, v) { if (n === 'data-theme') { this.attr = v; fire(); } },
+    removeAttribute(n) { if (n === 'data-theme') { this.attr = null; fire(); } }
+  };
+  function fire() { observers.forEach(fn => fn()); }
+  const nodes = Object.assign({
+    'map-points': {textContent: opts.points || '[{"lat":30,"lon":-97}]'},
+    'kona-map': mapEl, 'map-unavailable': notice
+  }, opts.config ? {'map-config': {textContent: opts.config}} : {});
+  const document = {documentElement: root, getElementById: id => nodes[id] || null};
+  const window = {
+    matchMedia: () => media,
+    MutationObserver: function (fn) {
+      return {observe() { observers.push(fn); }, disconnect() {
+        const i = observers.indexOf(fn); if (i >= 0) { observers.splice(i, 1); }
+      }};
+    }
+  };
+  const ctx = {window, document, L, getComputedStyle: () => ({getPropertyValue: () => ''})};
+  vm.runInNewContext(fs.readFileSync(path.join(staticDir,'map_base.js'),'utf8'), ctx);
+  vm.runInNewContext(fs.readFileSync(path.join(staticDir,'map.js'),'utf8'), ctx);
+  return {window, document, nodes, mapEl, notice, handlers, classes, root, media,
+          added, removed, observers, icons,
+          setPoints: v => { nodes['map-points'] = v ? {textContent: v} : null; },
+          phoneGoesDark: () => { media.matches = true; if (mediaListener) { mediaListener(); } },
+          mapsRemoved: () => mapsRemoved, resized: () => resized,
+          tileUrls: () => added.filter(l => l.on).length};
+}
+
+const STADIA = JSON.stringify({
+  light: {url: 'https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}{r}.png?api_key=K',
+          attribution: 'a', maxZoom: 20, dark: false},
+  dark: {url: 'https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png?api_key=K',
+         attribution: 'a', maxZoom: 20, dark: true}
+});
+
 test('map init releases the previous Leaflet instance even when new points are absent', () => {
-  let removed = 0, points = '[{"lat":30,"lon":-97}]';
-  const window = {}, layer = {addTo() {}, on() {}}, map = {remove() { removed++; }, setView() {}};
-  const L = {map: () => map, tileLayer: () => layer, marker: () => layer,
-    divIcon: () => ({}), control: {zoom: () => layer}};
-  // A real element always has classList; map.js toggles `tiles-dark` on it so
-  // the CSS filter that fakes a dark basemap does not run over already-dark
-  // Stadia tiles. The stub needs it or the harness fails where a browser
-  // would not. No #map-config here on purpose: the OSM fallback must work
-  // when the block is absent.
-  const classes = new Set();
-  const mapEl = {classList: {toggle: (n, on) => on ? classes.add(n) : classes.delete(n),
-                             contains: n => classes.has(n)}};
-  const document = {getElementById: id => id === 'map-points'
-    ? (points ? {textContent:points} : null)
-    : (id === 'kona-map' ? mapEl : null)};
-  vm.runInNewContext(fs.readFileSync(path.join(staticDir,'map.js'),'utf8'), {window,document,L});
-  window.KonaMap.init(); assert.equal(removed, 1);
-  points = null; window.KonaMap.init(); assert.equal(removed, 2);
-  window.KonaMap.destroy(); assert.equal(removed, 2);
+  // No #map-config on purpose: the OSM fallback must work when it is absent.
+  const x = mapContext();
+  x.window.KonaMap.init(); assert.equal(x.mapsRemoved(), 1);
+  x.setPoints(null); x.window.KonaMap.init(); assert.equal(x.mapsRemoved(), 2);
+  x.window.KonaMap.destroy(); assert.equal(x.mapsRemoved(), 2);
 });
 
 // A map on screen with "Map unavailable" printed under it is the page
 // contradicting itself; that is what one failed tile used to produce.
 test('one failed tile does not hide a map that has already drawn', () => {
-  const handlers = {};
-  const window = {}, layer = {addTo() {}, on(name, fn) { handlers[name] = fn; }};
-  let resized = 0;
-  const map = {remove() {}, setView() {}, invalidateSize() { resized++; }};
-  const L = {map: () => map, tileLayer: () => layer, marker: () => layer,
-    divIcon: () => ({}), control: {zoom: () => layer}};
-  const classes = new Set();
-  const mapEl = {hidden: false,
-    classList: {toggle: (n, on) => on ? classes.add(n) : classes.delete(n), contains: n => classes.has(n)}};
-  const notice = {hidden: true};
-  const document = {getElementById: id => ({
-    'map-points': {textContent: '[{"lat":30,"lon":-97}]'},
-    'kona-map': mapEl, 'map-unavailable': notice
-  })[id] || null};
-  vm.runInNewContext(fs.readFileSync(path.join(staticDir,'map.js'),'utf8'), {window,document,L});
-  window.KonaMap.init();
-
-  handlers.tileload();
-  handlers.tileerror();
-  assert.equal(mapEl.hidden, false, 'a drawn map stays drawn');
-  assert.equal(notice.hidden, true);
+  const x = mapContext();
+  x.window.KonaMap.init();
+  x.handlers.tileload();
+  x.handlers.tileerror();
+  assert.equal(x.mapEl.hidden, false, 'a drawn map stays drawn');
+  assert.equal(x.notice.hidden, true);
 });
 
 test('a tile server that answers nothing says so, and recovers if it wakes up', () => {
-  const handlers = {};
-  const window = {}, layer = {addTo() {}, on(name, fn) { handlers[name] = fn; }};
-  let resized = 0;
-  const map = {remove() {}, setView() {}, invalidateSize() { resized++; }};
-  const L = {map: () => map, tileLayer: () => layer, marker: () => layer,
-    divIcon: () => ({}), control: {zoom: () => layer}};
-  const classes = new Set();
-  const mapEl = {hidden: false,
-    classList: {toggle: (n, on) => on ? classes.add(n) : classes.delete(n), contains: n => classes.has(n)}};
-  const notice = {hidden: true};
-  const document = {getElementById: id => ({
-    'map-points': {textContent: '[{"lat":30,"lon":-97}]'},
-    'kona-map': mapEl, 'map-unavailable': notice
-  })[id] || null};
-  vm.runInNewContext(fs.readFileSync(path.join(staticDir,'map.js'),'utf8'), {window,document,L});
-  window.KonaMap.init();
+  const x = mapContext();
+  x.window.KonaMap.init();
 
-  handlers.tileerror();
-  assert.equal(mapEl.hidden, true);
-  assert.equal(notice.hidden, false);
+  x.handlers.tileerror();
+  assert.equal(x.mapEl.hidden, true);
+  assert.equal(x.notice.hidden, false);
 
-  handlers.tileload();
-  assert.equal(mapEl.hidden, false);
-  assert.equal(notice.hidden, true);
-  assert.equal(resized, 1, 'Leaflet sized itself while hidden and must re-measure');
+  x.handlers.tileload();
+  assert.equal(x.mapEl.hidden, false);
+  assert.equal(x.notice.hidden, true);
+  assert.equal(x.resized(), 1, 'Leaflet sized itself while hidden and must re-measure');
+});
+
+// The bug this whole shape exists to prevent: choosing Light in Settings gave
+// a bright page sitting on Alidade Smooth *Dark*, because the server picked
+// the basemap and could not know what the browser had chosen.
+test('an explicit light choice gets the light basemap even on a dark phone', () => {
+  const x = mapContext({config: STADIA, chosen: 'light', phoneIsDark: true});
+  x.window.KonaMap.init();
+  assert.equal(x.classes.has('tiles-dark'), false,
+    'light tiles may be filtered; suppressing the filter leaves a white map on a dark page');
+});
+
+test('an explicit dark choice suppresses the filter that would darken it twice', () => {
+  const x = mapContext({config: STADIA, chosen: 'dark', phoneIsDark: false});
+  x.window.KonaMap.init();
+  assert.equal(x.classes.has('tiles-dark'), true);
+});
+
+test('with no choice made the phone decides', () => {
+  assert.equal(mapContext({config: STADIA, phoneIsDark: true}).window.KonaMapBase.wantsDark(), true);
+  assert.equal(mapContext({config: STADIA, phoneIsDark: false}).window.KonaMapBase.wantsDark(), false);
+});
+
+test('the basemap follows the theme changing while the page is open', () => {
+  const x = mapContext({config: STADIA, phoneIsDark: false});
+  x.window.KonaMap.init();
+  assert.equal(x.classes.has('tiles-dark'), false);
+
+  // The phone crossing into its dark hours, and then an explicit choice --
+  // both have to reach the map, which is why map_base.js watches the media
+  // query and the attribute rather than listening for one custom event.
+  x.phoneGoesDark();
+  assert.equal(x.classes.has('tiles-dark'), true, 'the phone went dark; the map did not follow');
+  assert.equal(x.removed.length, 1, 'the old layer must be dropped, not stacked under the new one');
+
+  x.root.setAttribute('data-theme', 'light');
+  assert.equal(x.classes.has('tiles-dark'), false, 'choosing Light must beat a dark phone');
+});
+
+test('a theme swap never flashes "Map unavailable" over a map that is fine', () => {
+  // The new layer starts with no tiles. If the arrived counter reset with it,
+  // changing theme on a working map would hide it and print the error.
+  const x = mapContext({config: STADIA, phoneIsDark: false});
+  x.window.KonaMap.init();
+  x.handlers.tileload();
+  x.phoneGoesDark();
+  x.handlers.tileerror();
+  assert.equal(x.mapEl.hidden, false);
+  assert.equal(x.notice.hidden, true);
+});
+
+test('destroy unsubscribes the theme listeners', () => {
+  // They hold a reference to a map that is about to be removed; left
+  // attached, the next theme change would add a tile layer to a dead map.
+  const x = mapContext({config: STADIA});
+  x.window.KonaMap.init();
+  assert.equal(x.observers.length, 1);
+  x.window.KonaMap.destroy();
+  assert.equal(x.observers.length, 0);
+});
+
+test('the here-marker offers her photo and keeps the initial behind it', () => {
+  // `data-optional` is the contract app.js removes a broken image by; an
+  // inline onerror= would be silently dropped by `script-src 'self'`.
+  const x = mapContext({config: STADIA});
+  const icon = x.window.KonaMapBase.hereIcon();
+  assert.match(icon.html, /src="\/avatar\.jpg"/);
+  assert.match(icon.html, /data-optional/);
+  assert.match(icon.html, /<span>K/, 'the initial must stay as the fallback');
+});
+
+test('an unparseable map-config falls back to OSM rather than drawing nothing', () => {
+  const x = mapContext({config: '{not json'});
+  x.window.KonaMap.init();
+  assert.equal(x.classes.has('tiles-dark'), false);
+  assert.equal(x.mapEl.hidden, false);
 });
 
 
 test('a route gets a start dot and a single point does not', () => {
-  const icons = [];
-  const layer = {addTo() {}, on() {}};
-  const L = {map: () => ({remove() {}, setView() {}, fitBounds() {}}), tileLayer: () => layer,
-    marker: (ll, opts) => { icons.push(opts.icon.className); return layer; },
-    polyline: () => layer, divIcon: (o) => o, control: {zoom: () => layer}};
-  const classes = new Set();
-  const mapEl = {hidden: false, classList: {toggle: (n, on) => on ? classes.add(n) : classes.delete(n), contains: n => classes.has(n)}};
-  let points = '[{"lat":30,"lon":-97},{"lat":30.001,"lon":-97.001}]';
-  const document = {getElementById: id => id === 'map-points' ? {textContent: points} : id === 'kona-map' ? mapEl : null};
-  const window = {};
-  vm.runInNewContext(fs.readFileSync(path.join(staticDir,'map.js'),'utf8'), {window,document,L});
-  assert.deepEqual(icons, ['kona-map-start', 'kona-map-marker']);
-  icons.length = 0; points = '[{"lat":30,"lon":-97}]';
-  window.KonaMap.init();
-  assert.deepEqual(icons, ['kona-map-marker'], 'one point is a place, not a route');
+  // map.js self-inits on load, so clear what that pass recorded first.
+  const x = mapContext({points: '[{"lat":30,"lon":-97},{"lat":30.001,"lon":-97.001}]'});
+  x.icons.length = 0;
+  x.window.KonaMap.init();
+  assert.deepEqual(x.icons, ['kona-map-start', 'kona-map-marker']);
+  x.icons.length = 0;
+  x.setPoints('[{"lat":30,"lon":-97}]');
+  x.window.KonaMap.init();
+  assert.deepEqual(x.icons, ['kona-map-marker'], 'one point is a place, not a route');
 });
 
 
@@ -572,8 +703,8 @@ const drives = x => x.requests.filter(q => q.url === '/robot/drive');
 const looping = x => [...x.intervals.values()].some(t => t.delay === 200);
 const stops = x => x.requests.filter(q => q.url === '/robot/stop');
 
-async function ready(extra = {}) {
-  const x = setup('drive.js');
+async function ready(extra = {}, opts = {}) {
+  const x = setup('drive.js', false, opts);
   await telemetry(x, extra);
   return x;
 }
@@ -844,4 +975,510 @@ test('a drive the server refused lets go rather than hammering the robot', async
   assert.equal(x.nodes.shout.hidden, false);
   assert.match(x.nodes['shout-text'].textContent, /demo/);
   assert.equal(looping(x), false, 'the watchdog stops it; we do not hammer the robot');
+});
+
+// The robot's front lights. They are the one control that answers while the
+// robot's own software is down (I2C 0x77, not the motor bus), so the thing
+// worth testing is that the page never *claims* a state it was not told.
+function ledContext() {
+  const calls = [];
+  let resolveNext = null;
+  const nodes = {};
+  function button(attrs) {
+    const el = element();
+    Object.assign(el.dataset, attrs);
+    return el;
+  }
+  const off = button({ledOn: '0'}), on = button({ledOn: '1'});
+  const swatches = [
+    button({ledRgb: '255,255,255'}), button({ledRgb: '255,170,60'}),
+    button({ledRgb: '120,220,90'})
+  ];
+  const section = element(), note = element();
+  section.hidden = true;
+  section.setAttribute('data-pending', '');
+  section.querySelectorAll = sel => sel === '[data-led-on]' ? [off, on] : swatches;
+  nodes['led-settings'] = section;
+  nodes['led-note'] = note;
+  const document = {...element(), getElementById: id => nodes[id] || null};
+  const window = {...element()};
+  const env = {
+    document, window, console,
+    fetch: (url, options = {}) => new Promise(resolve => {
+      calls.push({url, method: options.method || 'GET', body: options.body});
+      resolveNext = resolve;
+    })
+  };
+  env.window = window;
+  vm.runInNewContext(fs.readFileSync(path.join(staticDir,'led.js'),'utf8'), env);
+  return {
+    calls, section, note, off, on, swatches,
+    answer: (body, ok = true) => {
+      const r = resolveNext;
+      resolveNext = null;
+      r({ok, json: () => Promise.resolve(body)});
+      return new Promise(res => setImmediate(res));
+    },
+    // A server that answered with something that is not JSON at all: a 500
+    // page, a proxy's error, the login redirect's HTML.
+    answerNotJson: (ok = false) => {
+      const r = resolveNext;
+      resolveNext = null;
+      r({ok, json: () => Promise.reject(new SyntaxError(
+        'Unexpected token \'I\', "Internal S"... is not valid JSON'))});
+      return new Promise(res => setImmediate(res));
+    }
+  };
+}
+
+test('the light switch stays hidden until the robot has actually answered', async () => {
+  const x = ledContext();
+  assert.equal(x.section.hidden, true, 'a switch whose state we do not know must not be offered');
+  await x.answer({on: false, r: 0, g: 255, b: 40});
+  assert.equal(x.section.hidden, false);
+  assert.equal(x.section.getAttribute('data-pending'), null);
+});
+
+test('four nulls read as unknown, never as off', async () => {
+  // The gateway says nulls when nothing has set the lights since it started.
+  // A demo may have left them lit; drawing a confident Off invents a fact.
+  const x = ledContext();
+  await x.answer({on: null, r: null, g: null, b: null});
+  assert.equal(x.off.getAttribute('aria-pressed'), 'false');
+  assert.equal(x.on.getAttribute('aria-pressed'), 'false');
+  assert.match(x.note.textContent, /cannot say/);
+});
+
+test('a swatch is only current while the lights are actually on', async () => {
+  const dark = ledContext();
+  await dark.answer({on: false, r: 255, g: 255, b: 255});
+  assert.equal(dark.swatches[0].getAttribute('aria-pressed'), 'false',
+    'off with a remembered colour must not claim the robot is showing it');
+  const lit = ledContext();
+  await lit.answer({on: true, r: 255, g: 255, b: 255});
+  assert.equal(lit.swatches[0].getAttribute('aria-pressed'), 'true');
+});
+
+test('the page draws from the answer, not from the press', async () => {
+  // A toggle that flips on tap and then quietly fails teaches you to trust it.
+  const x = ledContext();
+  await x.answer({on: false, r: 255, g: 0, b: 0});
+  x.on.events.click();
+  assert.equal(x.on.getAttribute('aria-pressed'), 'false', 'not until the robot says so');
+  await x.answer({on: true, r: 255, g: 0, b: 0});
+  assert.equal(x.on.getAttribute('aria-pressed'), 'true');
+});
+
+test('picking a colour turns the lights on in the same request', async () => {
+  // Setting a colour on lights that are off looks like a dead button: you
+  // tap green and nothing on the robot changes.
+  const x = ledContext();
+  await x.answer({on: false, r: 0, g: 0, b: 0});
+  x.swatches[1].events.click();
+  const sent = x.calls[x.calls.length - 1];
+  assert.equal(sent.method, 'POST');
+  assert.equal(sent.body, 'on=true&r=255&g=170&b=60');
+});
+
+test('turning them off carries the colour so it survives the toggle', async () => {
+  const x = ledContext();
+  await x.answer({on: true, r: 120, g: 220, b: 90});
+  x.off.events.click();
+  assert.equal(x.calls[x.calls.length - 1].body, 'on=false&r=120&g=220&b=90');
+});
+
+test('turning on a robot that never told us a colour sends white, not black', async () => {
+  // Black is indistinguishable from off. "On" that does nothing visible is
+  // the worst possible answer to a press.
+  const x = ledContext();
+  await x.answer({on: null, r: null, g: null, b: null});
+  x.on.events.click();
+  assert.equal(x.calls[x.calls.length - 1].body, 'on=true&r=255&g=255&b=255');
+});
+
+test('a refusal disables the controls and shows the gateway own words', async () => {
+  const x = ledContext();
+  await x.answer({error: 'The robot did not answer (led_unavailable).'}, false);
+  assert.equal(x.section.hidden, false, 'a section that vanishes reads as a feature never built');
+  assert.equal(x.off.disabled, true);
+  assert.equal(x.swatches[0].disabled, true);
+  assert.match(x.note.textContent, /led_unavailable/);
+});
+
+// -- the drive socket ------------------------------------------------------
+//
+// The whole reason it exists: over HTTP the page holds one command in flight
+// at a time, so on Chris's 700 ms LTE link it could only send ~1.5 commands a
+// second against a 500 ms TTL, and the gateway's watchdog fired seven times in
+// six seconds with the stick held down. A socket has no round trip in the send
+// path. Everything here is about it staying strictly an optimisation.
+
+async function wired(extra = {}) {
+  const x = await ready(extra, {websocket: true});
+  x.openSocket();
+  return x;
+}
+
+test('with no WebSocket in the browser everything still drives over HTTP', async () => {
+  // Not a hypothetical: the CSP is `connect-src 'self'`, and some Safari
+  // versions have refused ws: under exactly that. The page must degrade to
+  // the original path rather than become a set of dead controls.
+  const x = await ready();
+  press(x, 64, 8);
+  assert.equal(drives(x).length, 1, 'no socket means the POST path carries it');
+  assert.equal(x.nodes.wire.textContent, 'polling');
+});
+
+test('an open socket carries the command and no POST is made', async () => {
+  const x = await wired();
+  const before = drives(x).length;
+  press(x, 64, 8);
+  assert.equal(drives(x).length, before, 'the socket took it; nothing should be POSTed');
+  assert.deepEqual(JSON.parse(x.socket().sent[0]), {vx: 0.4, vy: 0, omega: 0});
+  assert.equal(x.nodes.wire.textContent, 'socket');
+});
+
+test('the socket is not gated by one-command-in-flight', async () => {
+  // This is the entire performance claim. Over HTTP `sending` blocks the next
+  // command until the last answers, which on a slow link is the bottleneck.
+  const x = await wired();
+  press(x, 64, 8);
+  x.tickEvery(200);
+  x.tickEvery(200);
+  assert.equal(x.socket().sent.length, 3, 'a frame in flight must not block the next');
+});
+
+test('a socket that drops mid-drive falls back to POSTing, silently', async () => {
+  // A closed socket is not worth shouting about: the HTTP path picks it
+  // straight up and the person is mid-drive with a thumb down.
+  const x = await wired();
+  press(x, 64, 8);
+  const before = drives(x).length;
+  x.socket().readyState = 3;
+  x.socket().onclose();
+  assert.equal(x.nodes.wire.textContent, 'polling');
+  x.tickEvery(200);
+  assert.equal(drives(x).length, before + 1, 'the HTTP path did not take over');
+  assert.equal(x.nodes.shout.hidden, true, 'a dropped socket is not an alarm');
+});
+
+test('an error frame lets go rather than hammering, same as a failed POST', async () => {
+  const x = await wired();
+  press(x, 64, 8);
+  x.socket().onmessage({data: JSON.stringify(
+    {ok: false, error: 'The robot battery is too low to drive.', reason: 'low_battery'})});
+  assert.equal(x.nodes.shout.hidden, false);
+  assert.match(x.nodes['shout-text'].textContent, /too low/);
+  // Letting go means the send ticker is gone, not merely that the next tick
+  // happens to send nothing: a cleared interval cannot be restarted by a
+  // thumb that is still down.
+  assert.equal([...x.intervals].some(([, t]) => t.delay === 200), false,
+    'the send ticker survived a refusal');
+});
+
+test('a stop goes down the socket AND over HTTP, never only one', async () => {
+  // The socket arrives first, without waiting for a round trip. The POST is
+  // the one that can be watched landing, and a stop that was not confirmed is
+  // the most dangerous state this page can be in.
+  const x = await wired();
+  press(x, 64, 8);
+  x.nodes.stick.events.pointerup({pointerId: 1});
+  assert.equal(x.socket().sent[x.socket().sent.length - 1], '{"stop":true}');
+  assert.equal(stops(x).length, 1, 'the watched HTTP stop must still be sent');
+});
+
+test('a socket that never opens is never used', async () => {
+  // readyState stays CONNECTING. Sending into it throws, and a thrown send
+  // must not lose the command -- it falls through to the POST.
+  const x = await ready({}, {websocket: true});
+  assert.equal(x.nodes.wire.textContent, 'polling');
+  press(x, 64, 8);
+  assert.equal(drives(x).length, 1, 'a half-open socket swallowed the command');
+});
+
+// -- scrubbing a chart -----------------------------------------------------
+//
+// The readings are rendered by the server and cloned across, so what this
+// file can get wrong is *which* one it shows. Off by one and the page states
+// the wrong hour's number with total confidence.
+// A minimum viable DOM node: enough of firstChild / appendChild /
+// removeChild / cloneNode for chart_scrub.js to move children between two
+// elements, which is the only DOM work it does.
+function node(text) {
+  const self = {
+    kids: [], textContent: text || '',
+    get firstChild() { return self.kids[0] || null; },
+    // Reparents, as the real DOM does: appending a node that already has a
+    // parent removes it from that parent first. A stub that only copied
+    // would let a move-children loop pass here and hang in a browser.
+    appendChild(child) {
+      if (child.parent) { child.parent.removeChild(child); }
+      child.parent = self;
+      self.kids.push(child);
+      return child;
+    },
+    removeChild(child) {
+      const i = self.kids.indexOf(child);
+      if (i >= 0) { self.kids.splice(i, 1); child.parent = null; }
+      return child;
+    },
+    cloneNode() {
+      const copy = node(self.textContent);
+      self.kids.forEach(k => copy.appendChild(k.cloneNode()));
+      return copy;
+    }
+  };
+  return self;
+}
+
+function scrubContext(opts = {}) {
+  const count = opts.count === undefined ? 4 : opts.count;
+  const readingCount = opts.readingCount === undefined ? count : opts.readingCount;
+  const entries = [];
+  for (let i = 0; i < readingCount; i++) {
+    const entry = node('');
+    entry.appendChild(node('bucket ' + i));
+    entries.push(entry);
+  }
+  const links = [];
+  for (let i = 0; i < count; i++) {
+    const a = element();
+    // Four 40px columns starting at x=0.
+    a.getBoundingClientRect = () => ({left: i * 40, right: (i + 1) * 40, top: 0, bottom: 100});
+    links.push(a);
+  }
+  const selection = node('');
+  const readings = {children: entries};
+  const chart = element();
+  chart.dataset.readings = 'the-readings';
+  chart.getElementsByTagName = () => links;
+  const section = element();
+  section.querySelector = sel => sel === '.chart-selection' ? selection : null;
+  chart.parentNode = section;
+  const document = {
+    ...element(),
+    getElementById: id => id === 'the-readings' ? readings : null,
+    querySelectorAll: () => [chart]
+  };
+  vm.runInNewContext(fs.readFileSync(path.join(staticDir,'chart_scrub.js'),'utf8'),
+    {document, window: {...element()}, console});
+  function fire(name, x) {
+    const handler = chart.events[name];
+    assert.ok(handler, `chart never listened for ${name}`);
+    handler({clientX: x, pointerId: 1, cancelable: true, preventDefault() {}});
+  }
+  return {
+    chart, links, selection, entries,
+    attached: () => !!chart.events.pointerdown,
+    shown: () => (selection.firstChild ? selection.firstChild.textContent : null),
+    current: () => links.findIndex(a => a.getAttribute('aria-current') === 'true'),
+    down: x => fire('pointerdown', x),
+    move: x => fire('pointermove', x)
+  };
+}
+
+test('a finger dragged across the chart moves the reading with it', () => {
+  const x = scrubContext();
+  x.down(20);
+  assert.equal(x.shown(), 'bucket 0');
+  x.move(60);
+  assert.equal(x.shown(), 'bucket 1');
+  x.move(140);
+  assert.equal(x.shown(), 'bucket 3');
+});
+
+test('the current bar is marked as the reading moves, and only one is', () => {
+  const x = scrubContext();
+  x.down(20);
+  assert.equal(x.current(), 0);
+  x.move(100);
+  assert.equal(x.current(), 2);
+  assert.equal(x.links.filter(a => a.getAttribute('aria-current') === 'true').length, 1);
+});
+
+test('moving without a finger down changes nothing', () => {
+  const x = scrubContext();
+  x.move(100);
+  assert.equal(x.shown(), null);
+});
+
+test('overshooting either end holds the end bar rather than losing the reading', () => {
+  // A thumb that runs three pixels past the last bar has not stopped asking.
+  const x = scrubContext();
+  x.down(20);
+  x.move(-30);
+  assert.equal(x.shown(), 'bucket 0');
+  x.move(9999);
+  assert.equal(x.shown(), 'bucket 3');
+});
+
+test('a tap does not follow the link, because the reading is already showing', () => {
+  const x = scrubContext();
+  let defaulted = true;
+  x.chart.events.click({cancelable: true, preventDefault() { defaulted = false; }});
+  assert.equal(defaulted, false, 'a page load that changes nothing on screen');
+});
+
+test('focusing a bar with the keyboard brings its reading with it', () => {
+  // Without this a keyboard user gets the focus ring and no number.
+  const x = scrubContext();
+  x.links[2].events.focus();
+  assert.equal(x.shown(), 'bucket 2');
+});
+
+test('a readings list that does not match the bars disables the scrub entirely', () => {
+  // Rather than scrub the wrong bucket. A page confidently showing the wrong
+  // hour is worse than a page that still needs a tap and a reload.
+  const x = scrubContext({count: 4, readingCount: 3});
+  assert.equal(x.attached(), false, 'it attached to a list it could not trust');
+  assert.equal(x.shown(), null);
+});
+
+test('a server that answers HTML does not put a JSON parse error on screen', async () => {
+  // `.json()` rejects on a non-JSON body, and a failing server is exactly when
+  // the body stops being JSON. Unguarded, that rejection WAS the message: a
+  // screenshot on 2026-09-15 read `Unexpected token 'I', "Internal S"... is
+  // not valid JSON` under the heading "Front lights".
+  const x = ledContext();
+  await x.answerNotJson();
+  assert.doesNotMatch(x.note.textContent, /JSON|token/,
+    'the browser is talking to the user instead of the page');
+  assert.match(x.note.textContent, /robot/i);
+  assert.equal(x.off.disabled, true);
+});
+
+test('coming back to the page reopens a socket that dropped while it was hidden', async () => {
+  // iOS closes the socket when the phone locks. Without this the page spends
+  // the rest of its life on the slow path, having downgraded silently at the
+  // one moment nobody was looking -- and open-it, put-it-down, come-back is
+  // the normal way drive mode gets used.
+  const x = await wired();
+  x.socket().readyState = 3;
+  x.socket().onclose();
+  assert.equal(x.nodes.wire.textContent, 'polling');
+  const before = x.socket();
+  x.document.events.visibilitychange();
+  assert.notEqual(x.socket(), before, 'no new socket was opened');
+  x.openSocket();
+  assert.equal(x.nodes.wire.textContent, 'socket');
+});
+
+test('it does not open a second socket under a held thumb', async () => {
+  // Two command streams into a robot, with the server's newest-wins rule
+  // arbitrating a race this page started.
+  const x = await wired();
+  press(x, 64, 8);
+  const before = x.socket();
+  x.document.events.visibilitychange();
+  assert.equal(x.socket(), before);
+});
+
+test('it does not stack sockets when one is already open', async () => {
+  const x = await wired();
+  const before = x.socket();
+  x.document.events.visibilitychange();
+  assert.equal(x.socket(), before);
+});
+
+// -- the look stick --------------------------------------------------------
+//
+// The second joystick Chris asked for twice. Its rules are deliberately the
+// opposite of the drive stick's, which is the thing most likely to be "fixed"
+// by someone reading only one of them.
+function looks(x) { return x.requests.filter(r => r.url === '/robot/look'); }
+function lookAt(x, clientX, clientY, id = 9) {
+  x.nodes.look.events.pointerdown({pointerId: id, clientX, clientY, preventDefault() {}});
+}
+
+test('the camera does not recentre when you let go', async () => {
+  // The whole difference from the drive stick. A servo holds where it is put,
+  // and a camera that snapped back to level on every release would be useless
+  // for looking around a room -- which is what this page is for.
+  const x = await ready();
+  lookAt(x, 100, 64);          // right of centre (the pad is 128 wide at 0,0)
+  const moved = x.nodes['look-knob'].style.transform;
+  assert.notEqual(moved, '', 'the knob did not move');
+  x.nodes.look.events.pointerup({pointerId: 9});
+  assert.equal(x.nodes['look-knob'].style.transform, moved,
+    'it snapped back to centre, which is the drive stick rule and wrong here');
+});
+
+test('letting go of the look stick never stops the robot', async () => {
+  // The drive stick's release is a stop. If these two ever share that path,
+  // aiming the camera while driving would cut the throttle.
+  const x = await ready();
+  press(x, 64, 8);
+  const stopsBefore = stops(x).length;
+  lookAt(x, 100, 64);
+  x.nodes.look.events.pointerup({pointerId: 9});
+  assert.equal(stops(x).length, stopsBefore, 'looking around stopped the robot');
+});
+
+test('it sends absolute degrees, clamped to the servo limit', async () => {
+  const x = await ready();
+  // Far outside the pad: the unit-disk clamp then the degree clamp.
+  lookAt(x, 9999, 64);
+  x.firePending();
+  const body = looks(x)[0].options.body;
+  const pan = parseFloat(body.match(/pan_deg=(-?[\d.]+)/)[1]);
+  assert.ok(pan <= 45 && pan >= 44.9, `pan was ${pan}; the servo limit is 45`);
+});
+
+test('a drag is throttled rather than one request per pointermove', async () => {
+  // Five servo writes a second into an RPC server that handles one request at
+  // a time and already carries the drive loop.
+  const x = await ready();
+  lookAt(x, 70, 64);
+  for (let i = 0; i < 12; i++) {
+    x.nodes.look.events.pointermove({pointerId: 9, clientX: 70 + i * 3, clientY: 64, preventDefault() {}});
+  }
+  assert.equal(looks(x).length, 0, 'it sent before the throttle even fired');
+  x.firePending();
+  assert.equal(looks(x).length, 1, 'twelve moves became more than one request');
+});
+
+test('a move smaller than the servo backlash is not sent at all', async () => {
+  const x = await ready();
+  lookAt(x, 70, 64);
+  x.firePending();
+  looks(x)[0].resolve(response({ok: true}));
+  const after = looks(x).length;
+  // One pixel is well under LOOK_EPSILON_DEG once scaled.
+  x.nodes.look.events.pointermove({pointerId: 9, clientX: 70.4, clientY: 64, preventDefault() {}});
+  assert.equal(looks(x).length, after, 'it asked the servo to move less than it can');
+});
+
+test('double-tapping the middle levels the camera', async () => {
+  // The only way back: dragging to exactly zero by thumb is not a thing
+  // anyone manages.
+  const x = await ready();
+  lookAt(x, 100, 30);
+  assert.notEqual(x.nodes['look-knob'].style.transform, '');
+  x.nodes.look.events.pointerup({pointerId: 9});
+  lookAt(x, 64, 64, 10);
+  lookAt(x, 64, 64, 11);   // within the 300ms window; the clock is stopped
+  assert.equal(x.nodes['look-knob'].style.transform, '', 'it did not return to level');
+});
+
+test('a look that fails says so without letting go of the drive', async () => {
+  // A camera that did not turn is a disappointment; a robot that did not stop
+  // is a hazard. They must not share an error path.
+  const x = await ready();
+  press(x, 64, 8);
+  lookAt(x, 100, 64);
+  x.firePending();
+  looks(x)[0].reject(new Error('The robot did not answer.'));
+  await new Promise(r => setImmediate(r));
+  assert.equal(x.nodes.shout.hidden, false, 'it failed silently');
+  assert.ok([...x.intervals].some(([, t]) => t.delay === 200), 'it stopped driving over a camera error');
+});
+
+test('the look stick is disabled with everything else when the robot is not answering', async () => {
+  // `/look` goes through the RPC server that owns the motors, unlike the LEDs.
+  const x = setup('drive.js');
+  assert.equal(x.nodes.look.getAttribute('aria-disabled'), 'true');
+  lookAt(x, 100, 64);
+  assert.equal(looks(x).length, 0, 'a disabled stick moved a servo');
+  await telemetry(x);
+  assert.equal(x.nodes.look.getAttribute('aria-disabled'), 'false');
 });

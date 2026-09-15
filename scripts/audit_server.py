@@ -195,6 +195,13 @@ snap = FiSnapshot(
         breed="Labrador Retriever",
         birthday=dt.date(2021, 4, 18),
         timezone="America/New_York",
+        # Never fetched: `stub_avatar` below answers for it. It is here so the
+        # screenshots exercise the *photo* path -- the header avatar, the
+        # profile picture and, since 2026-09-15, the map marker. Without it
+        # every one of them silently falls back to the initial and a reviewer
+        # is shown the empty state as though it were the normal one, which is
+        # the exact trap `sonar_cm` set in this file once before.
+        photo_url="https://example.invalid/kona.jpg",
     ),
     window=RestWindow(
         start=D(2026, 9, 13, 4), end=D(2026, 9, 14, 3, 59, 59), sleep=35513, nap=16527
@@ -286,11 +293,45 @@ class StubRobot:
     def look(self, pan_deg=None, tilt_deg=None, move_ms=None):
         return {"ok": True}
 
+    # The lights, remembering what they were told -- the real gateway does,
+    # and a stub that always answered the same thing would have hidden the
+    # draw-from-the-answer rule rather than exercised it.
+    _led = {"on": True, "r": 120, "g": 220, "b": 90}
+
+    def led(self):
+        return dict(self._led)
+
+    def set_led(self, on, r=0, g=0, b=0):
+        StubRobot._led = {"on": bool(on), "r": int(r), "g": int(g), "b": int(b)}
+        return {"ok": True}
+
     def stop_quietly(self):
         pass
 
     def close(self):
         pass
+
+
+def stub_avatar(url: str):
+    """Her photo, without reaching Fi's CDN. A flat green square: the point of
+    the screenshots is where the photo sits and what shape it is cropped to,
+    not what she looks like."""
+    import io  # noqa: PLC0415 - script-only
+    import struct  # noqa: PLC0415
+    import zlib  # noqa: PLC0415
+
+    size = 96
+    raw = b"".join(b"\x00" + bytes([0x35, 0x6B, 0x3C] * size) for _ in range(size))
+
+    def chunk(tag: bytes, body: bytes) -> bytes:
+        return struct.pack(">I", len(body)) + tag + body + struct.pack(">I", zlib.crc32(tag + body))
+
+    png = io.BytesIO()
+    png.write(b"\x89PNG\r\n\x1a\n")
+    png.write(chunk(b"IHDR", struct.pack(">IIBBBBB", size, size, 8, 2, 0, 0, 0)))
+    png.write(chunk(b"IDAT", zlib.compress(raw)))
+    png.write(chunk(b"IEND", b""))
+    return png.getvalue(), "image/png"
 
 
 settings = Settings(
@@ -300,6 +341,13 @@ settings = Settings(
     robot_control_url="http://127.0.0.1:9031",
     robot_token="t" * 20,
     robot_name="Rover",
+    # The Stadia basemap, with a key that is not one. Tile requests never leave
+    # this machine during a capture -- the capture script fulfils them -- and
+    # the point is to exercise the light/dark basemap *choice* that landed on
+    # 2026-09-15. Left on `osm` this path was never rendered at all, which is
+    # how a bug that only exists under KONA_MAP_TILES=stadia reached a phone.
+    map_tiles="stadia",
+    stadia_api_key="NOT-A-REAL-KEY",
 )
 app = create_app(
     settings,
@@ -307,5 +355,6 @@ app = create_app(
     fi_service=StubFi(),
     robot_source_factory=lambda: FakeSource(fps=10),
     robot_gateway=StubRobot(),
+    avatar_fetch=stub_avatar,
 )
 uvicorn.run(app, host="127.0.0.1", port=PORT, log_level="error")

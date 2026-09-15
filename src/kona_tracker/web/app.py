@@ -2,17 +2,29 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
 import re
 import sys
+import time
 from collections.abc import AsyncIterator, Callable
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
-from fastapi import FastAPI, Form, HTTPException, Query, Request, Response
+from fastapi import (
+    FastAPI,
+    Form,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from fastapi.responses import (
     HTMLResponse,
     JSONResponse,
@@ -21,6 +33,7 @@ from fastapi.responses import (
 )
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.concurrency import run_in_threadpool
 
 from kona_tracker.camera.control import CameraControl, ControlUnsupported, FakeControl, NoControl
 from kona_tracker.camera.hub import BOUNDARY, MAX_STREAMS, CameraHub
@@ -34,7 +47,9 @@ from kona_tracker.camera.source import (
 )
 from kona_tracker.fi.service import FiService
 from kona_tracker.robot.gateway import (
+    DRIVE_HOLD_MS,
     DRIVE_INTERVAL_MS,
+    RobotError,
     RobotFault,
     RobotGateway,
     RobotRefused,
@@ -566,6 +581,252 @@ def create_app(
     def robot_look(pan_deg: float = Form(0.0), tilt_deg: float = Form(0.0)):
         gateway = robot_or_404()
         return robot_reply("look", lambda: gateway.look_at(pan_deg, tilt_deg))
+
+    # -- driving over one connection ---------------------------------------
+    #
+    # **Why this exists.** The robot is on the home LAN; a phone on LTE
+    # reaches it through Tailscale to the PC and then over wired Ethernet to
+    # the Pi. So the slow leg is phone -> PC, around 700 ms round trip, and
+    # the PC -> Pi leg is about 1 ms. Over HTTP the page could only send as
+    # fast as that round trip allowed: `drive.js` holds a `sending` flag so
+    # commands cannot pile up, which capped it near 1.5 commands a second
+    # against a 500 ms TTL. The robot session measured the consequence --
+    # the gateway watchdog firing seven times in six seconds with the stick
+    # held down. That is the stutter Chris felt.
+    #
+    # A WebSocket removes the round trip from the send path: frames go out
+    # back to back and arrive in a stream. The PC -> Pi leg stays plain HTTP
+    # at 200 ms against the 500 ms TTL, which is correct for a 1 ms link and
+    # is what the robot session asked us to keep. Their own `/ws/drive` is
+    # left alone and unused; it would optimise the leg that is already fast.
+    #
+    # **The pump is the other half.** Frames from the phone set the current
+    # command; a task on this side pushes it to the Pi on a steady clock. So
+    # LTE jitter cannot stutter the robot -- a late frame lands on a command
+    # that is still being refreshed -- and the Pi sees one rate no matter what
+    # the phone's connection is doing.
+    #
+    # **Which makes the hold window a safety decision, not a tuning one.**
+    # Repeating the last command forever would defeat the gateway's watchdog,
+    # which only fires when commands *stop* arriving. So the pump stops
+    # repeating and sends a stop after DRIVE_HOLD_MS of silence from the
+    # phone. Worst case the robot moves that long after the phone dies,
+    # against 500 ms before; the gateway's watchdog still backs it up.
+    drive_sockets: list[WebSocket] = []
+    #: Sockets closed because a newer drive page took over. They must not
+    #: send a stop on the way out; see the teardown below. The sockets
+    #: themselves rather than their `id()`s: a collected object's id can be
+    #: reused, and a stale entry here would silently suppress a real stop.
+    superseded: set[WebSocket] = set()
+    #: Strong references to the tasks a closing connection leaves behind --
+    #: evicting a superseded socket, and the final stop. asyncio holds only
+    #: a weak reference, so a task nobody keeps can be collected mid-await
+    #: and never finish: a documented footgun, and on the stop path a
+    #: safety one.
+    evictions: set[asyncio.Task] = set()
+
+    @app.websocket("/robot/ws/drive")
+    async def robot_drive_socket(socket: WebSocket):
+        # The `gate` middleware is an HTTP middleware and does NOT run for a
+        # WebSocket handshake. Checking the cookie here is not belt and
+        # braces: without it this is the one unauthenticated route in the
+        # app, and it is the one that moves a physical object.
+        if not auth.valid_cookie(socket.cookies.get(COOKIE_NAME)):
+            await socket.close(code=1008)
+            return
+        if robot is None:
+            await socket.close(code=1008)
+            return
+        await socket.accept()
+
+        # The Pi's RPC server handles one request at a time. Two drive pages
+        # open at once would interleave two streams of commands into it and
+        # fight over the robot, so the newest connection takes over and the
+        # older one is told to fall back to HTTP rather than silently
+        # half-working.
+        async def evict(old: WebSocket) -> None:
+            with suppress(Exception):
+                await old.close(code=1000)
+
+        for old in list(drive_sockets):
+            drive_sockets.remove(old)
+            # Marked before it is closed: its own teardown stops the robot,
+            # and without this flag that stop would land on the page that
+            # just took over -- a stutter with no cause visible anywhere.
+            # The robot is not left unguarded by skipping it, because the
+            # socket replacing it is about to start driving.
+            superseded.add(old)
+            # Scheduled, not awaited. Awaiting another socket's close from
+            # inside this one's setup makes a fresh drive page wait on a peer
+            # that may be half-gone -- the case this eviction exists for is
+            # precisely a page that stopped behaving. It also deadlocked the
+            # Windows CI runner, where the old socket's close could not
+            # complete until this handler yielded.
+            task = asyncio.create_task(evict(old))
+            evictions.add(task)
+            task.add_done_callback(evictions.discard)
+        drive_sockets.append(socket)
+
+        gateway = robot
+        command = {"vx": 0.0, "vy": 0.0, "omega": 0.0}
+        last_frame = time.monotonic()
+        holding = False
+        running = True
+
+        async def say(payload: dict[str, Any]) -> None:
+            with suppress(Exception):
+                await socket.send_text(json.dumps(payload))
+
+        async def pump() -> None:
+            """Push the current command to the Pi on a steady clock."""
+            nonlocal holding
+            stopped = True
+            while running:
+                await asyncio.sleep(DRIVE_INTERVAL_MS / 1000.0)
+                # A superseded connection does nothing further to the robot.
+                # Its close is scheduled rather than awaited, so this pump can
+                # outlive the takeover by a tick or two -- long enough, under
+                # load, to reach its own hold expiry below and send a stop
+                # that lands on the page which replaced it. The teardown flag
+                # alone did not cover this: that guards the stop at the end,
+                # and this is a stop in the middle.
+                if socket in superseded:
+                    return
+                silent = (time.monotonic() - last_frame) * 1000.0
+                if silent > DRIVE_HOLD_MS:
+                    # The phone has gone quiet. Let go once, then stay quiet:
+                    # re-sending a stop every 200 ms would be noise on a
+                    # single-threaded RPC server, and the gateway's watchdog
+                    # has already zeroed the motors by now anyway.
+                    if not stopped:
+                        stopped = True
+                        holding = False
+                        with suppress(RobotError):
+                            await run_in_threadpool(gateway.stop)
+                    continue
+                if not holding:
+                    stopped = True
+                    continue
+                stopped = False
+                try:
+                    await run_in_threadpool(
+                        gateway.drive, command["vx"], command["vy"], command["omega"]
+                    )
+                except RobotRefused as e:
+                    holding = False
+                    await say({"ok": False, "error": robot_refusal(e.reason), "reason": e.reason})
+                except RobotUnreachable as e:
+                    holding = False
+                    await say(
+                        {"ok": False, "error": robot_refusal(str(e)), "reason": "unreachable"}
+                    )
+                except RobotError as e:
+                    holding = False
+                    await say({"ok": False, "error": robot_refusal(str(e)), "reason": "fault"})
+                except Exception as e:
+                    holding = False
+                    log.warning("robot ws drive failed: %s", type(e).__name__)
+                    await say(
+                        {
+                            "ok": False,
+                            "error": "The robot gateway failed unexpectedly.",
+                            "reason": "fault",
+                        }
+                    )
+
+        pumping = asyncio.create_task(pump())
+        try:
+            while True:
+                raw = await socket.receive_text()
+                last_frame = time.monotonic()
+                try:
+                    frame = json.loads(raw)
+                except ValueError:
+                    continue
+                if not isinstance(frame, dict):
+                    continue
+                if frame.get("stop"):
+                    # Straight through, ahead of the pump's next tick. The
+                    # page also sends its own HTTP stop, which is the one it
+                    # can watch land; this is only about getting the wheels
+                    # to zero as soon as the bytes arrive.
+                    holding = False
+                    with suppress(RobotError):
+                        await run_in_threadpool(gateway.stop)
+                    await say({"ok": True, "stopped": True})
+                    continue
+                try:
+                    command = {
+                        "vx": float(frame.get("vx", 0.0)),
+                        "vy": float(frame.get("vy", 0.0)),
+                        "omega": float(frame.get("omega", 0.0)),
+                    }
+                except (TypeError, ValueError):
+                    continue
+                holding = True
+        except WebSocketDisconnect:
+            pass
+        except Exception as e:  # a torn connection, mid-frame
+            log.info("robot drive socket ended: %s", type(e).__name__)
+        finally:
+            running = False
+            pumping.cancel()
+            with suppress(Exception, asyncio.CancelledError):
+                await pumping
+            if socket in drive_sockets:
+                drive_sockets.remove(socket)
+            # The page is gone and cannot be told. `stop_quietly` logs a
+            # failure rather than raising, which is right here: there is
+            # nobody left to shout at, and the gateway's watchdog is the
+            # backstop if even this does not land.
+            #
+            # Unless another drive page took this one's place, in which case
+            # stopping would interrupt whoever is driving now.
+            took_over = socket in superseded
+            superseded.discard(socket)
+            if not took_over:
+                # Scheduled, NOT awaited, and this is a safety fix rather than
+                # a tidy-up. Starlette cancels this handler's task when the
+                # socket closes, so by the time control reaches here the task
+                # is often already cancelling -- and an `await` in that state
+                # raises CancelledError *immediately*, before the call is
+                # made. The stop simply never happened. It showed up as
+                # `test_closing_the_page_stops_the_robot` failing on one CI
+                # run in three with a ten-second deadline, which is not a
+                # slow runner: the stop was never going to arrive.
+                #
+                # A task of its own is not cancelled with us, so it runs. The
+                # gateway's own watchdog still zeroes the motors half a second
+                # after commands cease -- that is the backstop, and it was
+                # doing the work this line was supposed to be doing.
+                task = asyncio.create_task(run_in_threadpool(gateway.stop_quietly))
+                evictions.add(task)
+                task.add_done_callback(evictions.discard)
+
+    @app.get("/robot/led")
+    def robot_led():
+        """What colour the gateway was last asked for. Four nulls means it
+        has not been asked since it started, which is not the same as off."""
+        gateway = robot_or_404()
+        return robot_reply("led", gateway.led)
+
+    @app.post("/robot/led")
+    def robot_set_led(
+        on: bool = Form(False),
+        r: int = Form(0),
+        g: int = Form(0),
+        b: int = Form(0),
+    ):
+        """The front lights. The one robot control that is not about moving.
+
+        Deliberately reachable while the robot's own software is down. The
+        gateway writes these over I2C rather than through the RPC server that
+        owns the motors, so they answer when `/health` says `turbopi: false`
+        -- and a person looking at a dark house with a robot that will not
+        drive can still see where it is.
+        """
+        gateway = robot_or_404()
+        return robot_reply("led", lambda: gateway.set_led(on, r, g, b))
 
     @app.get("/activity", response_class=HTMLResponse)
     def activity(request: Request, preview: bool = False, fresh: bool = False):
