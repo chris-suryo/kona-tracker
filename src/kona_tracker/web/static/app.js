@@ -18,10 +18,10 @@
 // Pull to refresh, on the Activity page. Safari's own pull-to-refresh
 // reloads the document, does not exist at all once the app is on the home
 // screen, and a reload is the wrong tool anyway: this fetches a fresh
-// render of the same page and swaps its body in, so nothing is torn down
-// and the numbers, labels and stale wording still come from one place --
-// the server's template. Coming back to the app does the same, so opening
-// it shows the current numbers without a gesture.
+// render of the same page and swaps in the sections that changed, so
+// nothing is torn down and the numbers, labels and stale wording still
+// come from one place -- the server's template. Coming back to the app
+// does the same, so opening it shows the current numbers without a gesture.
 (function () {
   var page = document.querySelector('main.activity-page');
   var body = document.getElementById('activity-body');
@@ -87,6 +87,77 @@
     }
   }
 
+  // The fresh render is swapped in one section at a time, and only the
+  // sections that actually differ. Replacing the whole body every minute
+  // looked like a reload: the stylesheet gives the hero, the rest grid and
+  // the location card an entry animation, so every tick faded them in again
+  // and redrew the goal ring from zero; the map was torn down and rebuilt,
+  // losing wherever you had panned it; and the Start walk button lost its
+  // click handler with the node it was bound to.
+  //
+  // This is a poor man's DOM diff and knows it. It walks the top-level
+  // children of #activity-body -- each one a section the template owns by
+  // name -- matches old to new by id or first class in document order, and
+  // compares outerHTML. Identical: left alone. Different: replaced whole.
+  // Missing on one side: added or removed. It goes no deeper than that, and
+  // it is enough, because a tick that changes nothing (most of them) now
+  // touches nothing, and a tick that changes the step count touches the
+  // hero and nothing else. A real diffing library would do this better and
+  // would be the first dependency in a front end that so far has none.
+  function keyOf(el) {
+    return el.id ? '#' + el.id : el.tagName + '.' + (el.className || '').split(' ')[0];
+  }
+  function children(el) { return Array.prototype.slice.call(el.children); }
+  // Leaflet rewrites the map element the moment it draws into it -- classes,
+  // panes, tiles, a tabindex -- and the "Map unavailable" line toggles
+  // `hidden`. Neither is a change the server made, so neither counts, or the
+  // location card would be replaced on every tick and never once be equal.
+  function signature(el) {
+    var text = el.outerHTML;
+    ['kona-map', 'map-unavailable'].forEach(function (id) {
+      var part = el.querySelector('#' + id);
+      if (part) { text = text.replace(part.outerHTML, ''); }
+    });
+    return text;
+  }
+  function blockText(root, id) {
+    var el = root.querySelector('#' + id);
+    return el ? el.textContent : '';
+  }
+  // A section that arrived by refresh is marked so the stylesheet knows not
+  // to animate it in: those animations are for a page appearing, and this
+  // page has been on screen the whole time.
+  function arriving(el) { el.classList.add('refreshed'); return el; }
+  // The map lives inside the location card, and the card's own text changes
+  // whenever the collar reports. When the points behind the map have not
+  // changed, the Leaflet container is carried across into the new card
+  // rather than rebuilt, and keeps its pan and zoom. Its "Map unavailable"
+  // line travels with it: map_base.js holds a reference to that node.
+  function carryMap(from, into) {
+    ['kona-map', 'map-unavailable'].forEach(function (id) {
+      var was = from.querySelector('#' + id), will = into.querySelector('#' + id);
+      if (was && will) { will.parentNode.replaceChild(was, will); }
+    });
+  }
+  function swap(next) {
+    var mapChanged = blockText(body, 'map-points') !== blockText(next, 'map-points')
+      || blockText(body, 'map-config') !== blockText(next, 'map-config');
+    if (mapChanged && window.KonaMap) { window.KonaMap.destroy(); }
+    var old = children(body), fresh = children(next), cursor = 0;
+    fresh.forEach(function (node) {
+      var key = keyOf(node), at = -1, i;
+      for (i = cursor; i < old.length; i++) { if (keyOf(old[i]) === key) { at = i; break; } }
+      if (at === -1) { body.insertBefore(arriving(node), old[cursor] || null); return; }
+      for (i = cursor; i < at; i++) { body.removeChild(old[i]); }
+      cursor = at + 1;
+      if (signature(old[at]) === signature(node)) { return; }
+      if (!mapChanged) { carryMap(old[at], node); }
+      body.replaceChild(arriving(node), old[at]);
+    });
+    for (; cursor < old.length; cursor++) { body.removeChild(old[cursor]); }
+    if (mapChanged && window.KonaMap) { window.KonaMap.init(); }
+  }
+
   // `force` asks the server to go to Fi now (the pull gesture, and coming
   // back to the app); without it the request returns whatever the server
   // already has, which is what the quiet timer below wants. `silent` keeps
@@ -115,11 +186,9 @@
           var doc = new DOMParser().parseFromString(html, 'text/html');
           var next = doc.getElementById('activity-body');
           if (!next) { throw new Error('unexpected page'); }
-          if (window.KonaMap) { window.KonaMap.destroy(); }
-          body.innerHTML = next.innerHTML;
+          swap(next);
           var hdr = doc.querySelector('.hdr .right'), here = document.querySelector('.hdr .right');
-          if (hdr && here) { here.innerHTML = hdr.innerHTML; }  // the battery
-          if (window.KonaMap) { window.KonaMap.init(); }
+          if (hdr && here && hdr.innerHTML !== here.innerHTML) { here.innerHTML = hdr.innerHTML; }  // the battery
           succeeded = true;
         });
       })
