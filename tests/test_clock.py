@@ -59,23 +59,44 @@ def test_no_platform_specific_strftime_directives_in_the_clock():
     which is the machine this app is served from. That mistake already broke
     the Settings page once (PR #49); this is the guard for the clock.
 
-    Comments are tokenised away first, because this docstring names the very
-    directive it bans.
+    It reads string literals only, docstrings excluded: a directive can only
+    reach strftime inside a string, and the docstrings are where the ban is
+    explained by name. The first version of this test stripped *every*
+    string token and then searched what was left -- so it could never have
+    found a real `strftime("%-I")`, and passed for two weeks while guarding
+    nothing. Found when the views module became a package and the guard was
+    widened to every file in it: injecting `%-I` did not make it fail.
     """
-    import io  # noqa: PLC0415
-    import tokenize  # noqa: PLC0415
+    import ast  # noqa: PLC0415
     from pathlib import Path  # noqa: PLC0415
 
-    import kona_tracker.web.views as module  # noqa: PLC0415
+    import kona_tracker.web.views as package  # noqa: PLC0415
 
-    source = Path(module.__file__).read_text()
-    code = "".join(
-        token.string
-        for token in tokenize.generate_tokens(io.StringIO(source).readline)
-        if token.type not in (tokenize.COMMENT, tokenize.STRING)
-    )
-    for bad in ("%-I", "%-d", "%-m", "%-H", "%-M", "%-S", "%-j", "%-y"):
-        assert bad not in code, f"{bad} is a glibc extension and raises on Windows"
+    # Every module of the package, not `package.__file__`: that is the
+    # __init__, which only re-exports and would pass while checking nothing.
+    sources = sorted(Path(package.__file__).parent.glob("*.py"))
+    assert len(sources) > 1, "the views package has no modules to scan"
+    for source in sources:
+        tree = ast.parse(source.read_text())
+        docstrings = {
+            id(node.body[0].value)
+            for node in ast.walk(tree)
+            if isinstance(node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+            and node.body
+            and isinstance(node.body[0], ast.Expr)
+            and isinstance(node.body[0].value, ast.Constant)
+            and isinstance(node.body[0].value.value, str)
+        }
+        literals = [
+            node.value
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Constant)
+            and isinstance(node.value, str)
+            and id(node) not in docstrings
+        ]
+        for bad in ("%-I", "%-d", "%-m", "%-H", "%-M", "%-S", "%-j", "%-y"):
+            hits = [text for text in literals if bad in text]
+            assert not hits, f"{bad} in {source.name} is a glibc extension; raises on Windows"
 
 
 def test_the_app_no_longer_writes_a_24_hour_clock_anywhere_a_person_looks():
@@ -85,7 +106,7 @@ def test_the_app_no_longer_writes_a_24_hour_clock_anywhere_a_person_looks():
 
     web = Path(__file__).resolve().parent.parent / "src" / "kona_tracker" / "web"
     offenders = []
-    for path in [*web.glob("*.py"), *(web / "templates").glob("*.html")]:
+    for path in [*web.rglob("*.py"), *(web / "templates").glob("*.html")]:
         if path.name == "build.py":
             continue  # the build stamp is for developers, not for the page
         if "%H:%M" in path.read_text():
