@@ -618,6 +618,10 @@ def create_app(
     #: themselves rather than their `id()`s: a collected object's id can be
     #: reused, and a stale entry here would silently suppress a real stop.
     superseded: set[WebSocket] = set()
+    #: Strong references to the eviction tasks below. asyncio holds only a
+    #: weak one, so a task nobody keeps can be collected mid-await and the
+    #: close never happens -- a documented footgun, not a theoretical one.
+    evictions: set[asyncio.Task] = set()
 
     @app.websocket("/robot/ws/drive")
     async def robot_drive_socket(socket: WebSocket):
@@ -638,6 +642,10 @@ def create_app(
         # fight over the robot, so the newest connection takes over and the
         # older one is told to fall back to HTTP rather than silently
         # half-working.
+        async def evict(old: WebSocket) -> None:
+            with suppress(Exception):
+                await old.close(code=1000)
+
         for old in list(drive_sockets):
             drive_sockets.remove(old)
             # Marked before it is closed: its own teardown stops the robot,
@@ -646,8 +654,15 @@ def create_app(
             # The robot is not left unguarded by skipping it, because the
             # socket replacing it is about to start driving.
             superseded.add(old)
-            with suppress(Exception):
-                await old.close(code=1000)
+            # Scheduled, not awaited. Awaiting another socket's close from
+            # inside this one's setup makes a fresh drive page wait on a peer
+            # that may be half-gone -- the case this eviction exists for is
+            # precisely a page that stopped behaving. It also deadlocked the
+            # Windows CI runner, where the old socket's close could not
+            # complete until this handler yielded.
+            task = asyncio.create_task(evict(old))
+            evictions.add(task)
+            task.add_done_callback(evictions.discard)
         drive_sockets.append(socket)
 
         gateway = robot
