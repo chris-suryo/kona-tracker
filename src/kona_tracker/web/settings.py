@@ -104,7 +104,7 @@ class Settings:
     fi_data_start: date | None = None
     #: A second camera: the TurboPi, or anything that answers one JPEG per
     #: GET. Blank means no Robot tab and no second hub -- nothing changes.
-    #: Expected: http://10.0.0.3:8080/?action=snapshot
+    #: Expected: http://192.0.2.3:8080/?action=snapshot
     robot_snapshot_url: str = ""
     robot_name: str = "Robot"
     #: Lower than the house camera: every frame is one HTTP GET to the Pi,
@@ -245,12 +245,12 @@ def load_settings(env_file: Path | None = Path(".env"), fake_camera: bool = Fals
     if robot_snapshot_url and not has_scheme(robot_snapshot_url):
         raise SettingsError(
             "KONA_ROBOT_SNAPSHOT_URL must start with a scheme, "
-            "e.g. http://10.0.0.3:8080/?action=snapshot"
+            "e.g. http://192.0.2.3:8080/?action=snapshot"
         )
     robot_control_url = get("KONA_ROBOT_CONTROL_URL").strip()
     if robot_control_url and not has_scheme(robot_control_url):
         raise SettingsError(
-            "KONA_ROBOT_CONTROL_URL must start with a scheme, e.g. http://10.0.0.3:9031"
+            "KONA_ROBOT_CONTROL_URL must start with a scheme, e.g. http://192.0.2.3:9031"
         )
 
     trusted_proxy_header = get("KONA_TRUSTED_PROXY_HEADER").strip()

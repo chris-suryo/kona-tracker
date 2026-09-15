@@ -76,7 +76,7 @@ every item; `docs/scaling-limits.md` is the standing list of ceilings;
   means no tab. Driving is **gated** on the Pi-side watchdog service
   existing and answering `/health` (its contract is in
   `docs/device-capabilities.md` §1b); the app never talks to the robot's
-  raw port 9030. Chris still owes `Test-NetConnection 10.0.0.3 -Port 8080`
+  raw port 9030. Chris still owes `Test-NetConnection 192.0.2.3 -Port 8080`
   from the PC and a DHCP reservation for the robot.
 - **Driving (2026-09-14):** built. A landscape drive mode at `/drive`, a
   virtual stick for translate, two buttons for rotate, an always-live STOP,

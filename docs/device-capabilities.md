@@ -110,7 +110,7 @@ that built it, measured against the hardware unless marked otherwise.
 
 | What | Reading |
 |---|---|
-| Video | MJPEG on `http://10.0.0.3:8080/` (multipart), one JPEG at `?action=snapshot`. **No credentials.** Binds `0.0.0.0`, so anyone on the Wi-Fi can watch it |
+| Video | MJPEG on port 8080 (multipart), one JPEG at `?action=snapshot`. **No credentials** on the robot's own server: the home LAN is the boundary, and the app never exposes that port -- it fetches frames itself and serves them behind the passcode |
 | Picture | 640×480, JPEG quality 70 on the stream and 100 on snapshots. **18.9 fps measured** against a ~20 fps ceiling |
 | Multi-reader | **Yes, measured**: two streams at 18.7 and 18.6 fps with `?action=snapshot` still answering. The app polling it never blocks a browser also watching |
 | `/dev/video0` | Held exclusively by `TurboPi.py` for its lifetime. Port 8080 is the only way to the picture, which is fine: it is the way we use |
@@ -119,7 +119,7 @@ that built it, measured against the hardware unless marked otherwise.
 | Control | JSON-RPC 2.0 on port 9030, **no auth, no CORS**. Result envelope is `[success, data, method]` inside `result`; **HTTP 200 does not mean success** |
 | Stops on its own? | **No.** A motor duty is held indefinitely. A lost "stop" is a robot that keeps going |
 | Battery | Two 18650 cells, 8.01 V fresh. **No low-voltage alarm, no auto shutdown**; it browns out the Pi when the cells sag. Runtime unmeasured |
-| Address | `10.0.0.3`, `turbopi.local`. **Not yet DHCP-reserved.** Reachable from the Mac; **not yet tested from the Windows PC** |
+| Address | A fixed LAN address (written `192.0.2.3` throughout these docs) and `turbopi.local`. Reserve it in the router; `docs/robot-runbook.md` is what happens when it is not |
 | Autostart | Done: a systemd unit starts `TurboPi.py` on boot and restarts it on crash. A one-line patch opens the camera at start (stock, it serves no frames until a demo loads, and fails silently) |
 
 **How the app uses it (2026-09-14).** As a second camera on its own Robot

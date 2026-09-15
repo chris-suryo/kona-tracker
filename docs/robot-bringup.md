@@ -68,19 +68,19 @@ assumes the robot can stop itself.
 From the PC, in PowerShell:
 
 ```powershell
-Test-NetConnection 10.0.0.3 -Port 8080    # the camera (still owed from the camera phase)
-Test-NetConnection 10.0.0.3 -Port 9031    # the gateway
+Test-NetConnection 192.0.2.3 -Port 8080    # the camera (still owed from the camera phase)
+Test-NetConnection 192.0.2.3 -Port 9031    # the gateway
 ```
 
-`TcpTestSucceeded : True` on both. Then reserve `10.0.0.3` for the robot in
+`TcpTestSucceeded : True` on both. Then reserve `192.0.2.3` for the robot in
 the router (DHCP reservation) — without it the address can change on a reboot
 and the tab goes quiet with nothing on screen explaining why.
 
 ## 5. `.env`, and not before now
 
 ```
-KONA_ROBOT_SNAPSHOT_URL=http://10.0.0.3:8080/?action=snapshot
-KONA_ROBOT_CONTROL_URL=http://10.0.0.3:9031
+KONA_ROBOT_SNAPSHOT_URL=http://192.0.2.3:8080/?action=snapshot
+KONA_ROBOT_CONTROL_URL=http://192.0.2.3:9031
 KONA_ROBOT_TOKEN=<the secret from step 1>
 ```
 
