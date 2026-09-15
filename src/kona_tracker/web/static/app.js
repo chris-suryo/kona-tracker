@@ -229,3 +229,26 @@
     if (e.touches.length > 1 && !overTheMap(e.target)) { e.preventDefault(); }
   }, { passive: false });
 })();
+
+// The appearance control on Settings. theme.js already applied the saved
+// choice before this page painted; this only draws which one is on and
+// records a new one. Separate files on purpose: that one has to be tiny and
+// blocking, this one is deferred like everything else.
+(function () {
+  'use strict';
+  var buttons = document.querySelectorAll('[data-theme-choice]');
+  if (!buttons.length || !window.KonaTheme) { return; }
+  function draw() {
+    var current = window.KonaTheme.get();
+    Array.prototype.forEach.call(buttons, function (button) {
+      button.setAttribute('aria-pressed', String(button.dataset.themeChoice === current));
+    });
+  }
+  Array.prototype.forEach.call(buttons, function (button) {
+    button.addEventListener('click', function () {
+      window.KonaTheme.set(button.dataset.themeChoice);
+      draw();
+    });
+  });
+  draw();
+})();

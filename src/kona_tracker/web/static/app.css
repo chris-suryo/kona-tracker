@@ -30,8 +30,19 @@
   --disp:"Bricolage Grotesque",system-ui,-apple-system,sans-serif;
   color-scheme: light;
 }
+/* Dark, twice, and the duplication is the price of plain CSS.
+   Nothing here compiles, so a shared token body cannot be written once and
+   referenced twice -- and a preprocessor is a build step this project does
+   not have. Instead the two copies sit adjacent and a test
+   (tests/test_theme.py) asserts they are character-for-character identical,
+   because two theme definitions that quietly drift apart is a bug nobody
+   notices until one screen is wrong in one mode.
+
+   The media query is the default and yields to an explicit choice; the
+   attribute selector is that choice. Light needs no second copy: it is the
+   `:root` above, which the `:not([data-theme="light"])` guard restores. */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --bg:#121611; --bg2:#1B211A; --ink:#EEF0E6; --ink2:#9BA394; --ink3:#5E665A;
     --line:rgba(238,240,230,.12);
     --t1:#1F3320; --t2:#35562E; --t3:#5F8A48; --t4:#8FBF6A; --t5:#CDE9B4; --on:#0B1208;
@@ -41,6 +52,16 @@
     --nap-edge:transparent;
     color-scheme: dark;
   }
+}
+:root[data-theme="dark"] {
+    --bg:#121611; --bg2:#1B211A; --ink:#EEF0E6; --ink2:#9BA394; --ink3:#5E665A;
+    --line:rgba(238,240,230,.12);
+    --t1:#1F3320; --t2:#35562E; --t3:#5F8A48; --t4:#8FBF6A; --t5:#CDE9B4; --on:#0B1208;
+    --warn:#E0A33A; --bad:#FF6B57;
+    --dim:.55;
+    --switch-track:var(--bg2);
+    --nap-edge:transparent;
+    color-scheme: dark;
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--body); }
@@ -167,11 +188,18 @@ body.activity-page { overscroll-behavior-y: contain; }
   color: var(--ink2) !important; padding: 1px 5px !important; }
 .leaflet-control-attribution a { color: var(--ink2) !important; }
 .leaflet-control-zoom a { color: #171A15 !important; }
+/* Fakes a dark basemap out of light OSM raster tiles. `.tiles-dark` is set
+   by map.js when the tiles are already dark (Stadia Alidade Smooth Dark),
+   where filtering again would crush them. Follows the chosen theme, not just
+   the phone's -- a light map under a dark page was the giveaway that the
+   toggle had missed a rule. */
 @media (prefers-color-scheme: dark) {
-  /* Fakes a dark basemap out of light OSM raster tiles. `.tiles-dark` is set
-     by map.js when the tiles are already dark (Stadia Alidade Smooth Dark),
-     where filtering again would crush them. */
-  .map:not(.tiles-dark) .leaflet-tile-pane { filter: brightness(.72) saturate(.7) contrast(1.08); }
+  :root:not([data-theme="light"]) .map:not(.tiles-dark) .leaflet-tile-pane {
+    filter: brightness(.72) saturate(.7) contrast(1.08);
+  }
+}
+:root[data-theme="dark"] .map:not(.tiles-dark) .leaflet-tile-pane {
+  filter: brightness(.72) saturate(.7) contrast(1.08);
 }
 
 .steps-hero { display: flex; align-items: center; gap: 18px; padding: 28px 0 26px; border-bottom: 1px solid var(--line); }
@@ -306,6 +334,12 @@ body.activity-page { overscroll-behavior-y: contain; }
 .profile-hero h1 { margin: 3px 0 2px; font-size: 34px; letter-spacing: -.05em; }
 .profile-hero p { margin: 0; color: var(--ink2); font-size: 13px; }
 .settings-group { padding: 24px 0 8px; border-bottom: 1px solid var(--line); }
+.theme-choice { display: flex; gap: 8px; margin: 14px 0 0; }
+.theme-choice button { flex: 1; min-height: 44px; padding: 0 8px; border-radius: 12px;
+  border: 1px solid var(--line); background: transparent; color: var(--ink2);
+  font: inherit; font-size: 14px; font-weight: 600; touch-action: manipulation; }
+.theme-choice button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: transparent; }
+.settings-note { margin: 10px 0 0; font-size: 12px; color: var(--ink2); }
 .settings-group h2 { margin: 0 0 12px; color: var(--ink2); font-size: 12px; font-weight: 600; }
 .settings-row { display: flex; justify-content: space-between; gap: 20px; padding: 10px 0; font-size: 14px; }
 .settings-row span { color: var(--ink2); }
@@ -325,7 +359,11 @@ body.activity-page { overscroll-behavior-y: contain; }
    centre line, instead of a 28px text glyph riding high on its own. */
 .settings-link .go { display: grid; place-items: center; flex: none; color: var(--ink3); }
 .settings-link .go svg { width: 18px; height: 18px; transform: rotate(180deg); }
-.settings-actions { display: flex; align-items: center; justify-content: center; gap: 12px; padding-top: 24px; }
+/* A column since the build stamp joined it. Side by side, "Sign out on this
+   phone" wrapped to two lines to make room for a version string, which put
+   the least important text on the page in competition with the only action
+   on it. */
+.settings-actions { display: flex; flex-direction: column; align-items: center; gap: 4px; padding-top: 24px; }
 .settings-actions .logout { padding: 12px 16px; min-height: 44px; cursor: pointer; font-size: 12px; color: var(--ink2); }
 
 /* Pan/tilt pad. Only rendered for cameras with motors; a fixed camera

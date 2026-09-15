@@ -1,0 +1,84 @@
+{
+  "goal": "Get the app onto Chris's phone over cellular, land the UI changes he asked for, and fix what the first real robot drive exposed.",
+  "completed": [
+    "PR #49 merged: build stamp in the Settings footer, location-card gutters, a 300px map, and the horizontal-overflow fix.",
+    "PR #50 merged: rotate-left/right swapped back, \"On charger\" replaced, app opens on Activity, 12-hour clock everywhere, polling-interval caption deleted, robot fps 10 -> 15, robot runbook + check script.",
+    "PR #51 open: light/dark/automatic chooser on Settings, applied before paint.",
+    "Chris confirmed the Fi recorder writes against the real collar: 16 hourly rows, 5 GPS fixes.",
+    "Chris drove the robot end to end for the first time, over Tailscale from his phone.",
+    "scripts/check_overflow.js and scripts/robot_check.ps1 added as manual browser/network checks."
+  ],
+  "discovered": [
+    "Rotate left was sending NEGATIVE omega. The gateway's frame is 'omega counter-clockwise' and counter-clockwise is a left turn, so left is positive. Our bug, not theirs -- the gateway matches its own documented contract. The Node harness test had been pinning the wrong sign.",
+    "'On charger' is unsupportable. on_base reads lastConnectionState.__typename == ConnectedToBase, which means the collar is talking to the base over its short-range radio from anywhere in range -- not that it is docked. And 'charging' on Device is recorded as confirmed absent in device-capabilities.md, so there is no better field to read.",
+    "The Activity page was 410 CSS px wide on a 390px screen: it scrolled sideways and the battery hung off the right edge. Only visible with a real browser -- pytest renders HTML without laying it out and the Node harness stubs the DOM.",
+    "Rest and Steps were borrowing .date-switch from the sample-data page, which has real prev/next arrows. On a real page that rendered two empty 44px boxes flanking a centred label.",
+    "Settings had a second, independent copy of the connection logic that also skipped the freshness guard added in September.",
+    "%-d is a glibc extension and raises ValueError on Windows. Ubuntu CI was green, Windows CI failed twelve tests, and the Settings page would have 500'd on the only machine that serves this app."
+  ],
+  "decisions": [
+    "Fix mirrored axes on OUR side when the gateway matches its own contract; negating on the Pi would make every other client wrong instead.",
+    "The app cannot claim the collar is charging, because Fi does not expose it. 'Connected to base' is what the field actually supports.",
+    "One rule owns each gutter. Children insetting themselves individually was the defect; the visible misalignment was only its symptom.",
+    "12-hour time is not a setting. Two users, both in the US -- it should just be right. The only setting worth having is the theme.",
+    "theme.js loads in <head> WITHOUT defer and is its own file: deferred it would flash the wrong theme on every navigation, and inline is forbidden by the CSP.",
+    "Dark tokens are duplicated (media query + attribute selector) because plain CSS cannot share a token body, with a test asserting the two copies stay identical.",
+    "No shutdown button on the Robot page yet: the gateway has no endpoint for it, and a button that cannot be undone remotely is the dangerous-button case this project has rules about.",
+    "Powering the Pi on from away needs a smart plug, not software. Written into the runbook rather than faked with a script."
+  ],
+  "lessons": [
+    "A test that pins a literal can pin a bug. The harness asserted omega=-0.400 for rotate-left and certified the reversal for days.",
+    "Tests that build their expectation with a format string get broken by format changes they are not about. Three timezone tests failed over a clock change; they now ask the app's own formatter for the shape and the format is pinned once, separately.",
+    "Screenshots catch what tests cannot, and the first screenshot can still lie: capturing the stop alarm appeared to show the fix had failed, when in fact rotating fires a stop, that stop succeeded against the healthy stub, and a successful stop clears the alarm correctly.",
+    "CSS source order decides between equal specificity. A .estop-small rule declared before .estop lost silently, and the button stayed red-on-red until a second screenshot.",
+    "Cross-platform means running the other platform's CI, not reasoning about it. CLAUDE.md warned about exactly the %-d case and it still shipped.",
+    "Confirm which machine an IP belongs to before giving instructions: 100.x.y.z is Tailscale's CGNAT range, but the phone and the PC both have one."
+  ],
+  "files_changed": [
+    "src/kona_tracker/web/build.py",
+    "src/kona_tracker/web/views.py",
+    "src/kona_tracker/web/app.py",
+    "src/kona_tracker/web/settings.py",
+    "src/kona_tracker/web/static/app.css",
+    "src/kona_tracker/web/static/app.js",
+    "src/kona_tracker/web/static/theme.js",
+    "src/kona_tracker/web/static/drive.js",
+    "src/kona_tracker/web/static/walk_mode.js",
+    "src/kona_tracker/web/static/manifest.webmanifest",
+    "src/kona_tracker/web/templates/base.html",
+    "src/kona_tracker/web/templates/settings.html",
+    "src/kona_tracker/web/templates/activity.html",
+    "src/kona_tracker/web/templates/rest_history.html",
+    "src/kona_tracker/web/templates/steps.html",
+    "src/kona_tracker/robot/gateway.py",
+    "scripts/check_overflow.js",
+    "scripts/robot_check.ps1",
+    "docs/robot-runbook.md",
+    "docs/screenshots/README.md",
+    "tests/test_clock.py",
+    "tests/test_theme.py",
+    "tests/test_build.py",
+    "tests/browser_runtime.test.cjs",
+    ".env.example"
+  ],
+  "open_questions": [
+    "Do the two strafe directions match the screen? Chris reported rotation reversed but has not yet pushed the stick left and right on a stand. If those are mirrored too it is the same one-line class of fix.",
+    "Is TURBOPI_MAX_DUTY=55 the reason the robot feels slow at full throttle? Raising it is the Pi's side and should wait for the strafe test.",
+    "What is the robot's real glass-to-glass camera latency? Raising fps to 15 buys smoothness, not latency. The honest measurement is to point it at a phone showing a stopwatch.",
+    "Should the Robot page get a shutdown button once the gateway has an endpoint and a smart plug makes it recoverable?",
+    "How long do the two 18650 cells actually last? Still unmeasured, and it gates leaving the robot powered while out."
+  ],
+  "intent": "Chris went to bed wanting the frontend ready to test tomorrow and the robot parked until then. He drove the robot successfully for the first time and reported three things -- reversed turns, camera lag, and wanting a reliable bring-up procedure -- all of which were addressed tonight except the strafe half of the axis test, which needs his hands on the robot.",
+  "next_task": "Merge PR #51 on green, then have Chris pull, restart, and check the Settings footer shows the new build before his full day of testing.",
+  "blockers": "The strafe axes are still unverified: Chris confirmed rotation was reversed but has not tested pushing the stick left and right on a stand. The two-stick drive control stays unbuilt until he does, because an unverified sign gets baked into muscle memory. Powering the robot on while away is impossible without a smart plug, which he does not have yet.",
+  "resume_minutes": 10,
+  "dont_retry": [
+    "Do not use %-d, %-I or any %- strftime directive: glibc only, raises ValueError on Windows, and this app is served from a Windows PC. Guard tests exist in test_build.py and test_clock.py.",
+    "Do not fix a mirrored robot axis on the Pi when the gateway matches its own documented contract -- the bug is on our side and changing theirs breaks every other client.",
+    "Do not trust a single screenshot to prove a fix. The first capture of the stop alarm showed an empty page because rotating fires a stop that succeeded, which correctly cleared the alarm.",
+    "Do not give a plain class name a rule that must beat an existing one declared later in app.css; source order wins at equal specificity.",
+    "Do not add defer or async to theme.js -- it would reintroduce a flash of the wrong theme on every navigation and no test but the tag assertion would notice.",
+    "Do not build a robot shutdown button yet: the gateway has no endpoint, and the action cannot be undone remotely."
+  ],
+  "session_id": "session_01KgmQrVuaAGmKyaioEr7d7t"
+}
