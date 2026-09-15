@@ -64,16 +64,26 @@ STATE = ["auth", "control", "fi", "health_summary", "hub", "robot", "robot_hub"]
 
 
 def table(app) -> list[tuple[str, str, str]]:
-    rows = []
-    for route in app.routes:
+    return sorted(rows(app.routes, ""))
+
+
+def rows(routes, prefix: str):
+    """FastAPI 0.141 keeps an included router as one lazy entry in
+    `app.routes` rather than copying its routes in, so the table walks into
+    it -- carrying the prefix it was included with, which is how a router
+    that grew one would show up here as every one of its paths changing."""
+    for route in routes:
+        included = getattr(route, "original_router", None)
+        if included is not None:
+            yield from rows(included.routes, prefix + route.include_context.prefix)
+            continue
         if isinstance(route, Mount):
-            rows.append(("mount", "", route.path))
+            yield ("mount", "", prefix + route.path)
         elif isinstance(route, WebSocketRoute):
-            rows.append(("websocket", "", route.path))
+            yield ("websocket", "", prefix + route.path)
         elif isinstance(route, Route):
             methods = ",".join(sorted(m for m in (route.methods or ()) if m != "HEAD"))
-            rows.append(("http", methods, route.path))
-    return sorted(rows)
+            yield ("http", methods, prefix + route.path)
 
 
 @pytest.fixture

@@ -57,12 +57,14 @@ from kona_tracker.robot.gateway import (
 )
 from kona_tracker.store import Recorder
 from kona_tracker.web.assets import asset_url, asset_versions
-from kona_tracker.web.auth import COOKIE_NAME, Lockout, PasscodeAuth, client_key
+from kona_tracker.web.auth import COOKIE_NAME, Lockout, PasscodeAuth
 from kona_tracker.web.awake import allow_sleep, keep_awake
 from kona_tracker.web.build import read_build
+from kona_tracker.web.deps import AppDeps, AvatarFetch
 from kona_tracker.web.heartbeat import Heartbeat
 from kona_tracker.web.history_preview import history_preview
 from kona_tracker.web.logs import attach_file_logging, detach_file_logging
+from kona_tracker.web.routes.auth import make_auth_router
 from kona_tracker.web.settings import Settings
 from kona_tracker.web.views import (
     activity_context,
@@ -121,8 +123,6 @@ AVATAR_MAX_BYTES = 5 * 1024 * 1024
 #: Raster only. SVG is an image type that can carry script, and this is
 #: served from our own origin.
 AVATAR_TYPES = frozenset({"image/jpeg", "image/png", "image/webp", "image/gif"})
-
-AvatarFetch = Callable[[str], tuple[bytes, str] | None]
 
 
 def fetch_avatar(url: str) -> tuple[bytes, str] | None:
@@ -217,12 +217,6 @@ def default_source_factory(s: Settings, control: CameraControl | None = None):
 WALK_ID = re.compile(r"[A-Za-z0-9_-]{1,64}")
 
 log = logging.getLogger("kona_tracker.web")
-
-#: Where the app opens: signing in, "/", and the home-screen icon all land
-#: here. It was "/camera" from the days when the camera was the only thing
-#: this app did. Activity is what you open it for -- the camera is one tap
-#: away and the dog is not.
-HOME = "/activity"
 
 
 def create_app(
@@ -411,61 +405,6 @@ def create_app(
         }
 
     app.state.health_summary = health_summary
-
-    @app.get("/healthz")
-    def healthz() -> dict[str, Any]:
-        return health_summary()
-
-    @app.get("/login", response_class=HTMLResponse)
-    def login_page(request: Request):
-        if authed(request):
-            return RedirectResponse(HOME, status_code=303)
-        return templates.TemplateResponse(request, "login.html", {"error": None})
-
-    @app.post("/login", response_class=HTMLResponse)
-    def login(request: Request, passcode: str = Form("")):
-        key = client_key(
-            request.headers,
-            request.client.host if request.client else "?",
-            settings.trusted_proxy_header,
-            settings.trusted_proxy_ips,
-        )
-        if auth.lockout.blocked(key):
-            return templates.TemplateResponse(
-                request,
-                "login.html",
-                {"error": "Too many tries. Wait a moment."},
-                status_code=429,
-            )
-        if not auth.check(passcode):
-            auth.lockout.fail(key)
-            return templates.TemplateResponse(
-                request, "login.html", {"error": "That's not it."}, status_code=401
-            )
-        auth.lockout.clear(key)
-        resp = RedirectResponse(HOME, status_code=303)
-        resp.set_cookie(
-            COOKIE_NAME,
-            auth.issue_cookie(),
-            max_age=settings.cookie_max_age,
-            httponly=True,
-            samesite="lax",
-            secure=settings.secure_cookies,
-        )
-        return resp
-
-    @app.post("/logout")
-    def logout():
-        resp = RedirectResponse("/login", status_code=303)
-        # Same attributes as when it was set, or the browser keeps the old one.
-        resp.delete_cookie(
-            COOKIE_NAME, httponly=True, samesite="lax", secure=settings.secure_cookies
-        )
-        return resp
-
-    @app.get("/")
-    def root():
-        return RedirectResponse(HOME, status_code=303)
 
     @app.get("/camera", response_class=HTMLResponse)
     def camera(request: Request):
@@ -1104,5 +1043,22 @@ def create_app(
         except ControlUnsupported as e:
             return JSONResponse({"error": str(e)}, status_code=409)
         return {"pan": round(new_pan, 3), "tilt": round(new_tilt, 3)}
+
+    deps = AppDeps(
+        settings=settings,
+        templates=templates,
+        auth=auth,
+        hub=hub,
+        robot_hub=robot_hub,
+        robot=robot,
+        fi=fi,
+        control=control,
+        capabilities=capabilities,
+        tile_config=tile_config,
+        build=build,
+        avatar_fetch=avatar_fetch,
+        health_summary=health_summary,
+    )
+    app.include_router(make_auth_router(deps))
 
     return app
