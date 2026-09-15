@@ -712,9 +712,17 @@
   }
   if (legend) {
     if (askedForLegend() || !legendSeen()) { legend.hidden = false; }
-    legend.addEventListener('click', function () {
+    legend.addEventListener('click', function (e) {
       legend.hidden = true;
       legendDismissed();
+      // The legend covers STOP for as long as it is up. A first-time driver
+      // whose first instinct is the big red button must get a stop, not a
+      // dismissal and a second tap: if the tap landed where STOP is, it is
+      // a STOP. The security review of this page named the one-tap window;
+      // this closes it. (elementsFromPoint is everywhere the page runs; the
+      // guard is for the test harness.)
+      var under = document.elementsFromPoint ? document.elementsFromPoint(e.clientX, e.clientY) : [];
+      if (under.indexOf(estop) !== -1) { stopNow('e-stop'); }
     });
   }
 

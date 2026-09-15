@@ -761,6 +761,20 @@ test('the legend shows on the first drive, is dismissed by a tap, and stays dism
   assert.equal(again.nodes.legend.hidden, true, 'seen once is seen');
 });
 
+// The legend covers STOP while it is up. A tap where STOP is must be a stop.
+test('a first tap on STOP through the legend is a stop, not just a dismissal', async () => {
+  const x = setup('drive.js');
+  assert.equal(x.nodes.legend.hidden, false);
+  x.document.elementsFromPoint = () => [x.nodes.legend, x.nodes.estop];
+  x.nodes.legend.events.click({clientX: 700, clientY: 300});
+  assert.equal(x.nodes.legend.hidden, true);
+  assert.equal(x.requests.filter(q => q.url === '/robot/stop').length, 1, 'the tap stopped the robot too');
+  const elsewhere = setup('drive.js');
+  elsewhere.document.elementsFromPoint = () => [elsewhere.nodes.legend];
+  elsewhere.nodes.legend.events.click({clientX: 10, clientY: 10});
+  assert.equal(elsewhere.requests.filter(q => q.url === '/robot/stop').length, 0, 'a tap elsewhere only dismisses');
+});
+
 test('the Robot tab can ask for the legend again, and a blocked storage errs towards showing it', () => {
   const asked = setup('drive.js', false, {seen: true, search: '?legend=1'});
   assert.equal(asked.nodes.legend.hidden, false);
