@@ -10,31 +10,42 @@
 // redraws from what the server answers -- the same rule the camera switches
 // follow. A button that says "Stop walk" because you tapped it, while the
 // server never heard the request, is a lie that survives until you reload.
+//
+// Nothing here holds on to the button. The Activity page swaps its sections
+// in from a fresh render every minute, and a section that changed arrives as
+// a new node -- so a handler bound to the button at load was bound to a node
+// that could be gone by the time of the first tap. That was a real bug: the
+// button went dead after any refresh, silently. The click is caught on the
+// document instead and the button looked up at the moment it is needed.
 (function () {
   'use strict';
 
-  var button = document.getElementById('walk-toggle');
-  var note = document.getElementById('walk-note');
-  if (!button) { return; }
+  if (!document.getElementById('walk-toggle')) { return; }
 
   var busy = false;
 
+  function button() { return document.getElementById('walk-toggle'); }
+  function note() { return document.getElementById('walk-note'); }
+
   function draw(state) {
-    if (!state || !state.offered) { return; }
-    button.dataset.on = state.on ? 'true' : 'false';
-    button.classList.toggle('on', !!state.on);
-    button.textContent = state.label;
-    if (note && state.note) { note.textContent = state.note; }
+    var b = button(), n = note();
+    if (!b || !state || !state.offered) { return; }
+    b.dataset.on = state.on ? 'true' : 'false';
+    b.classList.toggle('on', !!state.on);
+    b.textContent = state.label;
+    if (n && state.note) { n.textContent = state.note; }
   }
 
   function fail(message) {
-    if (note) { note.textContent = message; }
+    var n = note();
+    if (n) { n.textContent = message; }
   }
 
   function send(on) {
     if (busy) { return; }
     busy = true;
-    button.disabled = true;
+    var pressed = button();
+    if (pressed) { pressed.disabled = true; }
     var body = new URLSearchParams();
     body.set('on', on ? 'true' : 'false');
     fetch('/live', { method: 'POST', body: body, headers: { Accept: 'application/json' } })
@@ -64,12 +75,18 @@
       })
       .then(function () {
         busy = false;
-        button.disabled = false;
+        // The one that was pressed, and the current one if a refresh has
+        // replaced it in the meantime: a swapped-in button is never disabled.
+        if (pressed) { pressed.disabled = false; }
+        var now = button();
+        if (now) { now.disabled = false; }
       });
   }
 
-  button.addEventListener('click', function () {
-    send(button.dataset.on !== 'true');
+  document.addEventListener('click', function (e) {
+    var target = e.target && e.target.closest ? e.target.closest('#walk-toggle') : null;
+    if (!target) { return; }
+    send(target.dataset.on !== 'true');
   });
 
   window.KonaWalkMode = { draw: draw };
