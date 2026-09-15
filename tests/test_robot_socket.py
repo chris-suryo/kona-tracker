@@ -266,3 +266,34 @@ def test_the_hold_window_is_longer_than_the_send_interval_and_shorter_than_a_sec
     driving for a time a person would notice and not forgive."""
     assert DRIVE_HOLD_MS > DRIVE_INTERVAL_MS * 2
     assert DRIVE_HOLD_MS <= 1000
+
+
+def test_a_page_that_was_taken_over_does_not_stop_the_page_that_replaced_it(driving):
+    """The handover must be silent on the robot.
+
+    Every socket stops the robot on its way out, which is right when the
+    person has gone. But a socket closed *because a newer drive page took
+    over* has not lost its person -- and its parting stop would land on the
+    page that just started driving, as a stutter with no cause visible
+    anywhere on either screen.
+
+    The first version of this guard used `set.discard(...) is None`, which is
+    always true, so the stop always fired. That is exactly the kind of bug a
+    test written after the fix would have been shaped around, so this one
+    counts stops rather than inspecting the flag.
+    """
+    client, pi = driving
+    with client.websocket_connect("/robot/ws/drive") as first:
+        first.send_text('{"vx":0.2,"vy":0,"omega":0}')
+        settle(pi, 1)
+        with client.websocket_connect("/robot/ws/drive") as second:
+            second.send_text('{"vx":0.9,"vy":0,"omega":0}')
+            settle(pi, len(pi.drives) + 2)
+            # The first socket has been closed by the takeover by now. If its
+            # teardown stopped the robot, that stop is already recorded.
+            assert pi.stops == 0, "the superseded page stopped the robot mid-drive"
+            # And the robot is still being driven by the second page.
+            mark = len(pi.drives)
+            settle(pi, mark + 2)
+            still = [d["vx"] for d in pi.drives[mark:]]
+            assert still and all(v == 0.9 for v in still), still

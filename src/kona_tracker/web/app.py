@@ -613,6 +613,11 @@ def create_app(
     # phone. Worst case the robot moves that long after the phone dies,
     # against 500 ms before; the gateway's watchdog still backs it up.
     drive_sockets: list[WebSocket] = []
+    #: Sockets closed because a newer drive page took over. They must not
+    #: send a stop on the way out; see the teardown below. The sockets
+    #: themselves rather than their `id()`s: a collected object's id can be
+    #: reused, and a stale entry here would silently suppress a real stop.
+    superseded: set[WebSocket] = set()
 
     @app.websocket("/robot/ws/drive")
     async def robot_drive_socket(socket: WebSocket):
@@ -635,6 +640,12 @@ def create_app(
         # half-working.
         for old in list(drive_sockets):
             drive_sockets.remove(old)
+            # Marked before it is closed: its own teardown stops the robot,
+            # and without this flag that stop would land on the page that
+            # just took over -- a stutter with no cause visible anywhere.
+            # The robot is not left unguarded by skipping it, because the
+            # socket replacing it is about to start driving.
+            superseded.add(old)
             with suppress(Exception):
                 await old.close(code=1000)
         drive_sockets.append(socket)
@@ -742,7 +753,13 @@ def create_app(
             # failure rather than raising, which is right here: there is
             # nobody left to shout at, and the gateway's watchdog is the
             # backstop if even this does not land.
-            await run_in_threadpool(gateway.stop_quietly)
+            #
+            # Unless another drive page took this one's place, in which case
+            # stopping would interrupt whoever is driving now.
+            took_over = socket in superseded
+            superseded.discard(socket)
+            if not took_over:
+                await run_in_threadpool(gateway.stop_quietly)
 
     @app.get("/robot/led")
     def robot_led():

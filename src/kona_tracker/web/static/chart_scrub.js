@@ -108,9 +108,14 @@
 
     // The links still exist and are still the fallback, but following one now
     // would be a page load that changes nothing on screen: the reading is
-    // already showing. Keyboard focus is handled separately below, where
-    // Enter *should* still navigate, because that is the accessible way to
-    // land on a URL you can share.
+    // already showing.
+    //
+    // This suppresses Enter on a focused bar as well, since that fires a
+    // click -- and that is the right outcome rather than a compromise: the
+    // focus handler below has already shown the reading, so Enter would cost
+    // a full reload to arrive at the state the keyboard user is looking at.
+    // The shareable `?selected=N` URL is still reachable without JavaScript
+    // and by copying the link.
     chart.addEventListener('click', function (e) {
       if (e.cancelable) { e.preventDefault(); }
     });
