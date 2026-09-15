@@ -897,3 +897,18 @@ def test_no_template_uses_an_inline_style_attribute():
     assert not offenders, "inline style attributes are dropped by this app's CSP: " + ", ".join(
         offenders
     )
+
+
+def test_no_page_still_tells_the_reader_to_look_for_a_K_on_the_map():
+    """The marker became her photo on 2026-09-15 and this caption did not.
+
+    A page that names a landmark the map no longer draws sends the reader
+    hunting for something that is not there -- and it is the kind of stale
+    sentence that survives forever, because the change that invalidated it
+    was in a different file and every test still passed.
+    """
+    from pathlib import Path  # noqa: PLC0415 - test-only
+
+    web = Path(__file__).resolve().parent.parent / "src" / "kona_tracker" / "web"
+    for path in sorted((web / "templates").glob("*.html")):
+        assert "end with K" not in path.read_text(), f"{path.name} still describes the old marker"
