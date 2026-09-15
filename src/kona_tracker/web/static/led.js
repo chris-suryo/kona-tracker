@@ -76,7 +76,12 @@
   // I2C write failed, which is a different problem from the gateway being
   // gone, and the two want different things from whoever is reading.
   function settle(response) {
-    return response.json().then(function (data) {
+    // `.json()` REJECTS on a non-JSON body, and a failing server is exactly
+    // when the body stops being JSON -- a 500 page, a proxy's error, a login
+    // redirect's HTML. Left unguarded that rejection became the message on
+    // screen, and the screenshot on 2026-09-15 read: "Unexpected token 'I',
+    // "Internal S"... is not valid JSON". Same shape as drive.js's post().
+    return response.json().catch(function () { return {}; }).then(function (data) {
       if (!response.ok) {
         throw new Error(data && data.error
           ? data.error

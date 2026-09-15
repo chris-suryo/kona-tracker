@@ -1009,6 +1009,15 @@ function ledContext() {
       resolveNext = null;
       r({ok, json: () => Promise.resolve(body)});
       return new Promise(res => setImmediate(res));
+    },
+    // A server that answered with something that is not JSON at all: a 500
+    // page, a proxy's error, the login redirect's HTML.
+    answerNotJson: (ok = false) => {
+      const r = resolveNext;
+      resolveNext = null;
+      r({ok, json: () => Promise.reject(new SyntaxError(
+        'Unexpected token \'I\', "Internal S"... is not valid JSON'))});
+      return new Promise(res => setImmediate(res));
     }
   };
 }
@@ -1314,4 +1323,17 @@ test('a readings list that does not match the bars disables the scrub entirely',
   const x = scrubContext({count: 4, readingCount: 3});
   assert.equal(x.attached(), false, 'it attached to a list it could not trust');
   assert.equal(x.shown(), null);
+});
+
+test('a server that answers HTML does not put a JSON parse error on screen', async () => {
+  // `.json()` rejects on a non-JSON body, and a failing server is exactly when
+  // the body stops being JSON. Unguarded, that rejection WAS the message: a
+  // screenshot on 2026-09-15 read `Unexpected token 'I', "Internal S"... is
+  // not valid JSON` under the heading "Front lights".
+  const x = ledContext();
+  await x.answerNotJson();
+  assert.doesNotMatch(x.note.textContent, /JSON|token/,
+    'the browser is talking to the user instead of the page');
+  assert.match(x.note.textContent, /robot/i);
+  assert.equal(x.off.disabled, true);
 });

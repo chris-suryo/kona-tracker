@@ -627,14 +627,21 @@ body.activity-page { overscroll-behavior-y: contain; }
    on the button: the page sends `style-src 'self'` with no 'unsafe-inline',
    so an inline style is dropped silently and every swatch would come out
    colourless with nothing in the console to explain it. */
-.led-colours { align-items: flex-start; }
-.swatches { display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end; }
+/* Stacked, not side by side. Six 34px dots plus their gaps need about 254px,
+   and beside a label on a 390px phone they wrapped to 4 + 2 -- a ragged
+   second row that read as two groups of colours rather than one. */
+.led-colours { flex-direction: column; align-items: stretch; gap: 12px; }
+.swatches { display: flex; gap: 10px; justify-content: space-between; }
 /* 34px, not the 24px a swatch wants to be: this is a phone, and a colour is
-   not worth a second tap. The visible circle is smaller than the tap target,
-   which is what the padding buys. */
+   not worth a second tap.
+
+   Solid, with no inset ring. The first version had `inset 0 0 0 3px var(--bg2)`
+   meaning it as a subtle rim, and on a dark phone it read as a dark disc with
+   a coloured edge -- the swatch inverted, and white came out grey. A control
+   whose whole job is to show a colour has to show the colour. */
 .swatch { width: 34px; height: 34px; padding: 0; border: 2px solid var(--line); border-radius: 50%;
-          background: var(--swatch); box-shadow: inset 0 0 0 3px var(--bg2); cursor: pointer; }
-.swatch[aria-pressed="true"] { border-color: var(--ink); box-shadow: inset 0 0 0 2px var(--bg2); }
+          background: var(--swatch); cursor: pointer; }
+.swatch[aria-pressed="true"] { border-color: var(--ink); box-shadow: 0 0 0 2px var(--bg2), 0 0 0 4px var(--ink); }
 .swatch:disabled { opacity: .4; }
 .swatch.white { --swatch: #FFFFFF; }
 .swatch.warm { --swatch: #FFAA3C; }
@@ -700,13 +707,39 @@ body.activity-page { overscroll-behavior-y: contain; }
    other component in this file carries the same guard; this one was missed
    (found in ChatGPT's visual audit, 2026-09-13, by reading the DOM). */
 .live-stat[hidden], .live-walk[hidden], .live-recentre[hidden], .live-note[hidden] { display: none; }
-.live-stat strong { font-size: 19px; font-weight: 700; letter-spacing: -.03em;
+/* Three panels share the width of a phone, so each gets about 92px of
+   content -- and "41 min ago" at 19px bold is wider than that. It did not
+   wrap, because it must not; it simply painted over the panel to its right,
+   which is what the 2026-09-15 capture shows. So: shrink with the viewport,
+   and clip inside this panel rather than over the next one if a string ever
+   defeats even that. The words stay -- this is the one number on the page
+   that can be bad news, and "41 min" without "ago" invites reading it as a
+   duration. */
+.live-stat { overflow: hidden; }
+.live-stat strong { font-size: clamp(15px, 4.4vw, 19px); font-weight: 700; letter-spacing: -.03em;
                     font-variant-numeric: tabular-nums; white-space: nowrap; }
 .live-stat strong small { font-size: 12px; font-weight: 600; margin: 0 4px 0 1px; color: var(--ink2); }
 /* The fix age is the one number that can be bad news, so it is the one
    number allowed to change colour. Amber past two minutes, red past five. */
 .live-stat strong.warn { color: var(--warn); }
 .live-stat strong.bad { color: var(--bad); }
+
+/* Leaflet's own bottom-right controls and this page's stat panels both sit
+   at the bottom of the map, so the zoom buttons drew directly on top of the
+   WALKING panel (visible the moment the capture script started stubbing tiles
+   on 2026-09-15 -- before that every map screenshot was the "unavailable"
+   state, which is precisely why it had gone unnoticed). Lift them clear of
+   the stats row, on this page only: the small maps elsewhere have no stats
+   under them and their controls are correctly placed.
+
+   It lifts the zoom control and NOT the whole `.leaflet-bottom.leaflet-right`
+   corner, which was the first attempt: the attribution lives in that same
+   corner, so raising it moved the licence strip straight onto the Start walk
+   button. Leaflet's tiles are licensed on the condition the attribution is
+   shown, so it stays exactly where it was, at the foot of the page. */
+.map-page .leaflet-bottom.leaflet-right .leaflet-control-zoom {
+  margin-bottom: calc(env(safe-area-inset-bottom, 0px) + 74px);
+}
 
 /* One column, not three things pinned to the same offset. The recentre
    button, the stale note and the walk control all sat at +76px, so a stale
