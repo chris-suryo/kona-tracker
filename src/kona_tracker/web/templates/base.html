@@ -18,8 +18,12 @@
   <link rel="apple-touch-icon" href="/static/icon-180.png">
   <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png">
   <meta name="apple-mobile-web-app-title" content="Kona">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&display=swap" rel="stylesheet">
+  {# No webfont <link> here on purpose: Bricolage Grotesque is vendored under
+     static/fonts/ and declared by @font-face at the top of app.css, which
+     this page already blocks on. Two <link>s to a font CDN used to sit here
+     and cost a render-blocking third-party request, two hosts in the CSP,
+     and -- because the capture sandbox cannot reach that CDN -- a whole
+     project's worth of screenshots taken in the fallback font. #}
   <link rel="stylesheet" href="{{ asset('app.css') }}">
   {# NOT deferred, and before the body: it sets data-theme from the saved
      choice, and anything later paints the phone's theme first and then

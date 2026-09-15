@@ -67,7 +67,7 @@ every item; `docs/scaling-limits.md` is the standing list of ceilings;
   `docs/history/design-brief.md` explains why the app is HTML and not React.
 - **Slice 5 (production pass, 2026-09-11):** her resting position on the map
   with honest tiers, a login lockout that survives a tunnel, Secure cookies
-  by setting, a CSP with every script in a file, vendored Leaflet,
+  by setting, a CSP with every script in a file, vendored Leaflet and webfont,
   pull-to-refresh that repaints without dropping the video, page zoom off by
   request (the camera picture is the one exception, by design), camera
   health readable from a phone, a rotating log, times in Kona's timezone,

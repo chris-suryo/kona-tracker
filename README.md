@@ -183,4 +183,5 @@ keeps it that way.
 ## Licence
 
 MIT (`LICENSE`). The vendored Leaflet under `src/kona_tracker/web/static/leaflet/`
-keeps its own BSD-2 licence file.
+keeps its own BSD-2 licence file, and the vendored Bricolage Grotesque under
+`src/kona_tracker/web/static/fonts/` its OFL one.

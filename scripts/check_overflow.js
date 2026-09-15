@@ -16,16 +16,22 @@
 const { chromium } = require('playwright');
 
 const BASE = 'http://127.0.0.1:8140';
-// 320 is the iPhone SE; 390 is the 14/15; 430 is the Pro Max. If it survives
-// 320 it survives everything these two people own.
-const WIDTHS = [320, 375, 390, 430];
+// 320 is the iPhone SE; 390 is the 14/15; 393 is the 14/15 Pro, which is the
+// phone this app is actually used on and which had never been measured; 430
+// is the Pro Max. If it survives 320 it survives everything these two people
+// own.
+const WIDTHS = [320, 375, 390, 393, 430];
 const PAGES = ['/activity', '/rest', '/steps', '/map', '/settings', '/camera', '/robot'];
 
 (async () => {
   const browser = await chromium.launch();
   let failures = 0;
   for (const width of WIDTHS) {
-    const context = await browser.newContext({ viewport: { width, height: 844 }, deviceScaleFactor: 2 });
+    // isMobile/hasTouch so the measurement happens under the same viewport-meta
+    // handling and scrollbar model as the phone, and as audit_shots.js.
+    const context = await browser.newContext({
+      viewport: { width, height: 852 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true,
+    });
     const page = await context.newPage();
     await page.goto(BASE + '/login', { waitUntil: 'domcontentloaded' });
     await page.fill('#passcode', '4242');
@@ -34,6 +40,14 @@ const PAGES = ['/activity', '/rest', '/steps', '/map', '/settings', '/camera', '
     for (const path of PAGES) {
       await page.goto(BASE + path, { waitUntil: 'domcontentloaded' });
       await page.waitForTimeout(900);
+      // Measure the real font. Until it was vendored this script had never
+      // once measured Bricolage Grotesque -- it measured the fallback's
+      // metrics and reported them as the phone's, which is the whole reason
+      // "the text isn't aligning right" was ever in doubt.
+      await page.evaluate(async () => {
+        await document.fonts.ready;
+        await document.fonts.load('700 16px "Bricolage Grotesque"');
+      });
       const seen = await page.evaluate(() => {
         const doc = document.documentElement;
         const over = [];
@@ -54,6 +68,11 @@ const PAGES = ['/activity', '/rest', '/steps', '/map', '/settings', '/camera', '
     await context.close();
   }
   await browser.close();
-  console.log(failures ? `${failures} page/width combinations overflow` : 'No horizontal overflow at 320, 375, 390 or 430px.');
+  // Derived from WIDTHS, not typed: the hardcoded version went on claiming
+  // "320, 375, 390 or 430" after a fifth width was added, which is a summary
+  // line that can be wrong about what it checked.
+  console.log(failures
+    ? `${failures} page/width combinations overflow`
+    : `No horizontal overflow at ${WIDTHS.join(', ')}px across ${PAGES.length} pages.`);
   process.exit(failures ? 1 : 0);
 })();
