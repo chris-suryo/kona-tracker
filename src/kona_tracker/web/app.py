@@ -567,6 +567,31 @@ def create_app(
         gateway = robot_or_404()
         return robot_reply("look", lambda: gateway.look_at(pan_deg, tilt_deg))
 
+    @app.get("/robot/led")
+    def robot_led():
+        """What colour the gateway was last asked for. Four nulls means it
+        has not been asked since it started, which is not the same as off."""
+        gateway = robot_or_404()
+        return robot_reply("led", gateway.led)
+
+    @app.post("/robot/led")
+    def robot_set_led(
+        on: bool = Form(False),
+        r: int = Form(0),
+        g: int = Form(0),
+        b: int = Form(0),
+    ):
+        """The front lights. The one robot control that is not about moving.
+
+        Deliberately reachable while the robot's own software is down. The
+        gateway writes these over I2C rather than through the RPC server that
+        owns the motors, so they answer when `/health` says `turbopi: false`
+        -- and a person looking at a dark house with a robot that will not
+        drive can still see where it is.
+        """
+        gateway = robot_or_404()
+        return robot_reply("led", lambda: gateway.set_led(on, r, g, b))
+
     @app.get("/activity", response_class=HTMLResponse)
     def activity(request: Request, preview: bool = False, fresh: bool = False):
         # `fresh` is the pull-to-refresh gesture: ask Fi on this request,

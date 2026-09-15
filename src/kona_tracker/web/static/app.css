@@ -613,6 +613,26 @@ body.activity-page { overscroll-behavior-y: contain; }
 .setting-label strong { font-size: 15px; letter-spacing: -.02em; }
 .setting-label span { font-size: 12px; color: var(--ink2); line-height: 1.35; }
 .seg.small { flex: none; padding: 3px; }
+
+/* The robot's front lights. Colours live here and not in a `style=` attribute
+   on the button: the page sends `style-src 'self'` with no 'unsafe-inline',
+   so an inline style is dropped silently and every swatch would come out
+   colourless with nothing in the console to explain it. */
+.led-colours { align-items: flex-start; }
+.swatches { display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end; }
+/* 34px, not the 24px a swatch wants to be: this is a phone, and a colour is
+   not worth a second tap. The visible circle is smaller than the tap target,
+   which is what the padding buys. */
+.swatch { width: 34px; height: 34px; padding: 0; border: 2px solid var(--line); border-radius: 50%;
+          background: var(--swatch); box-shadow: inset 0 0 0 3px var(--bg2); cursor: pointer; }
+.swatch[aria-pressed="true"] { border-color: var(--ink); box-shadow: inset 0 0 0 2px var(--bg2); }
+.swatch:disabled { opacity: .4; }
+.swatch.white { --swatch: #FFFFFF; }
+.swatch.warm { --swatch: #FFAA3C; }
+.swatch.green { --swatch: #78DC5A; }
+.swatch.blue { --swatch: #4696FF; }
+.swatch.red { --swatch: #DC3C3C; }
+.swatch.purple { --swatch: #BE50DC; }
 .seg.small .opt { min-width: 52px; height: 34px; padding: 0 12px; border: 0; border-radius: 999px; background: none; color: var(--ink2); font: inherit; font-size: 13px; font-weight: 600; }
 .seg.small .opt[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
 .seg.small .opt:disabled { opacity: .5; }

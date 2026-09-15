@@ -25,7 +25,50 @@
   <span>Drive {{ robot_name }}<small>Turn your phone sideways. Let go and it stops.</small></span>
   <span class="go" aria-hidden="true">{% include "_chevron.svg" %}</span>
 </a>
+{# The two front lights. Here rather than on the Drive page for one concrete
+   reason: the gateway writes them straight over I2C (the ultrasonic module at
+   0x77) instead of through the RPC server that owns the motors, so they are
+   the one control that still answers when the robot's own software is down.
+   Drive mode is for two thumbs on joysticks; this is for the tab you open
+   when the picture is dark and you want to see where she left it.
+
+   Hidden until the first read comes back, because the section must never
+   offer a switch whose real state it does not know -- the same rule as the
+   camera switches. It is drawn by led.js, which shows it or leaves it out. #}
+<section class="cam-settings" id="led-settings" data-pending hidden aria-labelledby="led-title">
+  <div class="setting-row">
+    <div class="setting-label">
+      <strong id="led-title">Front lights</strong>
+      <span id="led-note">Reading the robot…</span>
+    </div>
+    <div class="seg small" role="group" aria-label="Front lights on or off">
+      <button type="button" class="opt" id="led-off" data-led-on="0" aria-pressed="false">Off</button>
+      <button type="button" class="opt" id="led-on" data-led-on="1" aria-pressed="false">On</button>
+    </div>
+  </div>
+  <div class="setting-row led-colours">
+    <div class="setting-label">
+      <strong>Colour</strong>
+      <span>Picking one turns them on.</span>
+    </div>
+    {# The colours live in app.css, keyed off these class names, and NOT in a
+       `style="--swatch: ..."` attribute. The page sends `style-src 'self'`
+       with no 'unsafe-inline', so an inline style attribute is dropped
+       silently and every swatch would render colourless with nothing in the
+       console to say why -- the same trap as inline script under
+       `script-src 'self'`. #}
+    <div class="swatches" role="group" aria-label="Light colour">
+      <button type="button" class="swatch white" data-led-rgb="255,255,255" aria-label="White" aria-pressed="false"></button>
+      <button type="button" class="swatch warm" data-led-rgb="255,170,60" aria-label="Warm" aria-pressed="false"></button>
+      <button type="button" class="swatch green" data-led-rgb="120,220,90" aria-label="Green" aria-pressed="false"></button>
+      <button type="button" class="swatch blue" data-led-rgb="70,150,255" aria-label="Blue" aria-pressed="false"></button>
+      <button type="button" class="swatch red" data-led-rgb="220,60,60" aria-label="Red" aria-pressed="false"></button>
+      <button type="button" class="swatch purple" data-led-rgb="190,80,220" aria-label="Purple" aria-pressed="false"></button>
+    </div>
+  </div>
+</section>
 {% endif %}
 <script src="{{ asset('poll.js') }}" defer></script>
 <script src="{{ asset('robot.js') }}" defer></script>
+{% if drive %}<script src="{{ asset('led.js') }}" defer></script>{% endif %}
 {% endblock %}

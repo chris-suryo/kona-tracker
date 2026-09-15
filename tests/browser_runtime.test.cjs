@@ -941,3 +941,122 @@ test('a drive the server refused lets go rather than hammering the robot', async
   assert.match(x.nodes['shout-text'].textContent, /demo/);
   assert.equal(looping(x), false, 'the watchdog stops it; we do not hammer the robot');
 });
+
+// The robot's front lights. They are the one control that answers while the
+// robot's own software is down (I2C 0x77, not the motor bus), so the thing
+// worth testing is that the page never *claims* a state it was not told.
+function ledContext() {
+  const calls = [];
+  let resolveNext = null;
+  const nodes = {};
+  function button(attrs) {
+    const el = element();
+    Object.assign(el.dataset, attrs);
+    return el;
+  }
+  const off = button({ledOn: '0'}), on = button({ledOn: '1'});
+  const swatches = [
+    button({ledRgb: '255,255,255'}), button({ledRgb: '255,170,60'}),
+    button({ledRgb: '120,220,90'})
+  ];
+  const section = element(), note = element();
+  section.hidden = true;
+  section.setAttribute('data-pending', '');
+  section.querySelectorAll = sel => sel === '[data-led-on]' ? [off, on] : swatches;
+  nodes['led-settings'] = section;
+  nodes['led-note'] = note;
+  const document = {...element(), getElementById: id => nodes[id] || null};
+  const window = {...element()};
+  const env = {
+    document, window, console,
+    fetch: (url, options = {}) => new Promise(resolve => {
+      calls.push({url, method: options.method || 'GET', body: options.body});
+      resolveNext = resolve;
+    })
+  };
+  env.window = window;
+  vm.runInNewContext(fs.readFileSync(path.join(staticDir,'led.js'),'utf8'), env);
+  return {
+    calls, section, note, off, on, swatches,
+    answer: (body, ok = true) => {
+      const r = resolveNext;
+      resolveNext = null;
+      r({ok, json: () => Promise.resolve(body)});
+      return new Promise(res => setImmediate(res));
+    }
+  };
+}
+
+test('the light switch stays hidden until the robot has actually answered', async () => {
+  const x = ledContext();
+  assert.equal(x.section.hidden, true, 'a switch whose state we do not know must not be offered');
+  await x.answer({on: false, r: 0, g: 255, b: 40});
+  assert.equal(x.section.hidden, false);
+  assert.equal(x.section.getAttribute('data-pending'), null);
+});
+
+test('four nulls read as unknown, never as off', async () => {
+  // The gateway says nulls when nothing has set the lights since it started.
+  // A demo may have left them lit; drawing a confident Off invents a fact.
+  const x = ledContext();
+  await x.answer({on: null, r: null, g: null, b: null});
+  assert.equal(x.off.getAttribute('aria-pressed'), 'false');
+  assert.equal(x.on.getAttribute('aria-pressed'), 'false');
+  assert.match(x.note.textContent, /cannot say/);
+});
+
+test('a swatch is only current while the lights are actually on', async () => {
+  const dark = ledContext();
+  await dark.answer({on: false, r: 255, g: 255, b: 255});
+  assert.equal(dark.swatches[0].getAttribute('aria-pressed'), 'false',
+    'off with a remembered colour must not claim the robot is showing it');
+  const lit = ledContext();
+  await lit.answer({on: true, r: 255, g: 255, b: 255});
+  assert.equal(lit.swatches[0].getAttribute('aria-pressed'), 'true');
+});
+
+test('the page draws from the answer, not from the press', async () => {
+  // A toggle that flips on tap and then quietly fails teaches you to trust it.
+  const x = ledContext();
+  await x.answer({on: false, r: 255, g: 0, b: 0});
+  x.on.events.click();
+  assert.equal(x.on.getAttribute('aria-pressed'), 'false', 'not until the robot says so');
+  await x.answer({on: true, r: 255, g: 0, b: 0});
+  assert.equal(x.on.getAttribute('aria-pressed'), 'true');
+});
+
+test('picking a colour turns the lights on in the same request', async () => {
+  // Setting a colour on lights that are off looks like a dead button: you
+  // tap green and nothing on the robot changes.
+  const x = ledContext();
+  await x.answer({on: false, r: 0, g: 0, b: 0});
+  x.swatches[1].events.click();
+  const sent = x.calls[x.calls.length - 1];
+  assert.equal(sent.method, 'POST');
+  assert.equal(sent.body, 'on=true&r=255&g=170&b=60');
+});
+
+test('turning them off carries the colour so it survives the toggle', async () => {
+  const x = ledContext();
+  await x.answer({on: true, r: 120, g: 220, b: 90});
+  x.off.events.click();
+  assert.equal(x.calls[x.calls.length - 1].body, 'on=false&r=120&g=220&b=90');
+});
+
+test('turning on a robot that never told us a colour sends white, not black', async () => {
+  // Black is indistinguishable from off. "On" that does nothing visible is
+  // the worst possible answer to a press.
+  const x = ledContext();
+  await x.answer({on: null, r: null, g: null, b: null});
+  x.on.events.click();
+  assert.equal(x.calls[x.calls.length - 1].body, 'on=true&r=255&g=255&b=255');
+});
+
+test('a refusal disables the controls and shows the gateway own words', async () => {
+  const x = ledContext();
+  await x.answer({error: 'The robot did not answer (led_unavailable).'}, false);
+  assert.equal(x.section.hidden, false, 'a section that vanishes reads as a feature never built');
+  assert.equal(x.off.disabled, true);
+  assert.equal(x.swatches[0].disabled, true);
+  assert.match(x.note.textContent, /led_unavailable/);
+});

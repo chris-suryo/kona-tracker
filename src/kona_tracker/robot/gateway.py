@@ -95,6 +95,30 @@ def _clamp(value: Any, limit: float = 1.0) -> float:
     return max(-limit, min(limit, number))
 
 
+#: The two front RGBs are on the ultrasonic module at I2C 0x77, which the
+#: gateway drives directly rather than through the RPC server that owns the
+#: motors. Two things follow, both from the robot session's own reading of
+#: `HiwonderSDK/Sonar.py` (2026-09-15): the lights answer when `/health` says
+#: `turbopi: false`, and LED traffic never queues behind a drive command.
+LED_CHANNEL_MAX = 255
+
+
+def _channel(value: Any) -> int:
+    """One 0-255 colour channel. Rejects anything that is not a number.
+
+    The gateway clamps too and answers 400 on a non-number. We clamp first
+    for the same reason we clamp pan and tilt first: a bad value should not
+    leave this machine, and a log line should show the number we meant.
+    """
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        raise RobotFault(f"{value!r} is not a colour channel") from None
+    if number != number:  # NaN
+        raise RobotFault("not a colour channel")
+    return int(max(0, min(LED_CHANNEL_MAX, number)))
+
+
 class RobotGateway:
     """One long-lived client for the gateway, with the token on every call.
 
@@ -209,6 +233,16 @@ class RobotGateway:
         """The last pan/tilt the gateway was asked for."""
         return self._request("GET", "/look")
 
+    def led(self) -> dict[str, Any]:
+        """The last colour the gateway was asked for, or four nulls.
+
+        Nulls mean *nobody has set them since the gateway started*, which is
+        not the same as off: the lights could be showing whatever a demo left
+        them at. The page says "unknown" rather than drawing a swatch for a
+        colour we are guessing.
+        """
+        return self._request("GET", "/led")
+
     # -- writes --------------------------------------------------------------
 
     def drive(self, vx: Any, vy: Any, omega: Any) -> dict[str, Any]:
@@ -259,6 +293,38 @@ class RobotGateway:
             log.warning("robot stop failed: %s", type(e).__name__)
             return False
         return True
+
+    def set_led(self, on: Any, r: Any = 0, g: Any = 0, b: Any = 0) -> dict[str, Any]:
+        """The two front lights, on or off and what colour.
+
+        Unlike every other write in this module this one does not touch the
+        motors and does not go through the robot's own software: the gateway
+        writes I2C directly. So it is the one control that still works when
+        `/health` reports the robot unreachable, and the page offers it in
+        that state on purpose rather than greying out with everything else.
+
+        Switching off writes black to the hardware but the gateway remembers
+        the colour, so toggling back on does not come back black. That is the
+        gateway's behaviour, relied on here: we send the colour with `off` as
+        well, so the two sides cannot disagree about what "the last colour"
+        was after a restart.
+
+        No current ceiling. The robot session put two RGBs at full white on
+        the order of 120 mA [INFERRED, not measured] against motors that draw
+        amps, and recommended none. If one is ever wanted it belongs on the
+        *sum* of the channels, since white is three channels lit at once --
+        capping each one individually would not bound the current.
+        """
+        return self._request(
+            "POST",
+            "/led",
+            json={
+                "on": bool(on),
+                "r": _channel(r),
+                "g": _channel(g),
+                "b": _channel(b),
+            },
+        )
 
     def look_at(self, pan_deg: Any, tilt_deg: Any) -> dict[str, Any]:
         """Point the camera. Clamped here and again on the Pi: a servo

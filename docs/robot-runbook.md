@@ -71,6 +71,29 @@ Two things to know before relying on that:
   commands stopping, and that is a guard against a lost connection — not
   against a robot tipping down a step with nobody there to pick it up.
 
+## The front lights work when nothing else does
+
+The two front RGBs are on the ultrasonic module at **I2C `0x77`**, not on the
+serial bus that owns the motors, and the gateway writes them directly. So
+`POST /led` answers while `/health` says `turbopi: false` — it is the one
+control on the Robot tab that survives the robot's own software being down.
+
+Two consequences worth knowing:
+
+- **Lights on but the robot will not move** is a real and informative state,
+  not a contradiction. It says the gateway and the Pi are fine and
+  `TurboPi.py` is the thing that died: `sudo systemctl restart turbopi`.
+- **`Functions/Avoidance.py` writes these same LEDs**, and `TurboPi.py` turns
+  them off at startup. While the obstacle-avoidance demo is running it will
+  fight the app for them and win intermittently. A colour is three sequential
+  byte writes, so a write interleaved with the demo's can show a wrong colour
+  for one frame. Cosmetic, not dangerous.
+
+Current draw is roughly 120 mA at full white [INFERRED by the robot session,
+not measured] against motors that draw amps, so there is no ceiling on our
+side. If one is ever wanted it belongs on the **sum** of the three channels,
+since white is all three lit at once.
+
 ## Driving over Tailscale, from away
 
 It will stutter, and that is measured rather than guessed. At a 700 ms round

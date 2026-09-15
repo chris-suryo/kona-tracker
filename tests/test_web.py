@@ -864,3 +864,36 @@ def test_the_rendered_page_carries_the_tile_config_as_data_not_code():
     assert "alidade_smooth_dark" in body
     # Data, never code: it must not arrive as an executable script.
     assert "<script>" not in body.split('id="map-config"')[0][-200:]
+
+
+def test_no_template_uses_an_inline_style_attribute():
+    """`style-src 'self'` has no 'unsafe-inline', so a `style="..."` attribute
+    is dropped by the browser with nothing in the console to say why.
+
+    Caught during review on 2026-09-15: the robot's colour swatches were
+    written as `style="--swatch:#FFAA3C"` and would have rendered six
+    identical colourless circles on Chris's phone, working perfectly in every
+    test here. The colours moved into app.css, keyed off class names.
+
+    This is the same trap as inline `<script>` under `script-src 'self'`,
+    which this project has already been bitten by twice (theme.js, app.js's
+    onerror handler). It fails silently, which is why it needs a test rather
+    than a comment.
+    """
+    import re  # noqa: PLC0415 - test-only
+    from pathlib import Path  # noqa: PLC0415
+
+    web = Path(__file__).resolve().parent.parent / "src" / "kona_tracker" / "web"
+    templates = web / "templates"
+    offenders = []
+    for path in sorted(templates.glob("*.html")):
+        source = path.read_text()
+        # Jinja comments are stripped first: one of them quotes the very
+        # attribute it is warning against, and a naive scan flagged it.
+        source = re.sub(r"\{#.*?#\}", "", source, flags=re.DOTALL)
+        for match in re.finditer(r"\sstyle\s*=", source):
+            line = source[: match.start()].count("\n") + 1
+            offenders.append(f"{path.name}:{line}")
+    assert not offenders, "inline style attributes are dropped by this app's CSP: " + ", ".join(
+        offenders
+    )
