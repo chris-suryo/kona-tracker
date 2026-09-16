@@ -14,8 +14,41 @@ import pytest
 from kona_tracker.web.build import Build, read_build
 
 
-def test_a_directory_that_is_not_a_checkout_says_unknown(tmp_path):
-    build = read_build(root=tmp_path)
+def test_a_directory_that_is_not_a_checkout_says_unknown(tmp_path, monkeypatch):
+    """The premise is asserted, not assumed.
+
+    `tmp_path` is only outside a checkout if pytest's temp directory is, and
+    on 2026-09-16 it was not: a stray `--basetemp` put it inside the working
+    tree, git walked up, found the repo, and `read_build` correctly reported a
+    known build -- so the test failed while both it and the code were right.
+    `conftest.py` now refuses that configuration, and this test no longer
+    depends on it either way.
+
+    `GIT_CEILING_DIRECTORIES` is the fence, and its one surprise is that git
+    excludes the directory it starts in from the check. Setting the ceiling to
+    `tmp_path` and calling from `tmp_path` itself would still find an enclosing
+    repo; the call has to start a level below the ceiling. `build.py` passes no
+    `env=`, so the subprocess inherits this.
+    """
+    outside = tmp_path / "somewhere"
+    outside.mkdir()
+    monkeypatch.setenv("GIT_CEILING_DIRECTORIES", tmp_path.as_posix())
+
+    # If the fence ever stops working, say which assumption broke rather than
+    # silently inverting what this test means.
+    probe = subprocess.run(
+        ["git", "rev-parse", "--show-toplevel"],
+        cwd=outside,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert probe.returncode != 0, (
+        f"premise broken: git still found a checkout at {probe.stdout.strip()!r}, "
+        "so this test would pass for the wrong reason"
+    )
+
+    build = read_build(root=outside)
     assert build.known is False
     assert build.label == "Build unknown"
 
