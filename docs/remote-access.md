@@ -396,7 +396,9 @@ told. `/healthz` is public and answers without touching Fi or the camera:
 `camera` is `idle` whenever nobody is watching (the webcam is released
 after `KONA_CAMERA_IDLE_SECONDS`, two minutes by default) -- that is normal; `disconnected` with a
 `camera_error` of `open`, `hung` or `black_frame` is the wedged-USB
-signature and means a replug. `fi` is `stale` when Fi has stopped
+signature and means a replug. `camera_error` is only ever set while the
+camera is not delivering; a fault it has recovered from reads `null` here
+and stays in `kona.log`. `fi` is `stale` when Fi has stopped
 answering; `fi_age_s` says how old the numbers on the page are.
 
 There are two shapes of this, and today only one of them can work.

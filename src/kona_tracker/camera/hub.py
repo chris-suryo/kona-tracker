@@ -64,6 +64,18 @@ STALE = "stale"
 DISCONNECTED = "disconnected"
 
 
+def _placeholder_state(state: str) -> str:
+    """The state to send with the placeholder: never `live`.
+
+    `_wait_frame` gives up and `status()` is read under a second lock, so a
+    frame published in between makes the state `live` while the body is NO
+    SIGNAL -- and the page trusts the header. For that one response the
+    honest word is `stale`: nothing arrived in the time a frame may take. The
+    seq is unchanged, so the next poll collects the new frame at once.
+    """
+    return STALE if state == LIVE else state
+
+
 class Snapshot(NamedTuple):
     """One answer from `CameraHub.snapshot()`: the pixels and, read at the
     same instant, the words the page may put beside them. `seq` is the
@@ -452,7 +464,7 @@ class CameraHub:
             status = self.status()
             return Snapshot(
                 jpeg=self._placeholder if frame is None else frame,
-                state=status["state"] if frame is None else LIVE,
+                state=_placeholder_state(status["state"]) if frame is None else LIVE,
                 seq=seq,
                 frame_age=status["last_frame_age"],
                 error_kind=status["last_error_kind"],
@@ -495,7 +507,7 @@ class CameraHub:
                     break
                 seq = new_seq
                 if frame is None:
-                    state = self.status()["state"]
+                    state = _placeholder_state(self.status()["state"])
                     yield self._part(self._placeholder, state)
                     showing_placeholder = True
                 else:

@@ -31,7 +31,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from kona_tracker.camera.control import CameraControl, FakeControl, NoControl
-from kona_tracker.camera.hub import CameraHub
+from kona_tracker.camera.hub import IDLE, LIVE, CameraHub
 from kona_tracker.camera.placeholder import ROBOT_OFF_JPEG
 from kona_tracker.camera.source import (
     FakeSource,
@@ -370,7 +370,13 @@ def create_app(
         return {
             "status": "ok",
             "camera": camera["state"],
-            "camera_error": camera["last_error_kind"],
+            # The hub keeps its last error for /status.json, as history. Here
+            # it is a verdict, so only while the camera is not delivering: a
+            # Wi-Fi blip on day 1 must not read as a fault for weeks, in
+            # every heartbeat, after the picture came back.
+            "camera_error": None
+            if camera["state"] in (LIVE, IDLE)
+            else camera["last_error_kind"],
             "fi": "unconfigured"
             if fi is None
             else "pending"

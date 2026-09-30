@@ -779,6 +779,25 @@ def test_healthz_is_public_and_says_only_what_a_pinger_needs(client):
     assert set(data) == {"status", "camera", "camera_error", "fi", "fi_age_s"}
 
 
+def test_healthz_reports_a_camera_error_only_while_the_camera_is_down(client, monkeypatch):
+    """Review finding: the hub keeps its last error as history, and /healthz
+    and every heartbeat passed it on, so one Wi-Fi blip read as `hung` for
+    weeks after the picture came back."""
+    hub = client.app.state.hub
+    real = hub.status
+
+    def status_as(state):
+        monkeypatch.setattr(
+            hub, "status", lambda: {**real(), "state": state, "last_error_kind": "hung"}
+        )
+        return client.get("/healthz").json()
+
+    assert status_as("live")["camera_error"] is None, "recovered: no fault to report"
+    assert status_as("idle")["camera_error"] is None, "nobody watching: nothing to judge"
+    for down in ("disconnected", "stale", "connecting"):
+        assert status_as(down)["camera_error"] == "hung", down
+
+
 def test_log_dir_writes_a_file_that_outlives_the_console(tmp_path):
     import logging
 

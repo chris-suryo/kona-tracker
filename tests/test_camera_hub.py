@@ -505,6 +505,26 @@ def test_snapshot_after_times_out_to_a_placeholder_that_is_never_live():
         hub.stop()
 
 
+def test_the_placeholder_is_never_labelled_live_even_in_the_race(monkeypatch):
+    """Review finding: `_wait_frame` gives up under one lock and `status()`
+    reads the state under another. A frame published in between made the
+    state `live` while the body was NO SIGNAL, and the page believes the
+    header. Pinned by making the wait give up while frames are flowing."""
+    hub, sources = make_hub([[1, "forever"]], stale_after=0.3, hang_after=5.0)
+    hub._add_viewer()
+    try:
+        assert wait_for(lambda: hub.status()["state"] == LIVE)
+        first = hub.snapshot()
+        monkeypatch.setattr(hub, "_wait_frame", lambda after_seq, timeout: (None, after_seq))
+        assert hub.status()["state"] == LIVE, "the race: a fresh frame exists"
+        snap = hub.snapshot(after_seq=first.seq)
+        assert snap.jpeg == NO_SIGNAL_JPEG and snap.state == STALE and snap.seq == first.seq
+    finally:
+        sources[0].release.set()
+        hub._remove_viewer()
+        hub.stop()
+
+
 def test_snapshot_after_returns_early_when_the_reader_dies():
     """A poller must not sit out the timeout on a camera that just died; it
     gets the honest state at once and the reason in `error_kind`."""
