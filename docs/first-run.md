@@ -115,26 +115,42 @@ the passcode. To force every phone to log in again, change `KONA_SECRET` too.
 > installs are not registered with the launcher.)
 >
 > The fix is to rebuild the venv on a signed interpreter and stop uv from ever
-> choosing its own. `docs/history/2026-09-30-application-control-blocks-python.md`
-> has the diagnosis commands and the full recipe; the short version is:
+> choosing its own. This is the sequence that worked on the PC on 2026-09-30;
+> `docs/history/2026-09-30-application-control-blocks-python.md` has the
+> diagnosis and the evidence behind each step.
 >
 > ```powershell
+> cd $HOME\kona-tracker          # an Administrator window starts in system32
 > $real = & py -V:3.14 -c "import sys; print(sys.executable)"
 > Get-AuthenticodeSignature $real | Format-List Status   # must read Valid
-> Rename-Item .venv .venv-blocked                        # keep it, do not delete
-> $env:UV_PYTHON_DOWNLOADS = "never"
-> uv venv --python $real --no-managed-python
-> Get-AuthenticodeSignature .venv\Scripts\python.exe | Format-List Status
-> uv sync --python .venv\Scripts\python.exe --no-managed-python
+> Get-Content .venv\pyvenv.cfg    # the evidence: `home =` names what it was built on
+> Remove-Item -Recurse -Force .venv
+> & $real -m venv .venv            # Python's own venv tool, not uv's
+> Get-AuthenticodeSignature .venv\Scripts\python.exe | Format-List Status   # must read Valid
 > ```
 >
-> Then make it permanent for every project on the machine, in
+> Python's own `venv` is the proven route: its `python.exe` comes from the
+> signed python.org install. `uv venv --python $real` may work too, but it has
+> never been seen to on this machine.
+>
+> **If `Remove-Item` says access is denied or the file is in use,** a program
+> still has something in `.venv` open -- usually a running copy of the app, or
+> an editor. `Get-Process python | Format-Table Id, StartTime, Path -AutoSize`
+> finds it; failing that, Resource Monitor (`resmon`) → CPU → Associated
+> Handles, search `kona-tracker\.venv`. **Never answer yes to `uv venv`'s
+> "replace it?" prompt on a locked venv:** it deletes part of the folder before
+> it hits the locked file, and stops half-way.
+>
+> Before installing, make it permanent for every project on the machine, in
 > `%APPDATA%\uv\uv.toml`:
 >
 > ```toml
 > python-preference = "only-system"
 > python-downloads = "never"
 > ```
+>
+> Then `uv sync --no-managed-python` installs into the new venv without
+> recreating it -- it should mention `pythoncore-3.14-64`, never `Roaming\uv`.
 >
 > Do not turn Smart App Control off to get past this. It is one-way on
 > Windows 11 -- turning it back on needs a reinstall of Windows.
@@ -408,10 +424,12 @@ and `python.exe` on 2026-09-30. Once the venv is on a signed interpreter and
 `uv.toml` pins it there -- see the box in section 3 -- the update is:
 
 ```powershell
-git pull
+cd $HOME\kona-tracker
+Stop-ScheduledTask -TaskName kona-tracker    # it runs in the background; see docs/remote-access.md
+git pull origin main
 uv sync --no-managed-python          # picks up the signed interpreter, downloads nothing
 .venv\Scripts\python.exe -m pytest -q
-.venv\Scripts\python.exe -m kona_tracker serve
+Start-ScheduledTask -TaskName kona-tracker
 ```
 
 If `uv sync` is refused again, `.venv\Scripts\python.exe -m pip install -e .`

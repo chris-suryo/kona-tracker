@@ -21,7 +21,7 @@ Each workaround assumed the next layer down would keep working. The third one
 removed that assumption, which is why the fix below is about *which binary
 exists* rather than about which command to type.
 
-## Why the interpreter was unsigned
+## Why the interpreter was unsigned — confirmed
 
 `uv`'s default `python-preference` is `managed`: it prefers a uv-managed
 CPython and, with downloads enabled, will fetch one rather than use the system
@@ -30,7 +30,18 @@ signed by the Python Software Foundation**. Creating a venv copies that
 interpreter into `.venv\Scripts\`, and Application Control refuses unsigned
 executables.
 
-Two details corroborate it. `py --list` showed only 3.14.6 while the venv was
+This started as a hypothesis and the PC confirmed every part of it:
+
+| Check | Result on the PC |
+|---|---|
+| old `.venv\pyvenv.cfg`, `home =` | `%APPDATA%\uv\python\cpython-3.14-windows-x86_64-none`, written by uv 0.11.26 — **uv-managed** |
+| old `.venv\Scripts\python.exe` | `NotSigned` |
+| python.org `pythoncore-3.14-64\python.exe` | `Valid`, CN=Python Software Foundation |
+| CodeIntegrity log | events 3033 and 3077: the venv's `python.exe` "did not meet the Enterprise signing level requirements", policy `{0283ac0f-fff1-49ae-ada1-8a933130cad6}` |
+| `VerifiedAndReputablePolicyState` | `1` — Smart App Control, enforcing |
+| rebuilt venv (`& $real -m venv .venv`), `python.exe` | `Valid` |
+
+Two details had corroborated it before the evidence came in. `py --list` showed only 3.14.6 while the venv was
 running something else — uv-managed installs are not registered with the `py`
 launcher, so an interpreter invisible to `py` is exactly what you would expect.
 And the 2026-09-15 incident fits the same shape one layer up: uv's console-script
@@ -40,12 +51,21 @@ The trigger was a `git pull` + `uv sync` + `uv run kona serve` sequence run that
 morning, against `PROJECT.md`'s standing `--no-sync` note. That sync is what
 wrote a fresh copy of the unsigned interpreter.
 
-**Still unexplained, and recorded as such:** the app came *up* after that sync
-and only failed later, after an unrelated camera reset. An unsigned interpreter
-should have been refused on the first launch. The likeliest account is Smart App
-Control sitting in evaluation mode and flipping to enforcement in between, which
-is why the diagnosis below reads `VerifiedAndReputablePolicyState` rather than
-assuming. Nobody has confirmed it.
+**Not fully explained, and recorded as such:** the app came *up* after that
+sync and only failed later. An unsigned interpreter should have been refused on
+its first launch. The process list narrows it without closing it: processes of
+another project, running on the same uv-managed 3.14 and started 2026-09-27,
+were still alive on 09-30 while the same kind of file was being refused. That
+fits Smart App Control switching itself from evaluation mode to On in between —
+evaluation mode does that without asking, and a registry value of `1` only
+says what it is *now*. It is also consistent with the policy's name: "Verified
+and Reputable" admits an unsigned file on cloud reputation, judged file by
+file, which is why some unsigned programs on the machine still start. Neither
+is proven. The practical upshot is the same either way: only a signature is
+reliable, so only a signed interpreter was worth building on.
+
+**Anything else on that machine whose venv uv built will hit the same wall** the
+next time it starts, and the same rebuild applies.
 
 ## Diagnosis — read-only, run this first
 
@@ -71,46 +91,56 @@ available. Smart App Control has no user-configurable exclusions and cannot be
 re-enabled once turned off — it is one-way on Windows 11 — so **do not turn it
 off to get past this.**
 
-## The fix
+## The fix — the sequence that worked
 
-Rebuild the venv on the signed python.org interpreter, and stop uv choosing its
-own. Keep the broken venv rather than deleting it; it is the only evidence.
+Rebuild the venv on the signed python.org interpreter with Python's own `venv`,
+and stop uv choosing its own. Run it from the repo: an Administrator
+PowerShell opens in `C:\WINDOWS\system32`, and that cost two rounds.
 
 ```powershell
+cd $HOME\kona-tracker
 $real = & py -V:3.14 -c "import sys; print(sys.executable)"
-Rename-Item .venv .venv-blocked
-$env:UV_PYTHON_DOWNLOADS = "never"
-uv venv --python $real --no-managed-python
-Get-AuthenticodeSignature .venv\Scripts\python.exe | Format-List Status, Path
-```
-
-**That signature check is the load-bearing step.** Authenticode signatures are
-embedded in the PE and survive a byte-for-byte copy, so a venv built on a signed
-base should itself be signed. If `Status` is not `Valid`, uv wrote its own
-launcher instead of copying the interpreter — fall back to the stdlib, which
-copies:
-
-```powershell
+Get-Content .venv\pyvenv.cfg                 # capture the evidence first
 Remove-Item -Recurse -Force .venv
 & $real -m venv .venv
-Get-AuthenticodeSignature .venv\Scripts\python.exe | Format-List Status
+Get-AuthenticodeSignature .venv\Scripts\python.exe | Format-List Status   # Valid
 ```
 
-Then install, and run everything as a module:
+**That signature check is the load-bearing step.** The stdlib's `venv` puts the
+signed python.org launcher in `.venv\Scripts\`, so the result is `Valid`.
+`uv venv --python $real` was the first plan and was never seen to finish here,
+so it is not the recipe; if you try it, run the same check.
 
-```powershell
-uv sync --python .venv\Scripts\python.exe --no-managed-python
-# if uv sync is refused:  .venv\Scripts\python.exe -m pip install -e .
-.venv\Scripts\python.exe -m pytest -q
-.venv\Scripts\python.exe -m kona_tracker serve
-```
+What went wrong on the way, so it does not again:
 
-Make it permanent for every project on that machine, in `%APPDATA%\uv\uv.toml`:
+- **The old venv was locked.** `Rename-Item` and uv both failed with "in use".
+  Nothing kona-related showed in the process list afterwards, so the holder was
+  probably a window or editor since closed. `Get-Process python | Format-Table
+  Id, StartTime, Path -AutoSize` and Resource Monitor's Associated Handles are
+  the ways to find it.
+- **uv's "replace it?" prompt, answered yes on a locked venv, half-deleted it**
+  before failing. Capture `pyvenv.cfg` and the signature first; after that the
+  folder itself is not evidence worth keeping.
+
+Make the guard permanent for every project on that machine, in
+`%APPDATA%\uv\uv.toml`, before installing anything:
 
 ```toml
 python-preference = "only-system"
 python-downloads = "never"
 ```
+
+Then install, and run everything as a module:
+
+```powershell
+uv sync --no-managed-python      # reused the new venv; installed 61 packages, no builds
+.venv\Scripts\python.exe -m kona_tracker camera-test
+.venv\Scripts\python.exe -m kona_tracker serve
+```
+
+If `uv sync` is ever refused, `.venv\Scripts\python.exe -m pip install -e .`
+does the same job — but it resolves from PyPI rather than `uv.lock`, so treat
+it as a way back up, not a routine.
 
 **Why machine-level and not `[tool.uv]` in this repo:** CI installs Python
 through `astral-sh/setup-uv`, which relies on uv-managed interpreters.
@@ -187,3 +217,23 @@ not a version, it is a moving target that included a signature change.
 
 CI now runs `"3.14"` alongside 3.11 and 3.12 on both platforms — six cells — so
 the version the PC serves from is no longer the untested one.
+
+## The same day, after Python ran again
+
+Two camera problems surfaced once the app could start. They are unrelated to
+Application Control, and are recorded here only so the day reads in one place;
+the instructions live in `docs/first-run.md` section 5.
+
+- **`401 Unauthorized` on the picture.** The camera had been hard-reset after a
+  Wi-Fi change, which wipes its camera account, so the password in `.env` no
+  longer existed on the camera. Setting a fresh one in the Tapo app and copying
+  it into `.env` fixed it: 10 fps at 1280x720.
+- **The switches refused every login, then locked out for half an hour.** The
+  docs had carried an untested 2026-09-13 theory: the camera account plus a
+  cloud password. pytapo's secure login rejects any non-root account however
+  right the password, so that could never work, and each attempt — every
+  Camera-tab visit, plus pytapo's own internal retries — counted towards the
+  camera's lockout ("Temporary Suspension: Try again in 982 seconds"). `admin`
+  with the TP-Link account password worked first time once the lockout
+  expired: the first time the switches were ever seen working. The app does
+  not yet back off when the camera says to wait; that is a separate change.
