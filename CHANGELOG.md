@@ -37,12 +37,33 @@ has the day in full.
   why on the page, with a countdown. Before, every Camera-tab visit was another
   login against the lock. Refusals in a row back off from 5 minutes to an hour.
 
+### Staying up unattended
+
+A review pass over what runs all day with nobody watching:
+
+- A locked or busy database (a backup, a DB browser, a full disk) pauses the
+  recorder until the next refresh instead of stopping it until a restart.
+  Only a damaged file still stops it for good.
+- A Fi answer in an unexpected shape costs only its own section. It used to
+  throw away the sleep and steps that had already arrived.
+- While Fi is failing, the app asks at the resting pace even mid-walk. A
+  password change during a walk used to mean a failing login every 20
+  seconds for as long as the map stayed open.
+- The camera's frame requests no longer fill `kona.log`. One evening of
+  watching used to rotate the whole history away. Failures and page loads
+  are still logged.
+- `/healthz` and the heartbeat report a camera error only while the camera
+  is down. A fault it recovered from used to show there for weeks.
+- A blank number in `.env` now means "use the default" instead of crashing
+  at startup. A proxy setting with an inline comment, which could never
+  match, is now refused by name.
+
 ### Smaller
 
 - A build test that only failed when pytest's temp dir sat inside a checkout
   now fences itself, and a guard names the stray `PYTEST_ADDOPTS` that caused
   it rather than letting pytest wipe a folder in the working tree.
-- Log files are gitignored; the log records every request's address.
+- Log files are gitignored; the log records every page request's address.
 - The username scanner covers `tests/` too, after a docstring reintroduced it.
 - ruff 0.16.7, tzdata 2026.4; `astral-sh/setup-uv` v7 and `actions/checkout`
   moved off the deprecated Node 20 runtime.
