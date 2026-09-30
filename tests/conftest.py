@@ -18,9 +18,9 @@ def pytest_configure(config: pytest.Config) -> None:
     pointing it into a working tree is destructive, and the tests that create
     a git repository under `tmp_path` then nest one inside this one. It
     happened: a `User`-scoped PYTEST_ADDOPTS held
-    `--basetemp=C:\\Users\\harim\\.pytest-tmp`, pytest parses that value with
+    `--basetemp=C:\\Users\\<you>\\.pytest-tmp`, pytest parses that value with
     `shlex.split()`, which eats the backslashes and leaves
-    `C:Usersharim.pytest-tmp` -- which Windows reads as drive-relative and
+    `C:Users<you>.pytest-tmp` -- which Windows reads as drive-relative and
     resolves against the current directory, i.e. inside the repo.
 
     The symptom was one failing build test and no hint of the cause, so this
