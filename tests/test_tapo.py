@@ -21,7 +21,7 @@ class FakePytapo:
 
     def __init__(self, host, user, password, cloud_password=""):
         self.host, self.user, self.password = host, user, password
-        #: Recent firmware wants both; pytapo takes them separately.
+        #: pytapo takes it separately but does not log in with it.
         self.cloud_password = cloud_password
         self.calls: list[tuple] = []
         self.night = "auto"
@@ -219,10 +219,10 @@ def test_settings_routes_are_behind_the_passcode():
 
 
 def test_both_credentials_reach_the_camera_and_neither_ever_leaks():
-    """Recent Tapo firmware authenticates with the camera account *and* the
-    TP-Link cloud password. Passing only the first is what "Invalid
-    authentication data" meant on Chris's C120 on 2026-09-13, and no amount
-    of trying the other password in the one slot could have fixed it."""
+    """Whatever is configured is passed through untouched, and neither value
+    can survive into an error string. The login itself uses only `password`
+    (see camera/tapo.py); this pins the plumbing and the scrubbing, not a
+    theory about which one the camera wants."""
     control, made = _tapo()
     control.settings()
     assert made[0].password == "cloud-secret"
@@ -232,3 +232,23 @@ def test_both_credentials_reach_the_camera_and_neither_ever_leaks():
     assert "cloud-secret" not in scrubbed
     assert "tp-link-secret" not in scrubbed
     assert scrubbed.count("***") == 2
+
+
+def test_the_docs_agree_on_how_the_switches_log_in():
+    """They did not, and it cost a camera lockout.
+
+    On 2026-09-30 `.env.example` said `admin` + the TP-Link password while
+    `docs/first-run.md` said the camera account + a cloud password. The second
+    was an untested theory from 2026-09-13; following it failed, and every
+    failed login counts towards the camera locking out its control API for
+    half an hour. `admin` + the TP-Link password is what worked -- the first
+    time the switches were ever seen working -- so both documents must say
+    that and neither may say the other.
+    """
+    from pathlib import Path  # noqa: PLC0415 - test-only
+
+    root = Path(__file__).resolve().parent.parent
+    for name in (".env.example", "docs/first-run.md"):
+        text = (root / name).read_text(encoding="utf-8")
+        assert "KONA_TAPO_USER=admin" in text, f"{name} must say to log in as admin"
+        assert "KONA_TAPO_USER=<the camera account" not in text, f"{name} revived the old theory"

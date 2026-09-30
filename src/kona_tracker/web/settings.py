@@ -39,8 +39,8 @@ class Settings:
     #: means the settings section is simply not offered.
     tapo_user: str = "admin"
     tapo_password: str = ""
-    #: The TP-Link account password, which recent firmware wants alongside
-    #: the camera account. Blank reuses `tapo_password` for both.
+    #: Not used to log in (see camera/tapo.py); leave blank, which reuses
+    #: `tapo_password`. Kept so an existing .env that sets it still loads.
     tapo_cloud_password: str = ""
     rtsp_transport: str = "tcp"
     stale_seconds: float = 3.0

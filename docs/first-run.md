@@ -247,17 +247,36 @@ running the app must be on the same network.
    (`/stream2` is a lighter stream if the picture stutters on the Pi.)
 
    For the switches on the Camera tab -- night vision, privacy mode, the
-   status light -- add your TP-Link cloud password too:
+   status light -- the app logs in to the camera's control API as `admin`
+   with your **TP-Link account password** (the one you sign in to the Tapo
+   app with), and needs to know the model:
 
    ```
-   KONA_TAPO_USER=<the camera account username from step 3>
-   KONA_TAPO_PASSWORD=<that camera account's password>
-   KONA_TAPO_CLOUD_PASSWORD=<the password you sign in to the Tapo app with>
+   KONA_CAMERA_MODEL=c120
+   KONA_TAPO_USER=admin
+   KONA_TAPO_PASSWORD=<your TP-Link account password>
+   KONA_TAPO_CLOUD_PASSWORD=
    ```
 
-   That is a different password from the camera account, and it is the one
-   recent firmware wants for the control API. Leave it blank and the
-   switches are not shown; the video still works.
+   **Not the camera account.** On recent firmware pytapo refuses a control
+   login from any account that is not the camera's root account, even with the
+   right password, and reports it as "Invalid authentication data" -- which
+   reads exactly like a wrong password. Confirmed on the C120 on 2026-09-30.
+   Leave `KONA_TAPO_CLOUD_PASSWORD` blank: pytapo does not use it to log in.
+   Without `KONA_CAMERA_MODEL` the app assumes a plain webcam and hides the
+   switches; without `KONA_TAPO_PASSWORD` it does too. The video works either
+   way.
+
+   **Every failed control login counts towards a lockout.** After a handful,
+   the camera answers "Temporary Suspension: Try again in N seconds" for about
+   half an hour, and pytapo retries internally, so one attempt from us can be
+   several to the camera. Opening the Camera tab is an attempt. If the switches
+   fail, stop the app before experimenting, and test one combination at a
+   time:
+
+   ```powershell
+   .venv\Scripts\python.exe -c "from kona_tracker.web.settings import load_settings as L; from kona_tracker.web.app import default_control as D; c=D(L()); print(type(c).__name__); print(c.settings())"
+   ```
 6. Test the camera once, then run for real:
 
    ```
