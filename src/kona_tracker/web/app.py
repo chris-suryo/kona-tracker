@@ -374,9 +374,7 @@ def create_app(
             # it is a verdict, so only while the camera is not delivering: a
             # Wi-Fi blip on day 1 must not read as a fault for weeks, in
             # every heartbeat, after the picture came back.
-            "camera_error": None
-            if camera["state"] in (LIVE, IDLE)
-            else camera["last_error_kind"],
+            "camera_error": None if camera["state"] in (LIVE, IDLE) else camera["last_error_kind"],
             "fi": "unconfigured"
             if fi is None
             else "pending"
