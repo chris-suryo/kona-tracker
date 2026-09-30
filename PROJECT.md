@@ -12,9 +12,18 @@ kit: 3e06b156508b881bef26345c0bb7a63c90db4824 · stamped by dos new
 
 ## Status (2026-09-15, chapter 2)
 
-**Start from `main`.** Every PR through #60 is merged and `main` is tagged
-`v0.1.0`; nothing is stacked or waiting. Branch from `main`, open a PR, CI
-green (four cells: ubuntu + windows, 3.11 + 3.12), merge.
+**Start from `main`.** Every PR through #63 is merged. `CHANGELOG.md`
+describes `v0.1.0` as the 2026-09-15 state, but **the tag does not exist yet**
+(checked 2026-09-30: no tags locally or on GitHub). Branch from `main`, open a
+PR, CI green (six cells: ubuntu + windows, 3.11 + 3.12 + 3.14), merge.
+
+**On the PC since 2026-09-30:** the app runs unattended as the scheduled task
+`kona-tracker` (at startup, as Chris, S4U -- no stored password), on a venv
+built from the signed python.org 3.14.6, logging to a folder outside the repo.
+About 107 MB of RAM with nobody watching. Camera picture and switches both
+confirmed working; reached from phones over Tailscale. Survives a reboot:
+**not yet tested**. `docs/history/2026-09-30-application-control-blocks-python.md`
+is the day's record.
 
 Since 2026-09-15 the app is also its own front door: `README.md` is written
 for a visitor, and `CHANGELOG.md` records what v0.1.0 contains. Three things
@@ -95,10 +104,17 @@ every item; `docs/scaling-limits.md` is the standing list of ceilings;
   gateway, and not which way the robot actually moves.
   `docs/device-capabilities.md` section 1b has the four vendor-source
   findings that shaped it and the one failure mode nothing covers.
-- **Windows PC:** `uv sync` is blocked by Application Control (error 4551)
-  on Chris's machine. `uv run --no-sync kona serve` runs what is already
-  installed; a new dependency needs `uv sync --no-build-isolation`, which
-  is untested there. The USB webcam (Logitech C270) is retired by the Tapo.
+- **Windows PC:** Application Control (error 4551) blocks, in escalating
+  order, `uv sync` (2026-09-12), the generated console scripts `pytest.exe`
+  and `kona.exe` (2026-09-15), and `.venv\Scripts\python.exe` itself
+  (2026-09-30). The cause of the last one is that uv prefers a *uv-managed*
+  interpreter, and uv-managed CPython is not PSF-signed. The venv is built on
+  the machine's signed python.org **3.14.6**, with a machine-level `uv.toml`
+  holding `python-preference = "only-system"` and `python-downloads = "never"`
+  so uv can never reintroduce an unsigned one. Run everything as
+  `.venv\Scripts\python.exe -m kona_tracker ...`; see the Commands section and
+  `docs/history/2026-09-30-application-control-blocks-python.md`. The USB
+  webcam (Logitech C270) is retired by the Tapo.
 - **Hardware bought 2026-09-11:** one Raspberry Pi 5 8GB, a 52Pi case, a
   128 GB microSD, an RTC battery, a Hiwonder TurboPi kit (no Pi included).
   No power supply; an undervoltage check is the first thing to do. **Kona
@@ -195,19 +211,34 @@ app is env-var configured only, so nothing locks that in.
 
 ## Commands (PowerShell or Mac Terminal, repo root; plain-language walkthrough in `docs/first-run.md`)
 
-```powershell
+```bash
 uv sync                         # install (first run pulls the OpenCV wheel, ~50 MB)
-uv sync --no-build-isolation    # Windows PC only: Application Control blocks plain uv sync
-uv run --no-sync kona serve     # Windows PC only: run what is installed without re-syncing
 uv run pytest -q                # tests
 uv run ruff check . ; uv run ruff format .
-Copy-Item .env.example .env     # then fill KONA_PASSCODE, camera keys (and FI_* when the collar arrives)
+cp .env.example .env            # then fill KONA_PASSCODE, camera keys (and FI_* when the collar arrives)
 uv run kona cameras             # usb only: which webcam indexes open -> KONA_CAMERA_INDEX
 uv run kona camera-test         # open the configured camera once: size, fps, redacted URL, exact error
-uv run kona serve               # http://0.0.0.0:8000 ; allow the Windows Firewall prompt
+uv run kona serve               # http://0.0.0.0:8000
 uv run kona serve --fake-camera # no camera needed; test pattern
-uv run kona probe --out probe-out\round12   # Fi API discovery -> summary.md, one round per folder
-ipconfig                        # IPv4 of the PC; iPhone opens http://<that-ip>:8000
+uv run kona probe --out probe-out/round12   # Fi API discovery -> summary.md, one round per folder
+```
+
+**On the Windows PC, none of the `kona ...` forms above are usable.**
+Application Control refuses every executable `uv` generates -- the console
+scripts since 2026-09-15, and the copied interpreter itself since 2026-09-30.
+Call the interpreter directly and reach the CLI as a module; `python -m`
+imports rather than spawning a launcher, so the policy has no new executable
+to judge. `docs/history/2026-09-30-application-control-blocks-python.md` is
+the full story and the venv-rebuild recipe.
+
+```powershell
+# The venv must be built on the signed python.org interpreter, not a
+# uv-managed one -- `uv.toml` on that machine pins this; see the incident note.
+.venv\Scripts\python.exe --version              # expect 3.14.6
+.venv\Scripts\python.exe -m pytest -q
+.venv\Scripts\python.exe -m kona_tracker camera-test
+.venv\Scripts\python.exe -m kona_tracker serve  # allow the Windows Firewall prompt
+ipconfig                                         # IPv4 of the PC; iPhone opens http://<that-ip>:8000
 ```
 
 `.env` and `probe-out/` are gitignored. Never commit either.

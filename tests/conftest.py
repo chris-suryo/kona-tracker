@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 
 import httpx
@@ -7,6 +8,42 @@ import pytest
 from kona_tracker.fi.client import FiClient
 
 FIXTURES = Path(__file__).parent / "fixtures"
+REPO_ROOT = Path(__file__).resolve().parent.parent
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    """Refuse to run if pytest's temp directory is inside the checkout.
+
+    pytest deletes `--basetemp` wholesale at the start of every session, so
+    pointing it into a working tree is destructive, and the tests that create
+    a git repository under `tmp_path` then nest one inside this one. It
+    happened: a `User`-scoped PYTEST_ADDOPTS held
+    `--basetemp=C:\\Users\\<you>\\.pytest-tmp`, pytest parses that value with
+    `shlex.split()`, which eats the backslashes and leaves
+    `C:Users<you>.pytest-tmp` -- which Windows reads as drive-relative and
+    resolves against the current directory, i.e. inside the repo.
+
+    The symptom was one failing build test and no hint of the cause, so this
+    fails first and says the cause out loud. Fail closed: the alternative is
+    a suite that looks green while deleting a directory in the working tree.
+    """
+    raw = config.getoption("basetemp", default=None)
+    if not raw:
+        return
+    resolved = Path(raw).resolve()
+    if resolved != REPO_ROOT and REPO_ROOT not in resolved.parents:
+        return
+    addopts = os.environ.get("PYTEST_ADDOPTS")
+    raise pytest.UsageError(
+        f"--basetemp resolves to {resolved}, which is inside the checkout at "
+        f"{REPO_ROOT}. pytest wipes that directory at the start of every run.\n"
+        f"PYTEST_ADDOPTS={addopts!r}\n"
+        "A Windows path written with backslashes is the usual cause: pytest "
+        "splits the value with shlex, which eats them, and the remainder is "
+        "read as drive-relative. Use forward slashes (see docs/first-run.md), "
+        "or unset the variable:\n"
+        "  [Environment]::SetEnvironmentVariable('PYTEST_ADDOPTS', $null, 'User')"
+    )
 
 
 def fixture(name: str) -> dict:

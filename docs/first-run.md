@@ -82,10 +82,13 @@ the passcode. To force every phone to log in again, change `KONA_SECRET` too.
 ## 3. Run it (no camera needed, anywhere)
 
 > **If a command dies with "An Application Control policy has blocked this
-> file" (os error 4551):** Windows is refusing to run the small unsigned
-> launcher that `uv` generates in `.venv\Scripts\` for every console script.
-> It is not a problem with this project or with `uv`. Put `python -m` in front
-> and drop the `kona`:
+> file" (os error 4551):** Windows is refusing to run an unsigned executable.
+> It is not a problem with this project or with `uv`. There are two versions of
+> this, and which one you have depends on *what* got named in the error.
+>
+> **1. A console script was blocked** (`kona.exe`, `pytest.exe`; seen
+> 2026-09-15). `uv` generates one small unsigned launcher per console script in
+> `.venv\Scripts\`. Put `python -m` in front and drop the `kona`:
 >
 > ```powershell
 > uv run python -m kona_tracker serve
@@ -94,7 +97,63 @@ the passcode. To force every phone to log in again, change `KONA_SECRET` too.
 >
 > `python -m` imports the module instead of spawning a new executable, so
 > there is nothing for the policy to judge. Every `uv run kona ...` command in
-> this document has that form available. Seen on Chris's PC, 2026-09-15.
+> this document has that form available.
+>
+> **2. `python.exe` itself was blocked** (seen 2026-09-30) -- then the escape
+> above is gone too, because the interpreter is the thing being refused:
+>
+> ```
+> Program 'python.exe' failed to run: An Application Control policy has blocked this file
+> ```
+>
+> The cause is which interpreter the venv was built on. `uv`'s default
+> `python-preference` is `managed`, so it prefers a *uv-managed* CPython and
+> will download one rather than use the system Python -- and uv-managed CPython
+> comes from `python-build-standalone`, which is **not signed by the Python
+> Software Foundation**. Copy an unsigned interpreter into `.venv\Scripts\` and
+> the policy refuses it. (It is also why `py --list` cannot see it: uv-managed
+> installs are not registered with the launcher.)
+>
+> The fix is to rebuild the venv on a signed interpreter and stop uv from ever
+> choosing its own. This is the sequence that worked on the PC on 2026-09-30;
+> `docs/history/2026-09-30-application-control-blocks-python.md` has the
+> diagnosis and the evidence behind each step.
+>
+> ```powershell
+> cd $HOME\kona-tracker          # an Administrator window starts in system32
+> $real = & py -V:3.14 -c "import sys; print(sys.executable)"
+> Get-AuthenticodeSignature $real | Format-List Status   # must read Valid
+> Get-Content .venv\pyvenv.cfg    # the evidence: `home =` names what it was built on
+> Remove-Item -Recurse -Force .venv
+> & $real -m venv .venv            # Python's own venv tool, not uv's
+> Get-AuthenticodeSignature .venv\Scripts\python.exe | Format-List Status   # must read Valid
+> ```
+>
+> Python's own `venv` is the proven route: its `python.exe` comes from the
+> signed python.org install. `uv venv --python $real` may work too, but it has
+> never been seen to on this machine.
+>
+> **If `Remove-Item` says access is denied or the file is in use,** a program
+> still has something in `.venv` open -- usually a running copy of the app, or
+> an editor. `Get-Process python | Format-Table Id, StartTime, Path -AutoSize`
+> finds it; failing that, Resource Monitor (`resmon`) → CPU → Associated
+> Handles, search `kona-tracker\.venv`. **Never answer yes to `uv venv`'s
+> "replace it?" prompt on a locked venv:** it deletes part of the folder before
+> it hits the locked file, and stops half-way.
+>
+> Before installing, make it permanent for every project on the machine, in
+> `%APPDATA%\uv\uv.toml`:
+>
+> ```toml
+> python-preference = "only-system"
+> python-downloads = "never"
+> ```
+>
+> Then `uv sync --no-managed-python` installs into the new venv without
+> recreating it -- it should mention `pythoncore-3.14-64`, never `Roaming\uv`.
+>
+> Do not turn Smart App Control off to get past this. It is one-way on
+> Windows 11 -- turning it back on needs a reinstall of Windows.
 
 
 ```
@@ -188,17 +247,36 @@ running the app must be on the same network.
    (`/stream2` is a lighter stream if the picture stutters on the Pi.)
 
    For the switches on the Camera tab -- night vision, privacy mode, the
-   status light -- add your TP-Link cloud password too:
+   status light -- the app logs in to the camera's control API as `admin`
+   with your **TP-Link account password** (the one you sign in to the Tapo
+   app with), and needs to know the model:
 
    ```
-   KONA_TAPO_USER=<the camera account username from step 3>
-   KONA_TAPO_PASSWORD=<that camera account's password>
-   KONA_TAPO_CLOUD_PASSWORD=<the password you sign in to the Tapo app with>
+   KONA_CAMERA_MODEL=c120
+   KONA_TAPO_USER=admin
+   KONA_TAPO_PASSWORD=<your TP-Link account password>
+   KONA_TAPO_CLOUD_PASSWORD=
    ```
 
-   That is a different password from the camera account, and it is the one
-   recent firmware wants for the control API. Leave it blank and the
-   switches are not shown; the video still works.
+   **Not the camera account.** On recent firmware pytapo refuses a control
+   login from any account that is not the camera's root account, even with the
+   right password, and reports it as "Invalid authentication data" -- which
+   reads exactly like a wrong password. Confirmed on the C120 on 2026-09-30.
+   Leave `KONA_TAPO_CLOUD_PASSWORD` blank: pytapo does not use it to log in.
+   Without `KONA_CAMERA_MODEL` the app assumes a plain webcam and hides the
+   switches; without `KONA_TAPO_PASSWORD` it does too. The video works either
+   way.
+
+   **Every failed control login counts towards a lockout.** After a handful,
+   the camera answers "Temporary Suspension: Try again in N seconds" for about
+   half an hour, and pytapo retries internally, so one attempt from us can be
+   several to the camera. Opening the Camera tab is an attempt. If the switches
+   fail, stop the app before experimenting, and test one combination at a
+   time:
+
+   ```powershell
+   .venv\Scripts\python.exe -c "from kona_tracker.web.settings import load_settings as L; from kona_tracker.web.app import default_control as D; c=D(L()); print(type(c).__name__); print(c.settings())"
+   ```
 6. Test the camera once, then run for real:
 
    ```
@@ -359,18 +437,24 @@ uv sync
 uv run kona serve
 ```
 
-**On the Windows PC**, Application Control blocks `uv sync` (error 4551,
-seen 2026-09-12). Two workarounds, depending on whether the update added a
-dependency; the PR or session summary says which:
+**On the Windows PC**, Application Control has blocked three different things
+here (error 4551): `uv sync` on 2026-09-12, the console scripts on 2026-09-15,
+and `python.exe` on 2026-09-30. Once the venv is on a signed interpreter and
+`uv.toml` pins it there -- see the box in section 3 -- the update is:
 
 ```powershell
-uv run --no-sync kona serve          # nothing new to install
-uv sync --no-build-isolation         # a new dependency (e.g. pytapo, 2026-09-13); untested here
+cd $HOME\kona-tracker
+Stop-ScheduledTask -TaskName kona-tracker    # it runs in the background; see docs/remote-access.md
+git pull origin main
+uv sync --no-managed-python          # picks up the signed interpreter, downloads nothing
+.venv\Scripts\python.exe -m pytest -q
+Start-ScheduledTask -TaskName kona-tracker
 ```
 
-If the second one is blocked too, paste the error into the next session
-rather than working around it; the fix may be a policy exception, not a
-command.
+If `uv sync` is refused again, `.venv\Scripts\python.exe -m pip install -e .`
+installs the same thing without uv in the loop. If something *else* is blocked,
+paste the error and the CodeIntegrity event log line into the next session
+rather than working around it; the fix may be a policy exception, not a command.
 
 ## If something goes wrong
 

@@ -41,13 +41,16 @@ class TapoError(RuntimeError):
 def _default_client(host: str, user: str, password: str, cloud_password: str = "") -> Any:
     from pytapo import Tapo  # imported here: only a configured Tapo pays for it
 
-    # Two credentials, not one. Recent firmware wants the camera account for
-    # most calls and the TP-Link *cloud* password to establish the session;
-    # pytapo takes them separately and we were only ever filling the first.
-    # That is what "Invalid authentication data" meant on Chris's C120 on
-    # 2026-09-13, and no amount of trying the other password in the one slot
-    # could have fixed it. Blank falls back to the old single-credential
-    # behaviour, which is what older firmware wants.
+    # What logs in is `user` + `password`: on recent firmware that must be
+    # `admin` with the TP-Link account password. pytapo's secure login refuses
+    # any non-root account -- the camera account included -- and reports it as
+    # "Invalid authentication data", identical to a wrong password. Confirmed
+    # on the C120 on 2026-09-30, the first time the switches ever worked.
+    #
+    # `cloudPassword` is not part of the login; pytapo uses it only for its
+    # media-streaming session, which this app does not open. A 2026-09-13
+    # theory that the login needed the camera account *plus* this password was
+    # never tested against the camera and was wrong. Blank reuses `password`.
     return Tapo(host, user, password, cloudPassword=cloud_password or password)
 
 

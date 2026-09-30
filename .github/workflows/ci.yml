@@ -24,9 +24,14 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
-        # The floor pyproject declares and the version the PC runs. A floor
-        # nobody tests is a claim, not a fact.
-        python: ["3.11", "3.12"]
+        # The floor pyproject declares, and the version the PC runs. A floor
+        # nobody tests is a claim, not a fact -- and so is a ceiling. 3.14 is
+        # here because Application Control forced the PC onto the only signed
+        # interpreter it has, which is 3.14.6 (docs/history/2026-09-30-
+        # application-control-blocks-python.md). Before that it was untested,
+        # which made the machine that serves this app the place 3.14 bugs would
+        # surface first.
+        python: ["3.11", "3.12", "3.14"]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
