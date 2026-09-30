@@ -80,12 +80,12 @@ def test_the_tests_do_not_name_the_person_either():
     """The gap this closes: `tests/` was excluded wholesale, so a docstring
     there could reintroduce the username with the suite still green. It did."""
     name = FORBIDDEN["the Windows username"]
-    found = [h for h in _hits(name, files(NAME_ONLY)) if not h.startswith(SELF)]
+    # This file defines the pattern, so it necessarily contains it. Excluded by
+    # path identity, not by string: `relative_to` renders backslashes on
+    # Windows, and a forward-slash prefix match failed there on the first push.
+    here = Path(__file__).resolve()
+    found = _hits(name, (p for p in files(NAME_ONLY) if p.resolve() != here))
     assert not found, f"the Windows username appears in: {found}"
-
-
-#: This file defines the pattern, so it necessarily contains it.
-SELF = "tests/test_no_home_network_in_tree.py"
 
 
 def test_the_scan_would_notice():
