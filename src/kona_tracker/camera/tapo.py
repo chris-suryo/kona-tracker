@@ -53,6 +53,10 @@ REFUSED_COOLDOWN_SECONDS = 300.0
 #: Added to the camera's own countdown, so the first retry lands after it
 #: rather than on its last second and re-arms it.
 SUSPENSION_MARGIN_SECONDS = 5.0
+#: The longest the app will take the camera's word for. Observed lockouts are
+#: about half an hour; a garbled or hostile number must not switch the
+#: switches off for a day, or overflow a float on its way in.
+SUSPENSION_CAP_SECONDS = 3600.0
 
 
 class TapoError(RuntimeError):
@@ -171,7 +175,9 @@ class TapoControl:
                 if suspended or _REFUSED in raw:
                     failed_at = self._clock()
                     if suspended:
-                        wait = int(suspended.group(1)) + SUSPENSION_MARGIN_SECONDS
+                        digits = suspended.group(1)
+                        said = SUSPENSION_CAP_SECONDS if len(digits) > 6 else float(digits)
+                        wait = min(said, SUSPENSION_CAP_SECONDS) + SUSPENSION_MARGIN_SECONDS
                         self._quiet_why = "suspended"
                     else:
                         wait = REFUSED_COOLDOWN_SECONDS

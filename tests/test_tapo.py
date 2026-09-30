@@ -402,3 +402,18 @@ def test_the_page_gets_plain_words_and_the_log_gets_the_fix(caplog):
     assert len(attempts) == 1, "the second page load stood back"
     assert "KONA_TAPO_USER=admin" in caplog.text
     assert "cloud-secret" not in caplog.text and "***" in caplog.text
+
+
+def test_an_absurd_countdown_is_capped_not_trusted():
+    """The number comes from a device on the LAN. A garbled one must neither
+    switch the switches off for days nor overflow on the way in."""
+    clock = _Clock()
+    control, attempts, _ = _scripted(
+        [Exception("Temporary Suspension: Try again in " + "9" * 400 + " seconds")], clock
+    )
+    with pytest.raises(TapoError) as exc:
+        control.settings()
+    assert "about 61 minutes" in str(exc.value), "capped at an hour plus the margin"
+    clock.now += 3606
+    assert control.settings()["night"] == "auto"
+    assert len(attempts) == 2
