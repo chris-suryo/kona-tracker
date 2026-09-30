@@ -489,7 +489,17 @@ class FiService:
         snapshot we already hold says she is on a walk. The second means a
         walk started by anyone -- Chris's sister, say -- speeds the page up
         on its own once Fi notices it.
+
+        Neither applies while the last refresh failed. A stale snapshot keeps
+        whatever it last said -- including "walk" -- so a Fi outage or a
+        changed password mid-walk used to hold the 20-second cadence with no
+        end: a full login every 20 s against somebody else's private API,
+        failing, for as long as anyone had the map open. Asking faster cannot
+        make a failing refresh succeed, so the resting cadence applies until
+        one does.
         """
+        if self._snapshot is not None and self._snapshot.stale:
+            return self._ttl
         if self._live_until is not None:
             if (self._live_until - self._clock()).total_seconds() > 0:
                 return self._live_ttl

@@ -13,6 +13,7 @@ carried-over route (a walk that ended) does not.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -115,6 +116,32 @@ def test_a_finished_walk_does_not_keep_the_fast_cadence():
         ),
     )
     assert fi._effective_ttl() == DEFAULT_REFRESH_SECONDS
+
+
+def test_a_failing_fi_is_never_asked_at_the_walking_cadence():
+    """A refresh that fails keeps the old snapshot, "walk" and all, marked
+    stale. That must not hold the 20-second cadence: with a wrong password it
+    was a failed login every 20 s, unbounded, for as long as the map was open.
+    The button is bounded by its two hours, but the same logic applies --
+    asking faster cannot make a failing refresh succeed."""
+    clock = Clock()
+    fi = _service(clock, live_seconds=20)
+    walking = FiSnapshot(
+        fetched_at=NOW,
+        status=CollarStatus(
+            activity="walk",
+            positions=(LocationPoint(42.37, -71.11, recorded_at=NOW),),
+        ),
+    )
+    fi._snapshot = walking
+    assert fi._effective_ttl() == 20, "precondition: a live walk is fast"
+    fi._snapshot = replace(walking, stale=True, problem="login failed")
+    assert fi._effective_ttl() == DEFAULT_REFRESH_SECONDS
+
+    fi.start_live()
+    assert fi._effective_ttl() == DEFAULT_REFRESH_SECONDS, "nor under the button"
+    fi._snapshot = walking
+    assert fi._effective_ttl() == 20, "and fast again once a refresh succeeds"
 
 
 @pytest.mark.parametrize(
