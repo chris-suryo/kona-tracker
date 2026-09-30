@@ -809,6 +809,40 @@ def test_a_shape_change_in_the_collar_blob_is_a_partial_not_a_blank_page():
     assert snap.problem is None
 
 
+def test_the_other_parsers_survive_a_shape_change_too():
+    """Review finding, the same bug as the collar blob in three more places:
+    `restSummaries: [null]`, a stats block that arrives as a list, or a
+    household that is a string raised AttributeError out of the parser."""
+    rest = {"pet": {"dailyStat": {"restSummaries": [None, {"data": {"sleepAmounts": [None]}}]}}}
+    assert len(rest_from(rest)) == 1 and rest_from(rest)[0].sleep is None
+    assert rest_from({"pet": {"dailyStat": {"restSummaries": {"oops": 1}}}}) == []
+    assert rest_from({"pet": []}) == []
+    assert activity_from({"pet": {"dailyStat": [1, 2]}}).steps is None
+    assert activity_from({"pet": "gone"}).steps is None
+    assert pets_from({"currentUser": []}) == []
+    assert pets_from({"currentUser": {"userHouseholds": [None, {"household": "x"}]}}) == []
+    good = {"currentUser": {"userHouseholds": [{"household": {"pets": [None, {"id": 1}]}}]}}
+    assert [p.id for p in pets_from(good)] == ["1"]
+
+
+def test_a_parser_bug_in_one_section_costs_that_section_only(monkeypatch):
+    """The backstop under the parsers: anything a section raises, not only
+    FiError, becomes that section's problem. Before, an AttributeError in the
+    walks parser threw away the sleep and steps that had already arrived and
+    showed "Unexpected error" in their place."""
+
+    def broken(_data):
+        raise AttributeError("'NoneType' object has no attribute 'get'")
+
+    monkeypatch.setattr("kona_tracker.fi.service.walks_from", broken)
+    snap = service().snapshot()
+    assert snap.sleep_hours == 8.5 and snap.activity.steps == 4210
+    assert snap.partial and not snap.stale
+    assert snap.problem.startswith("Walks:")
+    assert "AttributeError" in snap.problem
+    assert "NoneType" not in snap.problem, "the exception text is not the page's to show"
+
+
 # --------------------------------------------------------------------------
 # her position while resting
 # --------------------------------------------------------------------------
