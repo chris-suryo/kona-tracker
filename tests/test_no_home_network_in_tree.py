@@ -10,8 +10,13 @@ in a document should read as an example. So the docs use TEST-NET
 (`192.0.2.0/24`, reserved for documentation by RFC 5737) and `<you>` for
 the home directory, and this test keeps it that way.
 
-Tests are not scanned: their fixture addresses are fixture values and never
-reach a reader. `.env` is gitignored and never scanned either.
+Tests are scanned for the username only. Their fixture *addresses* are
+fixture values that no reader mistakes for a real house, so scanning those
+would only force `192.0.2.x` into places where `10.0.0.3` is clearer. A name
+is different: it identifies a person wherever it appears, and on 2026-09-30 it
+came back in a `tests/conftest.py` docstring -- prose in a public repo, which
+is exactly what "never reach a reader" was meant to exclude and does not.
+`.env` is gitignored and never scanned either.
 """
 
 from __future__ import annotations
@@ -23,6 +28,8 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 SCANNED = ["README.md", "PROJECT.md", "docs", "src", "scripts", ".github"]
+#: Scanned for the username but not for addresses -- see the module docstring.
+NAME_ONLY = ["tests"]
 TEXT = {
     ".md",
     ".py",
@@ -45,8 +52,8 @@ FORBIDDEN = {
 }
 
 
-def files():
-    for name in SCANNED:
+def files(names=SCANNED):
+    for name in names:
         path = ROOT / name
         if path.is_file():
             yield path
@@ -54,22 +61,38 @@ def files():
             yield from (p for p in path.rglob("*") if p.is_file() and p.suffix in TEXT)
 
 
-@pytest.mark.parametrize("what", list(FORBIDDEN))
-def test_nothing_in_the_tree_names_the_home_network(what):
-    pattern = FORBIDDEN[what]
-    found = [
+def _hits(pattern, paths):
+    return [
         f"{path.relative_to(ROOT)}:{n}"
-        for path in files()
+        for path in paths
         for n, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), 1)
         if pattern.search(line)
     ]
+
+
+@pytest.mark.parametrize("what", list(FORBIDDEN))
+def test_nothing_in_the_tree_names_the_home_network(what):
+    found = _hits(FORBIDDEN[what], files())
     assert not found, f"{what} appears in: {found}"
+
+
+def test_the_tests_do_not_name_the_person_either():
+    """The gap this closes: `tests/` was excluded wholesale, so a docstring
+    there could reintroduce the username with the suite still green. It did."""
+    name = FORBIDDEN["the Windows username"]
+    # This file defines the pattern, so it necessarily contains it. Excluded by
+    # path identity, not by string: `relative_to` renders backslashes on
+    # Windows, and a forward-slash prefix match failed there on the first push.
+    here = Path(__file__).resolve()
+    found = _hits(name, (p for p in files(NAME_ONLY) if p.resolve() != here))
+    assert not found, f"the Windows username appears in: {found}"
 
 
 def test_the_scan_would_notice():
     """A scanner that matches nothing is indistinguishable from one that
     is pointed at the wrong directory."""
     assert sum(1 for _ in files()) > 50
+    assert sum(1 for _ in files(NAME_ONLY)) > 20
     assert FORBIDDEN["a home-LAN address"].search("KONA_ROBOT_CONTROL_URL=http://10.0.0.3:9031")
     assert FORBIDDEN["a Tailscale address"].search("reach it at 100.101.102.103")
     assert not FORBIDDEN["a Tailscale address"].search("100.0.0.1 is not in the CGNAT range")

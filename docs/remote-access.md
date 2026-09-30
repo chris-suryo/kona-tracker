@@ -312,10 +312,18 @@ the worst possible outcome.
 The safer shape, to try first: set the PC to log in automatically to your
 user, and run the task **at log on as that user**, not at startup as SYSTEM.
 
+> **The task runs the interpreter, not `kona.exe`.** On a machine with
+> Application Control this matters more here than anywhere else: an
+> interactive command that gets refused tells you so, while a Scheduled Task
+> that gets refused just silently does not serve. `uv run kona serve` spawns
+> the generated `kona.exe`, which was blocked on 2026-09-15 (error 4551). See
+> `docs/history/2026-09-30-application-control-blocks-python.md`.
+
 ```powershell
-# PowerShell as Administrator. Adjust the uv path if `where.exe uv` differs.
-$action  = New-ScheduledTaskAction -Execute "$env:USERPROFILE\.local\bin\uv.exe" `
-           -Argument "run kona serve" -WorkingDirectory "C:\Users\<you>\kona-tracker"
+# PowerShell as Administrator.
+$action  = New-ScheduledTaskAction `
+           -Execute "C:\Users\<you>\kona-tracker\.venv\Scripts\python.exe" `
+           -Argument "-m kona_tracker serve" -WorkingDirectory "C:\Users\<you>\kona-tracker"
 $trigger = New-ScheduledTaskTrigger -AtLogOn
 $settings = New-ScheduledTaskSettingsSet `
            -ExecutionTimeLimit ([TimeSpan]::Zero) `

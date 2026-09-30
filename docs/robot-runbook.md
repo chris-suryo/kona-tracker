@@ -130,3 +130,54 @@ Two things the socket changes that are worth knowing:
   fires when commands *stop* arriving is defeated by anything that keeps
   sending on the operator's behalf. Worst case, a phone that dies mid-throttle
   leaves the robot moving 600 ms rather than 500 ms.
+
+## Ctrl+C takes about eight seconds, and the ERROR line is not a fault
+
+Stopping the server with the robot switched off prints this, and it looks
+like something went wrong:
+
+```
+ERROR:    Cancel 0 running task(s), timeout graceful shutdown exceeded
+```
+
+Nothing went wrong. Measured 2026-09-16 on the home PC with the robot off, the
+~8 seconds are four waits in a row, in this order:
+
+| What is waiting | Seconds |
+|---|---|
+| uvicorn's own `timeout_graceful_shutdown`, set to 5 in `cli.py` | 5.0 |
+| the robot camera hub joining a reader that is stuck in a 2 s connect | 1.0 |
+| `robot.stop_quietly()` — one POST, one connect timeout, no retry | 2.0 |
+| everything else | ~0.2 |
+| **total** | **~8.2** |
+
+Two things about that read wrong at a glance.
+
+**The ERROR line is not about the robot, and the `0` is not a contradiction.**
+It comes from uvicorn, before this app's shutdown code runs at all
+(`uvicorn/server.py`: the lifespan shutdown is sent *after* that block). Its 5 s
+cap covers three different waits — open connections draining, background tasks
+finishing, and the listening sockets finishing their close — but the number it
+prints counts only the background tasks. So "0 running task(s)" and a timeout
+are consistent: the wait that ran out was one of the other two, usually a
+browser connection that has not finished closing. A page left open on a phone
+is enough — `tests/test_server_shutdown.py` provokes exactly that, holding an
+MJPEG stream open across a shutdown and allowing 12 s for the process to go.
+
+**The robot's three seconds are the price of an honest goodbye.** On the way
+out the app sends one stop to the gateway (`web/app.py`, the lifespan
+`finally:`). That is the explicit half of a contract whose implicit half is the
+watchdog on the Pi, which zeroes the motors about half a second after commands
+stop arriving. The case where the stop times out — the Pi unreachable — is
+exactly the case the watchdog already covers, so the timeout is not worth
+shortening and not worth removing.
+
+If you want it to exit immediately: press Ctrl+C a second time. uvicorn sets
+`force_exit` and skips every wait above.
+
+**Deferred, recorded here rather than fixed:** that lifespan `finally:` calls
+blocking teardown — `stop_quietly()` among it — directly on the event loop,
+while `web/routes/robot.py` runs the same call through `run_in_threadpool`
+after a real bug. The asymmetry is latent rather than live, because during
+shutdown there is nothing else for the loop to serve, so it is written down
+instead of changed.
