@@ -355,8 +355,11 @@ produces a task that looks fine and is not:
 
 **The task has no window, so set `KONA_LOG_DIR` in `.env`** -- to a folder
 *outside* the repository (`C:/Users/<you>/kona-logs`, say): the log records
-every request with the address it came from. `.gitignore` catches log files
-as a backstop, but the folder outside is the real protection.
+every page request with the address it came from. `.gitignore` catches log
+files as a backstop, but the folder outside is the real protection. The
+camera's frame requests, the map's and the robot's timers are left out when
+they succeed -- several a second per viewer would rotate the whole history
+away in an evening -- and kept when they fail.
 
 Checking on it, from an Administrator PowerShell:
 
@@ -428,9 +431,9 @@ This adds what the push cannot see: whether your sister can actually reach
 the app from outside. Worth having in addition, not instead. It is pointless
 before a named tunnel, since there is no stable URL to give it.
 
-Set `KONA_LOG_DIR=C:\Users\<you>\kona-tracker\logs` in `.env` so the
-access log and every camera or Fi failure land in a rotating `kona.log`
-that survives the PowerShell window closing. On Windows a rotation can
+Set `KONA_LOG_DIR=C:\Users\<you>\kona-logs` in `.env` (outside the
+repository, as in 3c) so the access log and every camera or Fi failure land
+in a rotating `kona.log` that survives the PowerShell window closing. On Windows a rotation can
 fail with a PermissionError while another program (an editor, a tail) holds
 the file open; that is printed, not fatal.
 

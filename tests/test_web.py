@@ -796,6 +796,33 @@ def test_log_dir_writes_a_file_that_outlives_the_console(tmp_path):
     assert "after shutdown" not in (log_dir / "kona.log").read_text(encoding="utf-8")
 
 
+def test_the_log_file_keeps_failures_and_page_loads_but_not_the_camera_polling(tmp_path):
+    """Review finding: every camera frame is an access line, several a second
+    per viewer, so one evening of watching rotated the whole log history
+    away. The record below is shaped exactly as uvicorn's h11 and httptools
+    protocols emit it: (client, method, path with query, version, status)."""
+    import logging
+
+    from kona_tracker.web.logs import attach_file_logging, detach_file_logging
+
+    handler = attach_file_logging(tmp_path)
+    access = logging.getLogger("uvicorn.access")
+    try:
+        fmt = '%s - "%s %s HTTP/%s" %d'
+        access.info(fmt, "192.0.2.4:5000", "GET", "/snapshot.jpg?cam=house&after=41", "1.1", 200)
+        access.info(fmt, "192.0.2.4:5000", "GET", "/robot/telemetry", "1.1", 200)
+        access.info(fmt, "192.0.2.4:5000", "GET", "/snapshot.jpg?after=42", "1.1", 401)
+        access.info(fmt, "192.0.2.4:5000", "GET", "/map.json", "1.1", 503)
+        access.info(fmt, "192.0.2.4:5000", "GET", "/camera", "1.1", 200)
+    finally:
+        detach_file_logging(handler)
+    text = (tmp_path / "kona.log").read_text(encoding="utf-8")
+    assert "after=41" not in text and "/robot/telemetry" not in text
+    assert '"GET /snapshot.jpg?after=42 HTTP/1.1" 401' in text, "a refused frame is kept"
+    assert '"GET /map.json HTTP/1.1" 503' in text, "a failing poll is kept"
+    assert '"GET /camera HTTP/1.1" 200' in text, "who opened the camera, and when, is kept"
+
+
 def test_the_profile_page_is_a_destination_not_a_broken_tab(client):
     """From Chris's screenshot, 2026-09-11: two avatars on one screen, a
     "Profile" eyebrow over a huge "Kona", "Back to Activity" right under an
