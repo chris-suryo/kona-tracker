@@ -21,6 +21,12 @@ probe-out/
 *.db
 *.db-wal
 *.db-shm
+# The app's log (KONA_LOG_DIR): every request with the address it came from,
+# plus camera and robot errors. Point KONA_LOG_DIR outside the repo; this is
+# the backstop for when it is not. `.1`-style names are the rotated backups.
+*.log
+*.log.*
+logs/
 
 # Contact sheets for a nitpick round (scripts/contact_sheet.js): generated
 # from current-ui/ on demand and sent to a phone, not a record.
