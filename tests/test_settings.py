@@ -202,9 +202,10 @@ def test_a_proxy_setting_that_could_never_match_is_refused(tmp_path, monkeypatch
     monkeypatch.setenv("KONA_SECRET", "s")
     monkeypatch.setenv("KONA_SECURE_COOKIES", "true")
     monkeypatch.delenv("KONA_TRUSTED_PROXY_IPS", raising=False)
-    monkeypatch.setenv("KONA_TRUSTED_PROXY_HEADER", "CF-Connecting-IP  # cloudflared")
-    with pytest.raises(SettingsError, match="KONA_TRUSTED_PROXY_HEADER must be a header name"):
-        load_settings(tmp_path / "none.env", fake_camera=True)
+    for bad in ("CF-Connecting-IP  # cloudflared", "CF-Connecting-IP#cloudflared"):
+        monkeypatch.setenv("KONA_TRUSTED_PROXY_HEADER", bad)
+        with pytest.raises(SettingsError, match="KONA_TRUSTED_PROXY_HEADER must be a header"):
+            load_settings(tmp_path / "none.env", fake_camera=True)
 
     monkeypatch.setenv("KONA_TRUSTED_PROXY_HEADER", "CF-Connecting-IP")
     for bad in ("127.0.0.0/8", "localhost", "127.0.0.1 # tunnel"):

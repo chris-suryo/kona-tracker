@@ -357,9 +357,10 @@ produces a task that looks fine and is not:
 *outside* the repository (`C:/Users/<you>/kona-logs`, say): the log records
 every page request with the address it came from. `.gitignore` catches log
 files as a backstop, but the folder outside is the real protection. The
-camera's frame requests, the map's and the robot's timers are left out when
+camera's frame requests, the map's and the robot's timers are thinned when
 they succeed -- several a second per viewer would rotate the whole history
-away in an evening -- and kept when they fail.
+away in an evening -- to one line per address every ten minutes, so a watcher
+still shows up. A failure or a redirect to the login page is always kept.
 
 Checking on it, from an Administrator PowerShell:
 

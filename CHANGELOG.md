@@ -50,8 +50,8 @@ A review pass over what runs all day with nobody watching:
   password change during a walk used to mean a failing login every 20
   seconds for as long as the map stayed open.
 - The camera's frame requests no longer fill `kona.log`. One evening of
-  watching used to rotate the whole history away. Failures and page loads
-  are still logged.
+  watching used to rotate the whole history away. Each watcher now leaves
+  one line every ten minutes; failures and page loads are always logged.
 - `/healthz` and the heartbeat report a camera error only while the camera
   is down. A fault it recovered from used to show there for weeks.
 - A blank number in `.env` now means "use the default" instead of crashing

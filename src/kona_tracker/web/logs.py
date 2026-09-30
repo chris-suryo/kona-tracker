@@ -12,6 +12,8 @@ handler on the root logger added earlier would never see an access line.
 from __future__ import annotations
 
 import logging
+import time
+from collections.abc import Callable
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
@@ -29,19 +31,43 @@ POLLED_PATHS = frozenset({"/snapshot.jpg", "/status.json", "/map.json", "/robot/
 
 
 class QuietPolling(logging.Filter):
-    """Drop successful access lines for POLLED_PATHS; keep everything else.
+    """Thin out successful access lines for POLLED_PATHS; keep everything else.
 
-    A failure on those paths is still written: a 401 or a 5xx is the line
-    worth finding. The page load that started the polling is written too,
-    so who watched and when stays answerable.
+    Only a 200 or 304 is ever dropped. A 401, a redirect to the login page
+    (a stranger probing without a cookie) or a 5xx is written every time.
+    And the first successful poll from each address in every `every`
+    seconds is written too, so who watched and when stays answerable even
+    for a script that polls with a cookie and never loads a page: about six
+    lines an hour per watcher, instead of thousands.
     """
+
+    #: Past this many remembered addresses, forget the ones outside the
+    #: window. A home app sees a handful; this only bounds the pathological.
+    _PRUNE_AT = 256
+
+    def __init__(self, every: float = 600.0, clock: Callable[[], float] = time.monotonic):
+        super().__init__()
+        self._every = every
+        self._clock = clock
+        self._last: dict[str, float] = {}
 
     def filter(self, record: logging.LogRecord) -> bool:
         args = record.args
         if record.name != "uvicorn.access" or not isinstance(args, tuple) or len(args) != 5:
             return True
         path, status = str(args[2]).split("?", 1)[0], args[4]
-        return not (path in POLLED_PATHS and isinstance(status, int) and status < 400)
+        if path not in POLLED_PATHS or status not in (200, 304):
+            return True
+        # "host:port"; the port changes per connection, the watcher does not.
+        who = str(args[0]).rsplit(":", 1)[0]
+        now = self._clock()
+        last = self._last.get(who)
+        if last is not None and now - last < self._every:
+            return False
+        if len(self._last) >= self._PRUNE_AT:
+            self._last = {k: t for k, t in self._last.items() if now - t < self._every}
+        self._last[who] = now
+        return True
 
 
 def attach_file_logging(log_dir: Path) -> logging.Handler:

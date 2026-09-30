@@ -26,7 +26,9 @@ MIN_SAFE_PASSCODE = 6
 # request header, so a proxy header outside it -- typically one with an
 # inline `# comment` still attached, which .env does not strip -- would leave
 # every tunnel visitor sharing one login-lockout bucket without a word.
-_HEADER_NAME = re.compile(r"[!#$%&'*+.^_`|~0-9A-Za-z-]+")
+# `#` is legal in a header name but no proxy uses one, and `Header#note` is
+# the same mistake without the space, so it is refused too.
+_HEADER_NAME = re.compile(r"[!$%&'*+.^_`|~0-9A-Za-z-]+")
 
 
 @dataclass(frozen=True, repr=False)

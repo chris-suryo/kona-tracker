@@ -828,18 +828,54 @@ def test_the_log_file_keeps_failures_and_page_loads_but_not_the_camera_polling(t
     access = logging.getLogger("uvicorn.access")
     try:
         fmt = '%s - "%s %s HTTP/%s" %d'
-        access.info(fmt, "192.0.2.4:5000", "GET", "/snapshot.jpg?cam=house&after=41", "1.1", 200)
-        access.info(fmt, "192.0.2.4:5000", "GET", "/robot/telemetry", "1.1", 200)
+        access.info(fmt, "192.0.2.4:5000", "GET", "/snapshot.jpg?cam=house&after=40", "1.1", 200)
+        access.info(fmt, "192.0.2.4:5001", "GET", "/snapshot.jpg?cam=house&after=41", "1.1", 200)
+        access.info(fmt, "192.0.2.4:5002", "GET", "/robot/telemetry", "1.1", 200)
         access.info(fmt, "192.0.2.4:5000", "GET", "/snapshot.jpg?after=42", "1.1", 401)
         access.info(fmt, "192.0.2.4:5000", "GET", "/map.json", "1.1", 503)
+        access.info(fmt, "198.51.100.9:6000", "GET", "/map.json", "1.1", 303)
         access.info(fmt, "192.0.2.4:5000", "GET", "/camera", "1.1", 200)
     finally:
         detach_file_logging(handler)
     text = (tmp_path / "kona.log").read_text(encoding="utf-8")
-    assert "after=41" not in text and "/robot/telemetry" not in text
+    assert "after=40" in text, "the first poll from a watcher is kept"
+    assert "after=41" not in text and "/robot/telemetry" not in text, "the rest are not"
     assert '"GET /snapshot.jpg?after=42 HTTP/1.1" 401' in text, "a refused frame is kept"
     assert '"GET /map.json HTTP/1.1" 503' in text, "a failing poll is kept"
+    assert '"GET /map.json HTTP/1.1" 303' in text, "a stranger bounced to the login is kept"
     assert '"GET /camera HTTP/1.1" 200' in text, "who opened the camera, and when, is kept"
+
+
+def test_a_watcher_who_never_loads_a_page_still_shows_up_every_ten_minutes():
+    """Security review: a script polling /map.json with a stolen cookie
+    never loads a page, so dropping every successful poll would make it
+    invisible. One line per address per window keeps it answerable."""
+    import logging
+
+    from kona_tracker.web.logs import QuietPolling
+
+    now = [0.0]
+    quiet = QuietPolling(every=600.0, clock=lambda: now[0])
+
+    def poll(client, path="/map.json"):
+        record = logging.LogRecord(
+            "uvicorn.access",
+            logging.INFO,
+            "",
+            0,
+            '%s - "%s %s HTTP/%s" %d',
+            (client, "GET", path, "1.1", 200),
+            None,
+        )
+        return quiet.filter(record)
+
+    assert poll("203.0.113.5:40000") is True
+    assert poll("203.0.113.5:40001") is False, "a new port is the same watcher"
+    assert poll("::1:40002") is True and poll("::1:40003") is False, "IPv6 too"
+    now[0] = 599.0
+    assert poll("203.0.113.5:40004") is False
+    now[0] = 600.0
+    assert poll("203.0.113.5:40005") is True, "and again once the window has passed"
 
 
 def test_the_profile_page_is_a_destination_not_a_broken_tab(client):
