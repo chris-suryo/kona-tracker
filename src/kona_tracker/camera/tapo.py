@@ -20,9 +20,10 @@ module has the password scrubbed from it in case pytapo echoed it.
 The camera locks its control API for about half an hour after a handful of
 failed logins, and a Camera-tab visit is a login -- pytapo even retries
 internally, so one visit can be several. So after the camera refuses a login,
-or says to wait, this module stops contacting it for a while and answers from
-what it already knows. Without that, the page loads themselves keep the camera
-locked: seen on 2026-09-30, "Temporary Suspension: Try again in 982 seconds".
+or says to wait, this module stops contacting it for a while and the page says
+why, with a countdown, instead of showing the switches. Without that, the page
+loads themselves keep the camera locked: seen on 2026-09-30, "Temporary
+Suspension: Try again in 982 seconds".
 """
 
 from __future__ import annotations
@@ -41,15 +42,26 @@ from kona_tracker.camera.control import ControlUnsupported, parse_setting
 log = logging.getLogger("kona_tracker.camera.tapo")
 #: The session token as it appears inside a pytapo request URL.
 _STOK = re.compile(r"stok=[^/\s\"']+")
-#: pytapo's words when the camera has locked out its control API.
-_SUSPENDED = re.compile(r"Temporary Suspension: Try again in (\d+) seconds")
-#: pytapo's words for a login the camera turned down -- a wrong password and
-#: a right password on the wrong account read identically (see _default_client).
-_REFUSED = "Invalid authentication data"
-#: After a refused login, how long before trying again. Long enough that page
-#: loads cannot add up to a lockout; short enough that fixing `.env` and
-#: restarting is not followed by a wait.
+#: pytapo's words when the camera has locked out its control API. Its main
+#: login says "Temporary Suspension: Try again in 982 seconds" (the number is
+#: `str()` of whatever the camera sent, so it can be "982.0"); its other
+#: transports say "Temporary Suspension: <reason>" with no number; and an
+#: ordinary request against a blocked camera names the code, DEVICE_BLOCKED
+#: (-40404). All are the same lockout. Read from pytapo 3.4.19.
+_SUSPENDED = ("Temporary Suspension", "DEVICE_BLOCKED", "-40404")
+_COUNTDOWN = re.compile(r"Try again in (\d+(?:\.\d+)?) seconds")
+#: pytapo's words for a login the camera turned down. A wrong password and a
+#: right password on the wrong account read identically (see _default_client);
+#: -40209 is the camera's own code for bad credentials.
+_REFUSED = ("Invalid authentication data", "Invalid login credentials", "-40209")
+#: After a refused login, how long before trying again -- doubling on each
+#: refusal in a row, back to the start after a success. Page loads then add up
+#: to one attempt at 5, 10, 20, 40 and 60 minutes, not twelve an hour; and
+#: fixing `.env` and restarting is still followed by no wait at all.
 REFUSED_COOLDOWN_SECONDS = 300.0
+#: How long to stand back when the camera says it is locked but not for how
+#: long. Observed lockouts run about half an hour.
+SUSPENSION_DEFAULT_SECONDS = 1800.0
 #: Added to the camera's own countdown, so the first retry lands after it
 #: rather than on its last second and re-arms it.
 SUSPENSION_MARGIN_SECONDS = 5.0
@@ -102,6 +114,8 @@ class TapoControl:
         self._quiet_until = 0.0
         #: "suspended" (the camera said wait) or "refused" (it said no).
         self._quiet_why = ""
+        #: Refusals in a row since the last success; sets the next cooldown.
+        self._refusals = 0
         self.model_capabilities = model
         # Only the three switches are driven; motion is not, whatever the
         # model can do, so it is not advertised.
@@ -154,33 +168,46 @@ class TapoControl:
         )
 
     def _call(self, what: str, fn: Callable[[Any], Any]) -> Any:
+        # Standing back is answered before taking the lock: a request that is
+        # only going to be told "try again in N minutes" must not queue behind
+        # another that is stuck in a slow login to a half-dead camera. Checked
+        # again under the lock, which is the check that counts.
+        if self._clock() < self._quiet_until:
+            raise TapoError(self._quiet_message(self._clock()))
         with self._lock:
-            if self._clock() < self._quiet_until:
+            now = self._clock()
+            if now < self._quiet_until:
                 # Not contacting the camera is the point: every attempt now
                 # would count towards, or extend, its lockout.
-                raise TapoError(self._quiet_message(self._clock()))
-            connecting = self._client is None
+                raise TapoError(self._quiet_message(now))
+            reached = self._client is not None
             try:
-                if connecting:
+                if not reached:
                     self._client = self._factory(
                         self._host, self._user, self._password, self._cloud_password
                     )
-                return fn(self._client)
+                    reached = True
+                result = fn(self._client)
             except Exception as e:  # pytapo raises plain Exception
                 # A failed call may mean the session died; forget it so the
                 # next call logs in again rather than failing forever.
                 self._client = None
                 raw, detail = str(e), self._scrub(str(e))
-                suspended = _SUSPENDED.search(raw)
-                if suspended or _REFUSED in raw:
+                suspended = any(sign in raw for sign in _SUSPENDED)
+                if suspended or any(sign in raw for sign in _REFUSED):
                     failed_at = self._clock()
                     if suspended:
-                        digits = suspended.group(1)
-                        said = SUSPENSION_CAP_SECONDS if len(digits) > 6 else float(digits)
-                        wait = min(said, SUSPENSION_CAP_SECONDS) + SUSPENSION_MARGIN_SECONDS
+                        said = _COUNTDOWN.search(raw)
+                        # float() of an absurd number is inf, not an error;
+                        # the cap turns it back into an hour.
+                        seconds = float(said.group(1)) if said else SUSPENSION_DEFAULT_SECONDS
+                        wait = min(seconds, SUSPENSION_CAP_SECONDS) + SUSPENSION_MARGIN_SECONDS
                         self._quiet_why = "suspended"
                     else:
-                        wait = REFUSED_COOLDOWN_SECONDS
+                        wait = min(
+                            REFUSED_COOLDOWN_SECONDS * 2**self._refusals, SUSPENSION_CAP_SECONDS
+                        )
+                        self._refusals += 1
                         self._quiet_why = "refused"
                     self._quiet_until = failed_at + wait
                     # The log is for whoever fixes it at the PC, so it names
@@ -195,9 +222,11 @@ class TapoControl:
                     )
                     raise TapoError(self._quiet_message(failed_at)) from None
                 log.warning("tapo %s failed: %s", what, detail)
-                if connecting:
+                if not reached:
                     raise TapoError(f"Could not reach the camera's control API: {detail}") from None
                 raise TapoError(f"The camera refused {what}: {detail}") from None
+            self._refusals = 0
+            return result
 
     def _offered(self) -> list[str]:
         caps = self._capabilities
