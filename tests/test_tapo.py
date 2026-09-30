@@ -5,13 +5,15 @@ against what the library returns rather than what we hope it returns."""
 
 from __future__ import annotations
 
+import logging
+
 import pytest
 from fastapi.testclient import TestClient
 
 from kona_tracker.camera.capabilities import TAPO_FIXED, TAPO_PAN_TILT, USB
 from kona_tracker.camera.control import ControlUnsupported, FakeControl, NoControl, parse_setting
 from kona_tracker.camera.source import FakeSource
-from kona_tracker.camera.tapo import TapoControl, TapoError
+from kona_tracker.camera.tapo import REFUSED_COOLDOWN_SECONDS, TapoControl, TapoError
 from kona_tracker.web.app import create_app, default_control
 from kona_tracker.web.settings import Settings
 
@@ -252,3 +254,274 @@ def test_the_docs_agree_on_how_the_switches_log_in():
         text = (root / name).read_text(encoding="utf-8")
         assert "KONA_TAPO_USER=admin" in text, f"{name} must say to log in as admin"
         assert "KONA_TAPO_USER=<the camera account" not in text, f"{name} revived the old theory"
+
+
+# -- standing back when the camera says no --------------------------------
+#
+# On 2026-09-30 a handful of Camera-tab visits with the wrong login locked the
+# camera's control API for half an hour: every visit was a login, pytapo
+# retries internally, and nothing here ever stopped trying. These hold the fix:
+# after the camera refuses or says wait, the app does not contact it again
+# until that is over, and says so in plain words.
+
+
+class _Clock:
+    def __init__(self):
+        self.now = 1000.0
+
+    def __call__(self):
+        return self.now
+
+
+def _scripted(outcomes, clock):
+    """Logins go as scripted: an Exception fails that login, anything else
+    succeeds. Records when each login reached the camera, and the clients."""
+    attempts, clients = [], []
+
+    def factory(host, user, password, cloud_password=""):
+        attempts.append(clock.now)
+        outcome = outcomes.pop(0) if outcomes else None
+        if isinstance(outcome, Exception):
+            raise outcome
+        client = FakePytapo(host, user, password, cloud_password)
+        clients.append(client)
+        return client
+
+    control = TapoControl(
+        "10.0.0.111",
+        "admin",
+        "cloud-secret",
+        TAPO_FIXED,
+        client_factory=factory,
+        cloud_password="tp-link-secret",
+        clock=clock,
+    )
+    return control, attempts, clients
+
+
+def test_a_suspension_is_waited_out_without_touching_the_camera():
+    clock = _Clock()
+    control, attempts, _ = _scripted(
+        [Exception("Temporary Suspension: Try again in 982 seconds")], clock
+    )
+    with pytest.raises(TapoError) as first:
+        control.settings()
+    # 982 s from the camera plus a 5 s margin is 16.45 minutes: say 17.
+    assert "paused logins" in str(first.value) and "about 17 minutes" in str(first.value)
+
+    for _ in range(5):  # five page loads during the lockout
+        with pytest.raises(TapoError):
+            control.settings()
+    assert len(attempts) == 1, "a page load during the lockout must not reach the camera"
+
+    clock.now += 900
+    with pytest.raises(TapoError) as later:
+        control.settings()
+    assert "about 2 minutes" in str(later.value), "the countdown is real, not fixed"
+    assert len(attempts) == 1
+
+    clock.now += 88  # past 982 + 5
+    assert control.settings()["night"] == "auto"
+    assert len(attempts) == 2
+
+
+def test_a_refused_login_waits_before_trying_once_more():
+    clock = _Clock()
+    control, attempts, _ = _scripted([Exception("Invalid authentication data")], clock)
+    with pytest.raises(TapoError) as first:
+        control.settings()
+    assert "turned down the login" in str(first.value)
+    assert "about 5 minutes" in str(first.value)
+    with pytest.raises(TapoError):
+        control.apply("led", "off")
+    assert len(attempts) == 1, "switching a setting is a login too, and must wait"
+
+    clock.now += REFUSED_COOLDOWN_SECONDS - 1
+    with pytest.raises(TapoError) as last_second:
+        control.settings()
+    assert "about a minute" in str(last_second.value)
+
+    clock.now += 2
+    assert control.settings()["led"] is True
+    assert len(attempts) == 2
+
+
+def test_a_refusal_in_the_middle_of_a_session_counts_the_same():
+    """pytapo logs in again by itself when its session expires, inside an
+    ordinary call -- so a refusal can arrive from `getDayNightMode`, not only
+    from connecting."""
+    clock = _Clock()
+    control, attempts, clients = _scripted([], clock)
+    assert control.settings()["night"] == "auto"
+
+    def refused():
+        raise Exception("Invalid authentication data")
+
+    clients[0].getDayNightMode = refused
+    with pytest.raises(TapoError) as exc:
+        control.settings()
+    assert "turned down the login" in str(exc.value)
+    with pytest.raises(TapoError):
+        control.settings()
+    assert len(attempts) == 1, "no fresh login while standing back"
+
+
+def test_an_unreachable_camera_is_not_a_reason_to_wait():
+    """A camera that is off or asleep has not refused anything. Waiting five
+    minutes after it comes back would be a wrong answer to a right question."""
+    clock = _Clock()
+    control, attempts, _ = _scripted(
+        [Exception("HTTPSConnectionPool(host='10.0.0.111', port=443): Max retries exceeded")],
+        clock,
+    )
+    with pytest.raises(TapoError) as exc:
+        control.settings()
+    assert "Could not reach the camera's control API" in str(exc.value)
+    assert control.settings()["night"] == "auto", "tried again at once"
+    assert len(attempts) == 2
+
+
+def test_the_page_gets_plain_words_and_the_log_gets_the_fix(caplog):
+    """The phone shows a sentence for whoever is holding it; the log, read at
+    the PC, names the settings to check. Neither ever carries a password."""
+    clock = _Clock()
+    control, attempts, _ = _scripted(
+        [Exception("Invalid authentication data for cloud-secret")], clock
+    )
+    app, c = _app(control, source="rtsp")
+    with c, caplog.at_level(logging.WARNING, logger="kona_tracker.camera.tapo"):
+        first = c.get("/control/settings")
+        again = c.get("/control/settings")
+    app.state.hub.stop()
+
+    for r in (first, again):
+        assert r.status_code == 502
+        body = r.json()["error"]
+        assert "turned down the login" in body and "try again in about 5 minutes" in body
+        assert "cloud-secret" not in body and "KONA_" not in body
+    assert len(attempts) == 1, "the second page load stood back"
+    assert "KONA_TAPO_USER=admin" in caplog.text
+    assert "cloud-secret" not in caplog.text and "***" in caplog.text
+
+
+def test_an_absurd_countdown_is_capped_not_trusted():
+    """The number comes from a device on the LAN. A garbled one must neither
+    switch the switches off for days nor overflow on the way in."""
+    clock = _Clock()
+    control, attempts, _ = _scripted(
+        [Exception("Temporary Suspension: Try again in " + "9" * 400 + " seconds")], clock
+    )
+    with pytest.raises(TapoError) as exc:
+        control.settings()
+    assert "about 61 minutes" in str(exc.value), "capped at an hour plus the margin"
+    clock.now += 3606
+    assert control.settings()["night"] == "auto"
+    assert len(attempts) == 2
+
+
+@pytest.mark.parametrize(
+    ("said", "expect"),
+    [
+        # The camera's number can arrive as a float: str() of whatever it sent.
+        ("Temporary Suspension: Try again in 982.0 seconds", "about 17 minutes"),
+        # pytapo's other transports say it without a number.
+        ("Temporary Suspension: device is blocked", "about 31 minutes"),
+        # An ordinary request against a blocked camera names the code instead.
+        ("Error: DEVICE_BLOCKED, Response: {'error_code': -40404}", "about 31 minutes"),
+    ],
+)
+def test_every_way_pytapo_says_locked_is_a_lockout(said, expect):
+    """Read from pytapo 3.4.19: one lockout, three wordings. Missing any of
+    them means knocking on a locked camera, which is what this exists to stop."""
+    clock = _Clock()
+    control, attempts, _ = _scripted([Exception(said)], clock)
+    with pytest.raises(TapoError) as exc:
+        control.settings()
+    assert "paused logins" in str(exc.value) and expect in str(exc.value)
+    with pytest.raises(TapoError):
+        control.settings()
+    assert len(attempts) == 1
+
+
+def test_the_camera_s_own_bad_credentials_code_is_a_refusal():
+    clock = _Clock()
+    control, attempts, _ = _scripted([Exception("Error: Invalid login credentials")], clock)
+    with pytest.raises(TapoError) as exc:
+        control.settings()
+    assert "turned down the login" in str(exc.value)
+    with pytest.raises(TapoError):
+        control.settings()
+    assert len(attempts) == 1
+
+
+def test_refusals_in_a_row_wait_longer_and_a_success_resets_it():
+    """A fixed five minutes still adds up to twelve attempts an hour against a
+    wrong password, which is a lockout. Doubling makes it five."""
+    clock = _Clock()
+    refused = Exception("Invalid authentication data")
+    control, attempts, _ = _scripted([refused, refused, None, refused], clock)
+    with pytest.raises(TapoError) as first:
+        control.settings()
+    assert "about 5 minutes" in str(first.value)
+
+    clock.now += REFUSED_COOLDOWN_SECONDS + 1
+    with pytest.raises(TapoError) as second:
+        control.settings()
+    assert "about 10 minutes" in str(second.value), "the second refusal in a row waits longer"
+
+    clock.now += 2 * REFUSED_COOLDOWN_SECONDS + 1
+    assert control.settings()["night"] == "auto", "then it logs in"
+    control.close()  # forget the session so the next call logs in again
+    with pytest.raises(TapoError) as after_success:
+        control.settings()
+    assert "about 5 minutes" in str(after_success.value), "a success starts the count again"
+    assert len(attempts) == 4
+
+
+def test_a_camera_that_answered_is_not_called_unreachable():
+    """The login worked; the request after it failed. Blaming the network for
+    that sends whoever reads it to check the wrong thing."""
+    clock = _Clock()
+    control, attempts, clients = _scripted([], clock)
+
+    def privacy_on():
+        raise Exception("Error: Privacy mode is ON, not able to execute")
+
+    original = FakePytapo.getDayNightMode
+    FakePytapo.getDayNightMode = lambda self: privacy_on()
+    try:
+        with pytest.raises(TapoError) as exc:
+            control.settings()
+    finally:
+        FakePytapo.getDayNightMode = original
+    assert "The camera refused reading its settings" in str(exc.value)
+    assert "Could not reach" not in str(exc.value)
+    assert control.settings()["night"] == "auto", "and it is not a reason to wait"
+
+
+def test_a_waiting_request_does_not_queue_behind_a_stuck_login():
+    """While standing back, the answer is known without the camera, so it
+    must not wait for the lock another request holds through a slow login."""
+    import threading  # noqa: PLC0415 - test-only
+
+    clock = _Clock()
+    control, attempts, _ = _scripted([Exception("Invalid authentication data")], clock)
+    with pytest.raises(TapoError):
+        control.settings()
+
+    outcome = []
+    with control._lock:  # another request, stuck mid-login
+        worker = threading.Thread(target=lambda: outcome.append(_raises(control.settings)))
+        worker.start()
+        worker.join(timeout=2)
+        assert not worker.is_alive(), "the waiting request queued behind the lock"
+    assert outcome and "turned down the login" in outcome[0]
+    assert len(attempts) == 1
+
+
+def _raises(fn):
+    try:
+        fn()
+    except TapoError as e:
+        return str(e)
+    return ""
