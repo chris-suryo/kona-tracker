@@ -168,3 +168,49 @@ def test_the_camera_stays_open_for_minutes_not_seconds(tmp_path, monkeypatch):
     monkeypatch.setenv("KONA_CAMERA_REOPEN_SECONDS", "5")
     s = load_settings(tmp_path / "none.env", fake_camera=True)
     assert s.camera_idle_seconds == 600.0 and s.camera_reopen_seconds == 5.0
+
+
+def test_a_blank_or_bad_number_is_named_not_a_traceback(tmp_path, monkeypatch):
+    """Review finding: `KONA_CAMERA_FPS=` in .env was int("") and a ValueError
+    traceback at startup. Blank now means the default, as it does for every
+    text key, and anything else unreadable names its key."""
+    for k in ("KONA_CAMERA_FPS", "KONA_FI_REFRESH_SECONDS", "KONA_STALE_SECONDS"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("KONA_PASSCODE", "123456")
+    monkeypatch.setenv("KONA_SECRET", "s")
+    env = tmp_path / ".env"
+    env.write_text("KONA_CAMERA_FPS=\nKONA_FI_REFRESH_SECONDS=  \n", encoding="utf-8")
+    s = load_settings(env, fake_camera=True)
+    assert s.camera_fps == 15 and s.fi_refresh_seconds == 300.0
+
+    # An inline comment is kept by the .env reader, so it is the likeliest
+    # way for a number to arrive unreadable.
+    env.write_text("KONA_FI_REFRESH_SECONDS=120  # two minutes\n", encoding="utf-8")
+    with pytest.raises(SettingsError, match="KONA_FI_REFRESH_SECONDS must be a number"):
+        load_settings(env, fake_camera=True)
+    env.write_text("KONA_CAMERA_FPS=12.5\n", encoding="utf-8")
+    with pytest.raises(SettingsError, match="KONA_CAMERA_FPS must be a whole number"):
+        load_settings(env, fake_camera=True)
+
+
+def test_a_proxy_setting_that_could_never_match_is_refused(tmp_path, monkeypatch):
+    """Review finding: `KONA_TRUSTED_PROXY_HEADER=CF-Connecting-IP # cloudflared`
+    kept its comment, never matched a request header, and silently put every
+    tunnel visitor in one login-lockout bucket. Same for an IP list holding a
+    range or a host name, since peers are compared as exact strings."""
+    monkeypatch.setenv("KONA_PASSCODE", "123456")
+    monkeypatch.setenv("KONA_SECRET", "s")
+    monkeypatch.setenv("KONA_SECURE_COOKIES", "true")
+    monkeypatch.delenv("KONA_TRUSTED_PROXY_IPS", raising=False)
+    monkeypatch.setenv("KONA_TRUSTED_PROXY_HEADER", "CF-Connecting-IP  # cloudflared")
+    with pytest.raises(SettingsError, match="KONA_TRUSTED_PROXY_HEADER must be a header name"):
+        load_settings(tmp_path / "none.env", fake_camera=True)
+
+    monkeypatch.setenv("KONA_TRUSTED_PROXY_HEADER", "CF-Connecting-IP")
+    for bad in ("127.0.0.0/8", "localhost", "127.0.0.1 # tunnel"):
+        monkeypatch.setenv("KONA_TRUSTED_PROXY_IPS", bad)
+        with pytest.raises(SettingsError, match="KONA_TRUSTED_PROXY_IPS"):
+            load_settings(tmp_path / "none.env", fake_camera=True)
+    monkeypatch.setenv("KONA_TRUSTED_PROXY_IPS", "127.0.0.1, ::1, 192.0.2.7")
+    s = load_settings(tmp_path / "none.env", fake_camera=True)
+    assert s.trusted_proxy_ips == ("127.0.0.1", "::1", "192.0.2.7")
