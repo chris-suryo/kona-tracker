@@ -12,9 +12,18 @@ kit: 3e06b156508b881bef26345c0bb7a63c90db4824 · stamped by dos new
 
 ## Status (2026-09-15, chapter 2)
 
-**Start from `main`.** Every PR through #60 is merged and `main` is tagged
-`v0.1.0`; nothing is stacked or waiting. Branch from `main`, open a PR, CI
-green (four cells: ubuntu + windows, 3.11 + 3.12), merge.
+**Start from `main`.** Every PR through #63 is merged. `CHANGELOG.md`
+describes `v0.1.0` as the 2026-09-15 state, but **the tag does not exist yet**
+(checked 2026-09-30: no tags locally or on GitHub). Branch from `main`, open a
+PR, CI green (six cells: ubuntu + windows, 3.11 + 3.12 + 3.14), merge.
+
+**On the PC since 2026-09-30:** the app runs unattended as the scheduled task
+`kona-tracker` (at startup, as Chris, S4U -- no stored password), on a venv
+built from the signed python.org 3.14.6, logging to a folder outside the repo.
+About 107 MB of RAM with nobody watching. Camera picture and switches both
+confirmed working; reached from phones over Tailscale. Survives a reboot:
+**not yet tested**. `docs/history/2026-09-30-application-control-blocks-python.md`
+is the day's record.
 
 Since 2026-09-15 the app is also its own front door: `README.md` is written
 for a visitor, and `CHANGELOG.md` records what v0.1.0 contains. Three things
