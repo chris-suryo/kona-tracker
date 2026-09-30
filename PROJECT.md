@@ -12,7 +12,7 @@ kit: 3e06b156508b881bef26345c0bb7a63c90db4824 · stamped by dos new
 
 ## Status (2026-09-15, chapter 2)
 
-**Start from `main`.** Every PR through #63 is merged. `CHANGELOG.md`
+**Start from `main`.** Nothing is waiting in an open PR. `CHANGELOG.md`
 describes `v0.1.0` as the 2026-09-15 state, but **the tag does not exist yet**
 (checked 2026-09-30: no tags locally or on GitHub). Branch from `main`, open a
 PR, CI green (six cells: ubuntu + windows, 3.11 + 3.12 + 3.14), merge.
@@ -24,7 +24,19 @@ About 107 MB of RAM with nobody watching. Camera picture and switches both
 confirmed working; reached from phones over Tailscale. Survives a reboot:
 **not yet tested**. `docs/history/2026-09-30-application-control-blocks-python.md`
 is the day's record. Since #68 the app stops logging in to the camera's control
-API when it refuses or locks out, instead of keeping the lock going.
+API when it refuses or locks out, instead of keeping the lock going. A review
+pass after that fixed what an always-on process would hit over weeks: the
+recorder surviving a locked database, a failing Fi never being asked at the
+walking pace, the log no longer drowning in camera frames (CHANGELOG,
+"Staying up unattended").
+
+**Open decision (Chris): does the app refresh Fi when nobody has a page
+open?** Today it asks Fi only when a page asks it. So the recorder only
+records days somebody looked at, and Fi's hour-by-hour detail is gone at
+midnight. That is the project's stated caution about polling a private API
+working as designed, but it costs the days nobody opened the app. The
+proposal: a gentle background refresh (hourly, plus once shortly before
+local midnight), only when `KONA_DB_PATH` is set. Not built until decided.
 
 **Waiting on Chris:** the reboot test (restart, don't sign in, open the app on
 the phone), and the `v0.1.0` tag -- the cloud session that wrote this cannot

@@ -9,6 +9,13 @@ KONA_DB_PATH=kona.db
 
 in `.env`, then restart `kona serve`. That is the whole setup.
 
+**It records what the app was asked for, and nothing else.** The app asks Fi
+only when a page asks it -- somebody has the Activity tab or the map open --
+never on a timer of its own. So a day nobody opens the app is a day not
+recorded, and an evening nobody looks is an evening whose hourly detail is
+gone at midnight. Whether to add a gentle background refresh is an open
+decision, recorded in `PROJECT.md`.
+
 ---
 
 ## Why it matters more than it sounds like it does
@@ -68,7 +75,10 @@ For scale, that is a third of one photograph from the camera tab.
 its own bugs, and `FiService` catches anything it might still throw, because
 every call site is inside a page load. A database that will not open costs one
 warning line and recording stays off until the next restart; the Activity tab
-carries on exactly as before. This is tested, not asserted.
+carries on exactly as before. A database that is locked or busy for a moment
+(a backup, a DB browser holding a write, a full disk) pauses recording with
+one line and resumes on the next refresh that can write. This is tested, not
+asserted.
 
 **It never overwrites something known with nothing.** Fi answers partially all
 the time — steps arrive, sleep does not — and the same hour is written over and

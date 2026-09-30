@@ -39,6 +39,16 @@ def _dict(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
+def _items(value: Any) -> list[dict[str, Any]]:
+    """The dicts in `value` if it is a list, skipping anything else.
+
+    The list-shaped twin of `_dict`: `restSummaries: [null]`, or a field
+    that turns from a list into an object, must read as fewer items, not
+    raise and take the rest of the refresh with it.
+    """
+    return [item for item in value if isinstance(item, dict)] if isinstance(value, list) else []
+
+
 def _num(value: Any) -> int | float | None:
     """A real number, or None. `bool` is excluded: `True` is not a step count."""
     if type(value) in (int, float):
@@ -183,9 +193,9 @@ def pets_from(data: Any) -> list[Pet]:
     pets: list[Pet] = []
     if not isinstance(data, dict):
         return pets
-    for uh in (data.get("currentUser") or {}).get("userHouseholds") or []:
-        for pet in (uh.get("household") or {}).get("pets") or []:
-            if pet and pet.get("id") is not None:
+    for uh in _items(_dict(data.get("currentUser")).get("userHouseholds")):
+        for pet in _items(_dict(uh.get("household")).get("pets")):
+            if pet.get("id") is not None:
                 pets.append(Pet(id=str(pet["id"]), name=str(pet.get("name") or "")))
     return pets
 
@@ -224,10 +234,10 @@ def rest_from(data: Any, period: str = "dailyStat") -> list[RestWindow]:
     """
     if not isinstance(data, dict):
         return []
-    feed = ((data.get("pet") or {}).get(period) or {}).get("restSummaries") or []
+    feed = _items(_dict(_dict(data.get("pet")).get(period)).get("restSummaries"))
     windows: list[RestWindow] = []
     for summary in feed:
-        amounts = (summary.get("data") or {}).get("sleepAmounts") or []
+        amounts = _items(_dict(summary.get("data")).get("sleepAmounts"))
         by_type = {a.get("type"): a.get("duration") for a in amounts if isinstance(a, dict)}
         windows.append(
             RestWindow(
@@ -308,9 +318,9 @@ def split_windows(
 
 def activity_from(data: Any, period: str = "dailyStat") -> ActivityStats:
     """One `currentActivitySummary` block. Absent fields stay None."""
-    stats: Any = {}
+    stats: dict[str, Any] = {}
     if isinstance(data, dict):
-        stats = (data.get("pet") or {}).get(period) or {}
+        stats = _dict(_dict(data.get("pet")).get(period))
     return ActivityStats(
         steps=_num(stats.get("totalSteps")),
         step_goal=_num(stats.get("stepGoal")),

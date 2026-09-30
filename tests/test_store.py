@@ -325,6 +325,34 @@ def test_a_broken_database_is_not_retried_on_every_page_load(tmp_path, caplog):
     assert sum("Recording is off" in r.message for r in caplog.records) == 1
 
 
+def test_a_locked_database_pauses_recording_it_does_not_end_it(tmp_path, caplog, monkeypatch):
+    """ "database is locked" is an OperationalError, which is a DatabaseError --
+    so it used to take the branch meant for a corrupt file, and one DB browser
+    holding a write lock switched recording off until the next restart. The
+    hour table cannot be re-fetched after midnight; a pause must stay a pause."""
+    import sqlite3  # noqa: PLC0415 - test-only
+
+    db = tmp_path / "kona.db"
+    rec = Recorder(str(db))
+    real_write = Recorder._write
+
+    def locked(self, conn, snap):
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(Recorder, "_write", locked)
+    with caplog.at_level("WARNING"):
+        for _ in range(3):
+            assert rec.record(snapshot()) is False
+    paused = [r.message for r in caplog.records if "Recording paused" in r.message]
+    assert len(paused) == 1, "one line per stretch, not one per refresh"
+
+    monkeypatch.setattr(Recorder, "_write", real_write)
+    with caplog.at_level("WARNING"):
+        assert rec.record(snapshot(hourly=hourly(HourBucket(steps=7)))) is True
+    assert rows(db, "SELECT steps FROM hour") == [(7.0,)]
+    assert any("Recording resumed" in r.message for r in caplog.records)
+
+
 def test_one_bad_snapshot_does_not_switch_recording_off_for_good(tmp_path):
     """The opposite of the rule above: a snapshot this code could not read is
     not evidence that the *file* is broken, and the next one may be fine."""

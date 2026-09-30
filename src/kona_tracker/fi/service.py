@@ -167,6 +167,19 @@ def _now() -> datetime:
 REST_HISTORY_DAYS = 14
 
 
+def _why(error: Exception) -> str:
+    """`_explain` for a Fi error; for anything else, a line that names the
+    section's failure without guessing at it. A parser meeting a shape it
+    did not expect is a bug here, not a fault at Fi -- but it must cost that
+    section, not the steps and sleep that already arrived."""
+    if isinstance(error, FiError):
+        return _explain(error)
+    return (
+        f"an answer this app could not read ({type(error).__name__}); "
+        "the probe will show what changed"
+    )
+
+
 def _explain(error: FiError) -> str:
     """Say what a failure means, not just that one happened.
 
@@ -241,8 +254,8 @@ def fetch_snapshot(
             window = None
         if window is None and today is None:
             problems.append("Fi returned no rest windows yet.")
-    except FiError as e:
-        problems.append(f"Sleep: {_explain(e)}")
+    except Exception as e:  # one section's surprise is its own
+        problems.append(f"Sleep: {_why(e)}")
     try:
         data = client.graphql(pet_activity(pet.id))
         activity = activity_from(data, "dailyStat")
@@ -252,14 +265,14 @@ def fetch_snapshot(
         # can belong to the previous collar.
         if data_start and now.date() < data_start + timedelta(days=7):
             week = None
-    except FiError as e:
-        problems.append(f"Steps: {_explain(e)}")
+    except Exception as e:  # one section's surprise is its own
+        problems.append(f"Steps: {_why(e)}")
     try:
         data = client.graphql(pet_status(pet.id))
         profile = profile_from(data)
         status = status_from(data)
-    except FiError as e:
-        problems.append(f"Collar: {_explain(e)}")
+    except Exception as e:  # one section's surprise is its own
+        problems.append(f"Collar: {_why(e)}")
     try:
         # Its own round trip on purpose: the field is sourced from pytryfi,
         # not yet seen from her collar, and a rejected field fails the whole
@@ -269,18 +282,18 @@ def fetch_snapshot(
             status = replace(status, rest_position=rest_position)
         elif rest_position is not None:
             status = CollarStatus(rest_position=rest_position)
-    except FiError as e:
-        problems.append(f"Location: {_explain(e)}")
+    except Exception as e:  # one section's surprise is its own
+        problems.append(f"Location: {_why(e)}")
     walks: tuple[Walk, ...] = ()
     try:
         walks = tuple(walks_from(client.graphql(pet_walks(pet.id))))
-    except FiError as e:
-        problems.append(f"Walks: {_explain(e)}")
+    except Exception as e:  # one section's surprise is its own
+        problems.append(f"Walks: {_why(e)}")
     hourly: HourlyDay | None = None
     try:
         hourly = hourly_from(client.graphql(pet_hourly(pet.id)))
-    except FiError as e:
-        problems.append(f"Hourly: {_explain(e)}")
+    except Exception as e:  # one section's surprise is its own
+        problems.append(f"Hourly: {_why(e)}")
     overnight: Overnight | None = None
     if window is not None and window.start is not None:
         # The night that `window` totals: Fi keys the overnight summary by
@@ -288,8 +301,8 @@ def fetch_snapshot(
         # date. Without a completed window there is no night to ask about.
         try:
             overnight = overnight_from(client.graphql(pet_overnight(pet.id, window.start.date())))
-        except FiError as e:
-            problems.append(f"Sleep detail: {_explain(e)}")
+        except Exception as e:  # one section's surprise is its own
+            problems.append(f"Sleep detail: {_why(e)}")
 
     return FiSnapshot(
         fetched_at=now,
@@ -476,7 +489,17 @@ class FiService:
         snapshot we already hold says she is on a walk. The second means a
         walk started by anyone -- Chris's sister, say -- speeds the page up
         on its own once Fi notices it.
+
+        Neither applies while the last refresh failed. A stale snapshot keeps
+        whatever it last said -- including "walk" -- so a Fi outage or a
+        changed password mid-walk used to hold the 20-second cadence with no
+        end: a full login every 20 s against somebody else's private API,
+        failing, for as long as anyone had the map open. Asking faster cannot
+        make a failing refresh succeed, so the resting cadence applies until
+        one does.
         """
+        if self._snapshot is not None and self._snapshot.stale:
+            return self._ttl
         if self._live_until is not None:
             if (self._live_until - self._clock()).total_seconds() > 0:
                 return self._live_ttl

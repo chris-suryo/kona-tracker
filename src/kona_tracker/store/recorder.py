@@ -68,6 +68,8 @@ class Recorder:
         self._path = path
         self._source = source
         self._broken = False
+        #: A transient failure is in progress; logged once, not per refresh.
+        self._paused = False
 
     def record(self, snapshot: Any) -> bool:
         """Write everything in `snapshot`. True if it landed.
@@ -93,9 +95,22 @@ class Recorder:
             migrate(conn)
             with conn:
                 self._write(conn, snapshot)
+            if self._paused:
+                self._paused = False
+                log.warning("Recording resumed.")
             return True
+        except sqlite3.OperationalError as e:
+            # Locked, busy, a disk I/O hiccup, a full disk: all things that
+            # stop being true. Checked before DatabaseError because it is a
+            # subclass of it -- caught there, one DB browser holding a write
+            # lock for five seconds switched recording off until a restart,
+            # and the hourly table cannot be re-fetched after midnight.
+            if not self._paused:
+                self._paused = True
+                log.warning("Recording paused: %s. Will try again on the next refresh.", e)
+            return False
         except sqlite3.DatabaseError as e:
-            # A malformed file or a newer schema will not fix itself.
+            # A malformed file, or not a database at all, will not fix itself.
             self._broken = True
             log.warning("Recording is off: %s (%s)", e, type(e).__name__)
             return False

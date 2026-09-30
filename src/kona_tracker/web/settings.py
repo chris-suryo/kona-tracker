@@ -3,7 +3,9 @@ the same variables work on the Windows PC, the Pi, or a cloud box."""
 
 from __future__ import annotations
 
+import ipaddress
 import os
+import re
 import secrets
 import sys
 from dataclasses import dataclass
@@ -19,6 +21,14 @@ CAMERA_SOURCES = ("usb", "rtsp", "fake")
 
 # Below this, warn that the passcode is too short to face the public internet.
 MIN_SAFE_PASSCODE = 6
+
+# An HTTP header name (RFC 9110's `token`). Anything else can never match a
+# request header, so a proxy header outside it -- typically one with an
+# inline `# comment` still attached, which .env does not strip -- would leave
+# every tunnel visitor sharing one login-lockout bucket without a word.
+# `#` is legal in a header name but no proxy uses one, and `Header#note` is
+# the same mistake without the space, so it is refused too.
+_HEADER_NAME = re.compile(r"[!$%&'*+.^_`|~0-9A-Za-z-]+")
 
 
 @dataclass(frozen=True, repr=False)
@@ -208,6 +218,16 @@ def load_settings(env_file: Path | None = Path(".env"), fake_camera: bool = Fals
     def get(key: str, default: str = "") -> str:
         return os.environ.get(key) or from_file.get(key, default)
 
+    def number(key: str, default: str, kind: type[int] | type[float] = float):
+        # Blank means "use the default", as it does for every text key; a
+        # line like `KONA_CAMERA_FPS=` used to be int("") and a traceback.
+        raw = get(key).strip()
+        try:
+            return kind(raw or default)
+        except ValueError:
+            what = "a whole number" if kind is int else "a number"
+            raise SettingsError(f"{key} must be {what}, not {raw!r}") from None
+
     passcode = get("KONA_PASSCODE")
     if not passcode:
         raise SettingsError("KONA_PASSCODE is not set (put it in .env; see .env.example)")
@@ -263,6 +283,22 @@ def load_settings(env_file: Path | None = Path(".env"), fake_camera: bool = Fals
         part.strip() for part in get("KONA_TRUSTED_PROXY_IPS", "127.0.0.1,::1").split(",")
     )
     trusted_proxy_ips = tuple(ip for ip in trusted_proxy_ips if ip) or ("127.0.0.1", "::1")
+    if trusted_proxy_header and not _HEADER_NAME.fullmatch(trusted_proxy_header):
+        raise SettingsError(
+            f"KONA_TRUSTED_PROXY_HEADER must be a header name such as CF-Connecting-IP, not "
+            f"{trusted_proxy_header!r}. A comment goes on its own line in .env."
+        )
+    for ip in trusted_proxy_ips:
+        # Compared as exact strings against the peer address, so a range, a
+        # hostname or a trailing comment would never match and the header
+        # would be ignored for everyone. Refuse rather than fail quietly.
+        try:
+            ipaddress.ip_address(ip)
+        except ValueError:
+            raise SettingsError(
+                f"KONA_TRUSTED_PROXY_IPS must be single IP addresses separated by commas, "
+                f"not {ip!r}. Ranges and host names are not supported."
+            ) from None
     secure_cookies = parse_bool(get("KONA_SECURE_COOKIES"), "KONA_SECURE_COOKIES")
     keep_awake = parse_bool(get("KONA_KEEP_AWAKE"), "KONA_KEEP_AWAKE")
     preview_enabled = parse_bool(get("KONA_PREVIEW"), "KONA_PREVIEW")
@@ -299,10 +335,10 @@ def load_settings(env_file: Path | None = Path(".env"), fake_camera: bool = Fals
         secret=secret,
         camera_source=source,
         camera_model=get("KONA_CAMERA_MODEL", "").strip().lower(),
-        camera_index=int(get("KONA_CAMERA_INDEX", "0")),
-        camera_width=int(get("KONA_CAMERA_WIDTH", "1280")),
-        camera_height=int(get("KONA_CAMERA_HEIGHT", "720")),
-        camera_fps=int(get("KONA_CAMERA_FPS", "15")),
+        camera_index=number("KONA_CAMERA_INDEX", "0", int),
+        camera_width=number("KONA_CAMERA_WIDTH", "1280", int),
+        camera_height=number("KONA_CAMERA_HEIGHT", "720", int),
+        camera_fps=number("KONA_CAMERA_FPS", "15", int),
         rtsp_url=rtsp_url,
         rtsp_user=rtsp_user,
         rtsp_password=rtsp_password,
@@ -310,15 +346,15 @@ def load_settings(env_file: Path | None = Path(".env"), fake_camera: bool = Fals
         tapo_user=get("KONA_TAPO_USER", "admin").strip() or "admin",
         tapo_password=get("KONA_TAPO_PASSWORD"),
         tapo_cloud_password=get("KONA_TAPO_CLOUD_PASSWORD"),
-        stale_seconds=float(get("KONA_STALE_SECONDS", "3")),
-        hang_seconds=float(get("KONA_HANG_SECONDS", "10")),
-        camera_idle_seconds=float(get("KONA_CAMERA_IDLE_SECONDS", "120")),
-        camera_reopen_seconds=float(get("KONA_CAMERA_REOPEN_SECONDS", "2")),
+        stale_seconds=number("KONA_STALE_SECONDS", "3"),
+        hang_seconds=number("KONA_HANG_SECONDS", "10"),
+        camera_idle_seconds=number("KONA_CAMERA_IDLE_SECONDS", "120"),
+        camera_reopen_seconds=number("KONA_CAMERA_REOPEN_SECONDS", "2"),
         fi_email=get("FI_EMAIL"),
         fi_password=get("FI_PASSWORD"),
-        fi_refresh_seconds=float(get("KONA_FI_REFRESH_SECONDS", "300")),
-        fi_live_seconds=float(get("KONA_FI_LIVE_SECONDS", "20")),
-        fi_live_max_seconds=float(get("KONA_FI_LIVE_MAX_SECONDS", "7200")),
+        fi_refresh_seconds=number("KONA_FI_REFRESH_SECONDS", "300"),
+        fi_live_seconds=number("KONA_FI_LIVE_SECONDS", "20"),
+        fi_live_max_seconds=number("KONA_FI_LIVE_MAX_SECONDS", "7200"),
         fi_data_start=data_start,
         trusted_proxy_header=trusted_proxy_header,
         trusted_proxy_ips=trusted_proxy_ips,
@@ -328,12 +364,12 @@ def load_settings(env_file: Path | None = Path(".env"), fake_camera: bool = Fals
         keep_awake=keep_awake,
         preview_enabled=preview_enabled,
         heartbeat_url=get("KONA_HEARTBEAT_URL").strip(),
-        heartbeat_seconds=float(get("KONA_HEARTBEAT_SECONDS", "300")),
+        heartbeat_seconds=number("KONA_HEARTBEAT_SECONDS", "300"),
         map_tiles=map_tiles,
         stadia_api_key=stadia_api_key,
         robot_snapshot_url=robot_snapshot_url,
         robot_name=get("KONA_ROBOT_NAME", "Robot").strip() or "Robot",
-        robot_fps=float(get("KONA_ROBOT_FPS", "15")),
+        robot_fps=number("KONA_ROBOT_FPS", "15"),
         robot_control_url=robot_control_url,
         robot_token=get("KONA_ROBOT_TOKEN").strip(),
     )

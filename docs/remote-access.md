@@ -355,8 +355,12 @@ produces a task that looks fine and is not:
 
 **The task has no window, so set `KONA_LOG_DIR` in `.env`** -- to a folder
 *outside* the repository (`C:/Users/<you>/kona-logs`, say): the log records
-every request with the address it came from. `.gitignore` catches log files
-as a backstop, but the folder outside is the real protection.
+every page request with the address it came from. `.gitignore` catches log
+files as a backstop, but the folder outside is the real protection. The
+camera's frame requests, the map's and the robot's timers are thinned when
+they succeed -- several a second per viewer would rotate the whole history
+away in an evening -- to one line per address every ten minutes, so a watcher
+still shows up. A failure or a redirect to the login page is always kept.
 
 Checking on it, from an Administrator PowerShell:
 
@@ -393,7 +397,9 @@ told. `/healthz` is public and answers without touching Fi or the camera:
 `camera` is `idle` whenever nobody is watching (the webcam is released
 after `KONA_CAMERA_IDLE_SECONDS`, two minutes by default) -- that is normal; `disconnected` with a
 `camera_error` of `open`, `hung` or `black_frame` is the wedged-USB
-signature and means a replug. `fi` is `stale` when Fi has stopped
+signature and means a replug. `camera_error` is only ever set while the
+camera is not delivering; a fault it has recovered from reads `null` here
+and stays in `kona.log`. `fi` is `stale` when Fi has stopped
 answering; `fi_age_s` says how old the numbers on the page are.
 
 There are two shapes of this, and today only one of them can work.
@@ -428,9 +434,9 @@ This adds what the push cannot see: whether your sister can actually reach
 the app from outside. Worth having in addition, not instead. It is pointless
 before a named tunnel, since there is no stable URL to give it.
 
-Set `KONA_LOG_DIR=C:\Users\<you>\kona-tracker\logs` in `.env` so the
-access log and every camera or Fi failure land in a rotating `kona.log`
-that survives the PowerShell window closing. On Windows a rotation can
+Set `KONA_LOG_DIR=C:\Users\<you>\kona-logs` in `.env` (outside the
+repository, as in 3c) so the access log and every camera or Fi failure land
+in a rotating `kona.log` that survives the PowerShell window closing. On Windows a rotation can
 fail with a PermissionError while another program (an editor, a tail) holds
 the file open; that is printed, not fatal.
 
