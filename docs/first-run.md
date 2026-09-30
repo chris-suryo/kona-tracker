@@ -82,10 +82,13 @@ the passcode. To force every phone to log in again, change `KONA_SECRET` too.
 ## 3. Run it (no camera needed, anywhere)
 
 > **If a command dies with "An Application Control policy has blocked this
-> file" (os error 4551):** Windows is refusing to run the small unsigned
-> launcher that `uv` generates in `.venv\Scripts\` for every console script.
-> It is not a problem with this project or with `uv`. Put `python -m` in front
-> and drop the `kona`:
+> file" (os error 4551):** Windows is refusing to run an unsigned executable.
+> It is not a problem with this project or with `uv`. There are two versions of
+> this, and which one you have depends on *what* got named in the error.
+>
+> **1. A console script was blocked** (`kona.exe`, `pytest.exe`; seen
+> 2026-09-15). `uv` generates one small unsigned launcher per console script in
+> `.venv\Scripts\`. Put `python -m` in front and drop the `kona`:
 >
 > ```powershell
 > uv run python -m kona_tracker serve
@@ -94,7 +97,47 @@ the passcode. To force every phone to log in again, change `KONA_SECRET` too.
 >
 > `python -m` imports the module instead of spawning a new executable, so
 > there is nothing for the policy to judge. Every `uv run kona ...` command in
-> this document has that form available. Seen on Chris's PC, 2026-09-15.
+> this document has that form available.
+>
+> **2. `python.exe` itself was blocked** (seen 2026-09-30) -- then the escape
+> above is gone too, because the interpreter is the thing being refused:
+>
+> ```
+> Program 'python.exe' failed to run: An Application Control policy has blocked this file
+> ```
+>
+> The cause is which interpreter the venv was built on. `uv`'s default
+> `python-preference` is `managed`, so it prefers a *uv-managed* CPython and
+> will download one rather than use the system Python -- and uv-managed CPython
+> comes from `python-build-standalone`, which is **not signed by the Python
+> Software Foundation**. Copy an unsigned interpreter into `.venv\Scripts\` and
+> the policy refuses it. (It is also why `py --list` cannot see it: uv-managed
+> installs are not registered with the launcher.)
+>
+> The fix is to rebuild the venv on a signed interpreter and stop uv from ever
+> choosing its own. `docs/history/2026-09-30-application-control-blocks-python.md`
+> has the diagnosis commands and the full recipe; the short version is:
+>
+> ```powershell
+> $real = & py -V:3.14 -c "import sys; print(sys.executable)"
+> Get-AuthenticodeSignature $real | Format-List Status   # must read Valid
+> Rename-Item .venv .venv-blocked                        # keep it, do not delete
+> $env:UV_PYTHON_DOWNLOADS = "never"
+> uv venv --python $real --no-managed-python
+> Get-AuthenticodeSignature .venv\Scripts\python.exe | Format-List Status
+> uv sync --python .venv\Scripts\python.exe --no-managed-python
+> ```
+>
+> Then make it permanent for every project on the machine, in
+> `%APPDATA%\uv\uv.toml`:
+>
+> ```toml
+> python-preference = "only-system"
+> python-downloads = "never"
+> ```
+>
+> Do not turn Smart App Control off to get past this. It is one-way on
+> Windows 11 -- turning it back on needs a reinstall of Windows.
 
 
 ```
@@ -359,18 +402,22 @@ uv sync
 uv run kona serve
 ```
 
-**On the Windows PC**, Application Control blocks `uv sync` (error 4551,
-seen 2026-09-12). Two workarounds, depending on whether the update added a
-dependency; the PR or session summary says which:
+**On the Windows PC**, Application Control has blocked three different things
+here (error 4551): `uv sync` on 2026-09-12, the console scripts on 2026-09-15,
+and `python.exe` on 2026-09-30. Once the venv is on a signed interpreter and
+`uv.toml` pins it there -- see the box in section 3 -- the update is:
 
 ```powershell
-uv run --no-sync kona serve          # nothing new to install
-uv sync --no-build-isolation         # a new dependency (e.g. pytapo, 2026-09-13); untested here
+git pull
+uv sync --no-managed-python          # picks up the signed interpreter, downloads nothing
+.venv\Scripts\python.exe -m pytest -q
+.venv\Scripts\python.exe -m kona_tracker serve
 ```
 
-If the second one is blocked too, paste the error into the next session
-rather than working around it; the fix may be a policy exception, not a
-command.
+If `uv sync` is refused again, `.venv\Scripts\python.exe -m pip install -e .`
+installs the same thing without uv in the loop. If something *else* is blocked,
+paste the error and the CodeIntegrity event log line into the next session
+rather than working around it; the fix may be a policy exception, not a command.
 
 ## If something goes wrong
 
