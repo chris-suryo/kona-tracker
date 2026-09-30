@@ -293,46 +293,52 @@ powercfg /setactive SCHEME_CURRENT
 Verify with `powercfg /query` rather than trusting that it took: Windows
 power plans have a habit of being overridden by the active plan.
 
-**Unverified:** none of this has been run on Chris's PC. The keep-awake code
-path is Windows-only and the sandbox that wrote it is Linux, so the tests
-cover the refusal path, not the success path. First person to run it owns
-making this true.
+**Partly verified:** `KONA_KEEP_AWAKE=true` has been set on Chris's PC since
+2026-09-30, with the app running as the scheduled task in 3c. Whether it
+actually holds sleep off from that background session has not been checked:
+the code path is Windows-only and the sandbox that wrote it is Linux, so the
+tests cover the refusal path, not the success path. The first long idle
+stretch with the page still reachable is the proof.
 
 ### 3c. Start the app on boot
 
-**This is the step I am least confident in, and the reason to do it last.**
+**Running on the PC since 2026-09-30.** Verified there: the task registers,
+starts, serves the camera and its switches over Tailscale, and holds about
+107 MB of RAM with nobody watching. **Not yet verified: that it comes back on
+its own after a reboot with nobody signed in** -- the one test that proves the
+point of it.
 
-The obvious approach — a Scheduled Task running as `SYSTEM` at startup — is
-likely to break the camera. Windows gates camera access behind per-user
-privacy settings (the same Settings > Camera switch that already stole the
-webcam from us once), and a service-account session is not a desktop
-session. A task that runs, reports success, and serves a dead camera tab is
-the worst possible outcome.
+**At startup, as you, without a stored password.** Three choices, each for a
+reason:
 
-The safer shape, to try first: set the PC to log in automatically to your
-user, and run the task **at log on as that user**, not at startup as SYSTEM.
-
-> **The task runs the interpreter, not `kona.exe`.** On a machine with
-> Application Control this matters more here than anywhere else: an
-> interactive command that gets refused tells you so, while a Scheduled Task
-> that gets refused just silently does not serve. `uv run kona serve` spawns
-> the generated `kona.exe`, which was blocked on 2026-09-15 (error 4551). See
-> `docs/history/2026-09-30-application-control-blocks-python.md`.
+- **At startup, not at log-on.** A power cut or a Windows Update restart
+  leaves the PC at the sign-in screen; a log-on task would wait there until
+  somebody came home. The old advice here was the opposite, because a USB
+  webcam sits behind Windows' per-user camera privacy switch and a session
+  nobody signed in to may not get it. The Tapo is a network camera, so that no
+  longer applies. **If you ever go back to a USB webcam, use `-AtLogOn` with
+  automatic sign-in instead.**
+- **As you (S4U), not as `SYSTEM`.** S4U runs the task under your own account
+  whether or not you are signed in, without Task Scheduler storing your
+  password -- which also means it works on a PIN-only sign-in. It cannot use
+  your Windows credentials for network *shares*; the app needs none.
+- **The interpreter, not `kona.exe`.** Application Control refuses every
+  executable uv generates, and a refused Scheduled Task fails silently rather
+  than telling you. `docs/history/2026-09-30-application-control-blocks-python.md`.
 
 ```powershell
-# PowerShell as Administrator.
-$action  = New-ScheduledTaskAction `
-           -Execute "C:\Users\<you>\kona-tracker\.venv\Scripts\python.exe" `
-           -Argument "-m kona_tracker serve" -WorkingDirectory "C:\Users\<you>\kona-tracker"
-$trigger = New-ScheduledTaskTrigger -AtLogOn
-$settings = New-ScheduledTaskSettingsSet `
-           -ExecutionTimeLimit ([TimeSpan]::Zero) `
-           -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) `
-           -MultipleInstances IgnoreNew `
-           -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
-           -StartWhenAvailable
+# PowerShell as Administrator. Every path is absolute, so it can run from system32.
+$repo = "$HOME\kona-tracker"
+$action = New-ScheduledTaskAction -Execute "$repo\.venv\Scripts\python.exe" `
+          -Argument "-m kona_tracker serve" -WorkingDirectory $repo
+$trigger = New-ScheduledTaskTrigger -AtStartup
+$principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType S4U -RunLevel Limited
+$settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) `
+          -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) -MultipleInstances IgnoreNew `
+          -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
 Register-ScheduledTask -TaskName "kona-tracker" -Action $action -Trigger $trigger `
-           -Settings $settings
+          -Principal $principal -Settings $settings
+Start-ScheduledTask -TaskName "kona-tracker"     # run it now rather than at the next boot
 ```
 
 Three of those settings are not decoration, and leaving any of them out
@@ -342,24 +348,38 @@ produces a task that looks fine and is not:
    being killed after three days. Without this the app dies every 72 hours
    and you would be hunting a phantom.
 2. **`-RestartCount` / `-RestartInterval`.** Otherwise a crash is permanent
-   until the next log-on. Three restarts a minute apart is a speed bump, not
-   a supervisor; 3d is what tells you it ran out of retries.
+   until the next boot. Three restarts a minute apart is a speed bump, not a
+   supervisor; 3d is what tells you it ran out of retries.
 3. **`-AllowStartIfOnBatteries -DontStopIfGoingOnBatteries`.** On a laptop,
    the default is to refuse to start and to stop when unplugged.
 
-Then **reboot and check the camera tab from your phone**, not just that the
-task started. Confirming the task started is not confirming the camera
-works. If the tab shows CHECK CAMERA after a reboot but works when you run
-`uv run kona serve` by hand, the log-on-session theory is wrong and it needs
-rethinking — say so rather than papering over it.
+**The task has no window, so set `KONA_LOG_DIR` in `.env`** -- to a folder
+*outside* the repository (`C:/Users/<you>/kona-logs`, say): the log records
+every request with the address it came from. `.gitignore` catches log files
+as a backstop, but the folder outside is the real protection.
+
+Checking on it, from an Administrator PowerShell:
+
+```powershell
+curl.exe -s http://localhost:8000/healthz                    # {"status":"ok",...}
+Get-ScheduledTaskInfo -TaskName kona-tracker | Select-Object LastRunTime, LastTaskResult
+Get-Content "$HOME\kona-logs\kona.log" -Tail 20
+Stop-ScheduledTask -TaskName kona-tracker                    # and Start-ScheduledTask to bring it back
+```
+
+`LastTaskResult` of **267009** means *running*. Anything else is the exit code
+of the last run, and the log says why. Changes to `.env` take effect only on a
+restart of the task. Run anything that needs a window -- `camera-test`, the
+switch test in first-run.md -- with the task **stopped**, so the two do not
+fight over the camera.
+
+Then **reboot and check the camera tab from your phone without signing in**,
+not just that the task started. Confirming the task started is not confirming
+the camera works.
 
 `cloudflared` gets the same treatment, or `cloudflared service install` if
 the service account turns out to be fine for it (it has no camera to lose).
-
-**Unverified:** every command in this section. The settings names come from
-`New-ScheduledTaskSettingsSet`'s documented parameters, not from a run on a
-real machine. If PowerShell rejects `-RestartCount`, drop that pair and rely
-on 3d to tell you when it is down.
+Tailscale already runs as a Windows service and comes up at boot on its own.
 
 ### 3d. Something has to watch it (built 2026-09-11, not yet pointed at a tunnel)
 
