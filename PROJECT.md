@@ -23,7 +23,13 @@ built from the signed python.org 3.14.6, logging to a folder outside the repo.
 About 107 MB of RAM with nobody watching. Camera picture and switches both
 confirmed working; reached from phones over Tailscale. Survives a reboot:
 **not yet tested**. `docs/history/2026-09-30-application-control-blocks-python.md`
-is the day's record.
+is the day's record. Since #68 the app stops logging in to the camera's control
+API when it refuses or locks out, instead of keeping the lock going.
+
+**Waiting on Chris:** the reboot test (restart, don't sign in, open the app on
+the phone), and the `v0.1.0` tag -- the cloud session that wrote this cannot
+push tags, so it is two commands on the PC:
+`git tag -a v0.1.0 81cf096 -m "v0.1.0"` then `git push origin v0.1.0`.
 
 Since 2026-09-15 the app is also its own front door: `README.md` is written
 for a visitor, and `CHANGELOG.md` records what v0.1.0 contains. Three things

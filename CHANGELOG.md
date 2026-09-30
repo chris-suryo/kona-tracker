@@ -4,6 +4,49 @@ Notable changes, newest first. This project follows no release cadence: it runs
 continuously on one PC at home and ships when something is ready. The tags mark
 states worth being able to return to.
 
+## Unreleased — since v0.1.0
+
+Mostly the story of getting the one machine that serves this app running again,
+and making it stay that way. `docs/history/2026-09-30-application-control-blocks-python.md`
+has the day in full.
+
+### Running under Smart App Control
+
+- Windows' Smart App Control, now enforcing on the home PC, refused the
+  venv's `python.exe`: uv had built it on a uv-managed CPython, which is not
+  PSF-signed. The venv is now built on the signed python.org 3.14.6, and a
+  machine-level `uv.toml` stops uv ever choosing its own interpreter there
+  again. The rebuild recipe that worked is in `docs/first-run.md`.
+- Every runbook for that PC now starts the app as
+  `.venv\Scripts\python.exe -m kona_tracker ...`. Two of them had still pointed
+  at the generated `kona.exe`, blocked since 2026-09-15.
+- The app runs unattended as a scheduled task at startup, as the user, with no
+  stored password (`docs/remote-access.md` 3c). About 107 MB of RAM with
+  nobody watching.
+- CI tests Python 3.14 on Ubuntu and Windows, because that is what the PC now
+  runs. All 63 locked packages have Windows wheels for it.
+
+### The camera's switches
+
+- The switches -- night vision, privacy, the status light -- log in as `admin`
+  with the TP-Link account password. The docs had said the camera account plus
+  a cloud password, an untested theory that pytapo's secure login can never
+  accept. Confirmed on the camera: the first time the switches worked.
+- When the camera refuses a control login or locks its control API ("Try again
+  in 982 seconds"), the app stops contacting it until that is over and says
+  why on the page, with a countdown. Before, every Camera-tab visit was another
+  login against the lock. Refusals in a row back off from 5 minutes to an hour.
+
+### Smaller
+
+- A build test that only failed when pytest's temp dir sat inside a checkout
+  now fences itself, and a guard names the stray `PYTEST_ADDOPTS` that caused
+  it rather than letting pytest wipe a folder in the working tree.
+- Log files are gitignored; the log records every request's address.
+- The username scanner covers `tests/` too, after a docstring reintroduced it.
+- ruff 0.16.7, tzdata 2026.4; `astral-sh/setup-uv` v7 and `actions/checkout`
+  moved off the deprecated Node 20 runtime.
+
 ## v0.1.0 — 2026-09-15
 
 The first tagged state. Six days, 293 commits, 61 pull requests, CI green on

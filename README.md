@@ -51,7 +51,9 @@ pattern, Activity waits for a collar, and the Robot tab appears once the robot
 settings are filled in.
 
 If Application Control blocks the virtualenv's `.exe` shims,
-`uv run python -m kona_tracker serve --fake-camera` runs the same command.
+`uv run python -m kona_tracker serve --fake-camera` runs the same command. If
+it blocks `python.exe` itself, the venv was built on an unsigned interpreter;
+`docs/first-run.md` section 3 has the rebuild on a signed one.
 
 `docs/first-run.md` covers the same ground in plain language, including the real
 camera, the collar, the robot, and getting it onto a phone.
@@ -134,7 +136,7 @@ uv run ruff check .
 uv run ruff format --check .
 ```
 
-CI runs those three on Ubuntu and Windows, Python 3.11 and 3.12. Tests live
+CI runs those three on Ubuntu and Windows, Python 3.11, 3.12 and 3.14. Tests live
 beside the code they cover, and a change to logic comes with a test.
 
 Two checks are run by hand, because CI has no browser.
