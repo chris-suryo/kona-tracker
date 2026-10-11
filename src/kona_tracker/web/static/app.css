@@ -145,7 +145,7 @@ body { min-height: 100dvh; display: flex; flex-direction: column; -webkit-font-s
    someone with poor eyesight reads this page -- and nothing here reaches
    inside the map, where pinch is how you zoom it. .nub keeps `none`
    because press-and-hold must not scroll. */
-.seg a, .avatar, .shutter, .pill, .settings-link, .login button, .logout,
+.seg a, .avatar, .shutter, .frame-btn, .still-done, .pill, .settings-link, .login button, .logout,
 .drive-exit, .drive-link { touch-action: manipulation; }
 
 /* Pull to refresh (app.js). The body, not main, owns the viewport scroll,
@@ -364,6 +364,53 @@ body.activity-page { overscroll-behavior-y: contain; }
 .shutter:active { transform: scale(.93); }
 .shutter:disabled { opacity: .65; }
 .shutter svg { width: 23px; height: 23px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+/* The second control on the picture: full view and back. Smaller and
+   quieter than the shutter, which stays the one bright button. */
+.frame-actions { gap: 10px; align-items: center; }
+.frame-btn { width: 40px; height: 40px; display: grid; place-items: center; border-radius: 50%; padding: 0;
+             border: 1px solid rgba(255,255,255,.18); background: rgba(0,0,0,.45); color: #fff;
+             -webkit-tap-highlight-color: transparent; transition: transform .12s ease; }
+.frame-btn:active { transform: scale(.93); }
+.frame-btn svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.frame-btn .icon-shrink, .cam.full .frame-btn .icon-grow { display: none; }
+.cam.full .frame-btn .icon-shrink { display: block; }
+
+/* Full view. The same figure, fixed over everything: the same <img>, so the
+   loop, the zoom and the badge carry on untouched. `contain`, as in drive
+   mode: black bars are honest, a cropped floor is not. Above the pull banner
+   (5) and the drive overlays' range; under the still sheet (50). */
+html.cam-full, html.cam-full body { overflow: hidden; }
+.cam.full { position: fixed; inset: 0; z-index: 40; margin: 0; background: #000; touch-action: none; }
+.cam.full img { width: 100%; height: 100%; aspect-ratio: auto; object-fit: contain; }
+.cam.full .top { top: max(14px, env(safe-area-inset-top)); left: max(16px, env(safe-area-inset-left));
+                 right: max(16px, env(safe-area-inset-right)); }
+.cam.full .frame-actions { right: max(14px, env(safe-area-inset-right)); bottom: max(14px, env(safe-area-inset-bottom)); }
+.cam .top, .frame-actions, .cam-turn { transition: opacity .25s ease; }
+.cam.full.quiet .top, .cam.full.quiet .frame-actions, .cam.full.quiet .cam-turn { opacity: 0; pointer-events: none; }
+.cam-turn { display: none; }
+@media (orientation: portrait) {
+  .cam.full .cam-turn { display: flex; position: absolute; left: 16px; right: 16px; justify-content: center;
+                        bottom: calc(max(14px, env(safe-area-inset-bottom)) + 62px); pointer-events: none; }
+}
+.cam-turn span, .cam-toast { padding: 8px 14px; border-radius: 999px; background: rgba(0,0,0,.55);
+                             border: 1px solid rgba(255,255,255,.15); color: #fff; font-size: 12px; font-weight: 600; text-align: center; }
+.cam-toast { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); max-width: calc(100% - 32px); pointer-events: none; }
+.cam-toast[hidden] { display: none; }
+
+/* The captured still, held up to be pressed and held for Save to Photos.
+   The callout is the whole point here, so it is asked for explicitly. */
+.still-sheet { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center;
+               padding: max(20px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right))
+                        max(20px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
+               background: rgba(0,0,0,.78); }
+.still-sheet[hidden] { display: none; }
+.still-card { width: min(100%, 560px); display: flex; flex-direction: column; align-items: center; gap: 16px; }
+.still-card img { display: block; width: 100%; max-height: 64vh; object-fit: contain; border-radius: 12px; background: #000;
+                  -webkit-touch-callout: default; -webkit-user-select: auto; user-select: auto; }
+.still-say { margin: 0; color: #fff; text-align: center; font-size: 15px; line-height: 1.45; }
+.still-done { min-width: 140px; min-height: 44px; padding: 0 22px; border: 0; border-radius: 999px;
+              background: #fff; color: #171A15; font: inherit; font-size: 15px; font-weight: 700; }
+
 .cam-meta { padding: 18px 20px 0; display: flex; justify-content: space-between; align-items: end; gap: 20px; }
 .cam-meta .d { font-size: 30px; letter-spacing: -.04em; }
 .cam-meta .s { font-size: 12px; color: var(--ink2); margin-top: 4px; min-height: 1.2em; }
@@ -1029,7 +1076,7 @@ body.activity-page { overscroll-behavior-y: contain; }
   .dial .val, .stat { animation: none; }
   .dot.on { animation: none; opacity: 1; }
   .cam-connecting span::before { animation: none; opacity: 1; }
-  .nub, .shutter, .switch, .switch span { transition: none; }
+  .nub, .shutter, .frame-btn, .switch, .switch span, .cam .top, .frame-actions, .cam-turn { transition: none; }
   /* `.pull.busy span` outranks `.pull span`, so it is named here too. */
   .pull, .pull span, .pull.busy span { transition: none; animation: none; }
   .pull.busy span::before { animation: none; }

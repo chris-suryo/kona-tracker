@@ -246,6 +246,30 @@ def test_usb_camera_offers_capture_and_share_but_no_motion_controls(client):
     assert 'class="ptz"' not in page and "Left corner" not in page
 
 
+def test_every_element_camera_js_looks_up_is_on_the_camera_page(client):
+    """camera.js reads its elements by id and uses them without a null check,
+    so one missing id stops the whole script: no zoom, no shutter, no full
+    view. The browser harness that exercises the script is not in CI; this
+    is the half of it that is. The photo panel and the full-view toast must
+    start hidden, or they cover the picture on every visit."""
+    import re
+
+    from kona_tracker.web.app import HERE
+
+    login(client)
+    page = client.get("/camera").text
+    js = (HERE / "static" / "camera.js").read_text(encoding="utf-8")
+    wanted = set(re.findall(r"getElementById\('([\w-]+)'\)", js))
+    assert {"expand", "still", "still-img", "still-done", "cam-toast", "capture"} <= wanted
+    for name in sorted(wanted):
+        if name == "cam-settings" or name == "setting-note":
+            continue  # only rendered for a camera with switches; camera.js checks
+        assert f'id="{name}"' in page, name
+    assert re.search(r'<div class="still-sheet" id="still"[^>]*\bhidden\b', page)
+    assert re.search(r'id="cam-toast"[^>]*\bhidden\b', page)
+    assert 'aria-label="Full screen"' in page
+
+
 def test_logout_clears_cookie(client):
     login(client)
     r = client.post("/logout", follow_redirects=False)

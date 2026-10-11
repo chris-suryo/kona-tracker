@@ -1,6 +1,6 @@
 // Camera tab: the house camera. The picture loop itself is poll.js, shared
 // with the Robot tab; what is here is everything only this camera has --
-// pinch-to-zoom, the shutter, the pan/tilt pad and the switches. Lives in a
+// pinch-to-zoom, full view, the shutter, the pan/tilt pad and the switches. Lives in a
 // file rather than inline so the page can carry a Content-Security-Policy
 // with script-src 'self' and no nonce plumbing.
 (function () {
@@ -18,7 +18,7 @@
   var ZOOM_MAX = 4, ZOOM_TAP = 2.5, SNAP_BELOW = 1.08, TAP_MS = 300, TAP_PX = 24;
   var zoom = { s: 1, x: 0, y: 0 };
   var pinch = null, drag = null, lastPoint = null, touchBegan = 0, touchMoved = false;
-  var lastTap = 0, lastTapAt = null;
+  var lastTap = 0, lastTapAt = null, swipe = null;
   var zoomBadge = document.getElementById('zoom-level');
 
   function frameSize() {
@@ -61,7 +61,9 @@
   function span(a, b) { return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) || 1; }
 
   frame.addEventListener('touchstart', function (e) {
+    awake();  // in full view, any touch brings the controls back
     if (e.target.closest && e.target.closest('button')) { return; }  // the shutter is a button, not a gesture
+    swipe = null;
     if (e.touches.length === 2) {
       var m = local({ clientX: (e.touches[0].clientX + e.touches[1].clientX) / 2,
                       clientY: (e.touches[0].clientY + e.touches[1].clientY) / 2 });
@@ -71,6 +73,9 @@
       var p = local(e.touches[0]);
       touchBegan = Date.now(); touchMoved = false;
       drag = zoom.s > 1 ? { x: p.x, y: p.y, ox: zoom.x, oy: zoom.y } : null;
+      // At 1x in full view a downward swipe minimizes, as on a video player.
+      // Zoomed in, the same swipe pans the picture instead.
+      swipe = full && zoom.s === 1 ? { x: p.x, y: p.y } : null;
       lastPoint = p;
     }
   }, { passive: false });
@@ -91,6 +96,10 @@
         zoom.x = drag.ox + (p.x - drag.x); zoom.y = drag.oy + (p.y - drag.y);
         applyZoom();
         e.preventDefault();  // zoomed in, a swipe pans the picture, not the page
+      } else if (swipe) {
+        var down = p.y - swipe.y;
+        e.preventDefault();  // full view has no page behind it to scroll
+        if (down > SWIPE_PX && Math.abs(p.x - swipe.x) < down) { swipe = null; minimize(); }
       }
     }
   }, { passive: false });
@@ -111,7 +120,7 @@
       } else if (!quick) {
         lastTap = 0;
       }
-      drag = null; lastPoint = null; touchBegan = 0;
+      drag = null; swipe = null; lastPoint = null; touchBegan = 0;
     }
     applyZoom();
   }
@@ -120,14 +129,155 @@
   window.KonaZoom = { get: function () { return { s: zoom.s, x: zoom.x, y: zoom.y }; }, reset: function () { zoom.s = 1; applyZoom(); } };
   applyZoom();  // a clean 1x: no transform, no badge
 
-  // Share a real JPEG when the browser permits file sharing (iPhone over
-  // HTTPS or localhost). On an ordinary LAN HTTP address, save the same
-  // image instead; the camera action still completes honestly.
+  // Full view. The picture fills the screen, black around it, letterboxed
+  // rather than cropped. It is the same <img> and the same loop, so zoom,
+  // the badge and the shutter all carry on. Minimize with the same button,
+  // a swipe down, or the phone's own Back. An iPhone has no Fullscreen API
+  // for a page element and no way for a page to turn its screen, so there
+  // it is a fixed overlay and the person turns the phone; where the API
+  // exists (Android, an iPad, a desktop) the page asks for it as well, to
+  // drop the browser's own bars too.
+  var expand = document.getElementById('expand');
+  var toast = document.getElementById('cam-toast');
+  var root = document.documentElement;
+  var full = false, pushed = false, quietTimer = null, toastTimer = null, wake = null, wokeAt = 0, sized = null;
+  var QUIET_MS = 3000, WAKE_GRACE_MS = 400, TOAST_MS = 2500, SWIPE_PX = 80;
+
+  // The controls fade after a few quiet seconds in full view and come back
+  // on any touch. A tap that wakes them must not also press whatever button
+  // reappears under the finger, hence the grace period the buttons check.
+  function awake() {
+    clearTimeout(quietTimer);
+    if (frame.classList.contains('quiet')) { wokeAt = Date.now(); frame.classList.remove('quiet'); }
+    if (full) { quietTimer = setTimeout(function () { frame.classList.add('quiet'); }, QUIET_MS); }
+  }
+  function justWoke() { return Date.now() - wokeAt < WAKE_GRACE_MS; }
+  // Keep the screen on while watching. The API exists only on an https://
+  // page; over plain http it is absent and the phone dims as it always has.
+  function keepAwake(on) {
+    var lock = navigator.wakeLock;
+    if (on && lock && !wake) {
+      wake = lock.request('screen').catch(function () { return null; });
+    } else if (!on && wake) {
+      wake.then(function (sentinel) { if (sentinel) { sentinel.release().catch(function () {}); } });
+      wake = null;
+    }
+  }
+  function setFull(on) {
+    if (on === full) { return; }
+    full = on;
+    // The frame is about to change size; an offset measured against the old
+    // one would leave a gap, so the picture starts again at 1x.
+    zoom.s = 1; applyZoom();
+    frame.classList.toggle('full', on);
+    frame.classList.remove('quiet');
+    if (toast && !on) { clearTimeout(toastTimer); toast.hidden = true; }  // its words were for full view
+    if (root) { root.classList.toggle('cam-full', on); }
+    expand.setAttribute('aria-label', on ? 'Minimize' : 'Full screen');
+    expand.setAttribute('aria-pressed', String(on));
+    awake();
+    keepAwake(on);
+    // The whole page goes fullscreen, not the figure: a fullscreen element is
+    // drawn above everything else, and the photo panel, which lives outside
+    // the figure, would open unseen behind the picture. The CSS overlay is
+    // what makes the picture fill the screen either way.
+    if (on && root && root.requestFullscreen && !document.fullscreenElement) {
+      root.requestFullscreen().catch(function () {});
+    } else if (!on && document.fullscreenElement && document.exitFullscreen) {
+      document.exitFullscreen().catch(function () {});
+    }
+  }
+  function maximize() {
+    if (full) { return; }
+    setFull(true);
+    // A history entry, so the phone's Back gesture minimizes rather than
+    // leaving the camera altogether.
+    if (window.history && window.history.pushState) {
+      window.history.pushState({ konaFull: true }, '');
+      pushed = true;
+    }
+  }
+  function minimize() {
+    if (!full) { return; }
+    // Step back over our own entry only while it is still on top: a Back
+    // that the browser already spent leaving its fullscreen must not be
+    // followed by a second one that leaves the camera page.
+    var h = window.history;
+    if (pushed && h && h.state && h.state.konaFull) { pushed = false; h.back(); return; }  // popstate finishes it
+    pushed = false;
+    setFull(false);
+  }
+  window.addEventListener('popstate', function () { pushed = false; setFull(false); });
+  // Leaving the browser's fullscreen by its own means (Esc, Android's Back)
+  // leaves full view with it.
+  document.addEventListener('fullscreenchange', function () {
+    if (full && !document.fullscreenElement) { minimize(); }
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') { if (still && !still.hidden) { hideStill(); } else { minimize(); } }
+  });
+  // Turning the phone resizes the frame under a zoomed picture; start over
+  // at 1x rather than leave it off the edge.
+  window.addEventListener('resize', function () {
+    var f = frameSize(), was = sized;
+    sized = f;
+    if (was && (was.w !== f.w || was.h !== f.h) && zoom.s !== 1) { zoom.s = 1; applyZoom(); }
+  });
+  // Coming back to the page drops the screen lock; take it again.
+  document.addEventListener('visibilitychange', function () {
+    if (full && !document.hidden) { wake = null; keepAwake(true); }
+  });
+  // A mouse has no touchstart: a desktop, or an iPad with a trackpad,
+  // wakes the controls by moving or pressing instead.
+  frame.addEventListener('pointerdown', awake);
+  frame.addEventListener('mousemove', function () { if (full) { awake(); } });
+  expand.addEventListener('click', function () {
+    if (justWoke()) { return; }
+    if (full) { minimize(); } else { maximize(); }
+  });
+
+  // Words for the shutter: under the picture on the page, and over it in
+  // full view, where the line under the picture is covered.
   var capture = document.getElementById('capture');
   var captureHint = document.getElementById('capture-hint');
+  var HINT = captureHint.textContent;
+  function say(text) {
+    captureHint.textContent = text;
+    if (!toast) { return; }
+    clearTimeout(toastTimer);
+    toast.hidden = !full;
+    toast.textContent = text;
+    if (full) { toastTimer = setTimeout(function () { toast.hidden = true; }, TOAST_MS); }
+  }
+
+  // The captured still, held up to be saved. One object URL at a time,
+  // revoked when the panel closes.
+  var still = document.getElementById('still'), stillImg = document.getElementById('still-img'), stillUrl = null;
+  function showStill(blob) {
+    if (stillUrl) { URL.revokeObjectURL(stillUrl); }
+    stillUrl = URL.createObjectURL(blob);
+    stillImg.src = stillUrl;
+    still.hidden = false;
+  }
+  function hideStill() {
+    still.hidden = true;
+    captureHint.textContent = HINT;
+    stillImg.removeAttribute('src');
+    if (stillUrl) { URL.revokeObjectURL(stillUrl); stillUrl = null; }
+  }
+  document.getElementById('still-done').addEventListener('click', hideStill);
+  still.addEventListener('click', function (e) { if (e.target === still) { hideStill(); } });  // a tap beside the photo
+
+  // Two ways to get the photo into Photos, chosen by what the phone allows.
+  // On an https:// page the share sheet takes the file and offers "Save
+  // Image". Over plain http an iPhone refuses to share a file, and the old
+  // fallback, a download link, opened a preview and filed the JPEG under
+  // Files; so the photo is shown instead, to be pressed and held for "Save
+  // to Photos". Only a frame the server called live is ever captured.
   capture.addEventListener('click', function () {
+    if (justWoke()) { return; }
     capture.disabled = true;
-    captureHint.textContent = 'Capturing…';
+    say('Capturing…');
     var controller = new AbortController();
     var deadline = setTimeout(function () { controller.abort(); }, 10000);
     fetch('/snapshot.jpg?t=' + Date.now(), { cache: 'no-store', signal: controller.signal })
@@ -138,18 +288,17 @@
       .then(function (blob) {
         clearTimeout(deadline);  // the share sheet belongs to the person, not the network timer
         var file = new File([blob], 'kona-' + new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-') + '.jpg', { type: 'image/jpeg' });
+        // Files only, no title: a title travels as a second, text item, and
+        // a share of mixed items is where iOS stops offering "Save Image".
         if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
-          return navigator.share({ title: 'Kona right now', files: [file] }).then(function () {
-            captureHint.textContent = 'Photo shared';
-          });
+          return navigator.share({ files: [file] }).then(function () { say('Photo shared'); });
         }
-        var url = URL.createObjectURL(blob), link = document.createElement('a');
-        link.href = url; link.download = file.name; link.click();
-        setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
-        captureHint.textContent = 'Photo saved';
+        showStill(blob);
+        say('Press and hold the photo to save it');
       })
       .catch(function (e) {
-        captureHint.textContent = e.name === 'AbortError' && !controller.signal.aborted ? 'Capture and share a still' : 'Could not capture—try again';
+        // Closing the share sheet without choosing is not a failure.
+        say(e.name === 'AbortError' && !controller.signal.aborted ? HINT : 'Could not capture—try again');
       })
       .finally(function () { clearTimeout(deadline); capture.disabled = false; });
   });
