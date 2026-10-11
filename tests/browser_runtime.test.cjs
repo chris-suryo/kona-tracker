@@ -112,6 +112,7 @@ const STEPS_MOVED = () => ACTIVITY().map(s => s.cls === 'steps-hero' ? {...s, ht
 
 function setup(script, preview = false, opts = {}) {
   const names = ['cam', 'cap', 'dot', 'livetxt', 'capture', 'capture-hint', 'pull', 'zoom-level',
+    'expand', 'cam-toast', 'still', 'still-img', 'still-done',
     'drive', 'stick', 'knob', 'estop', 'estop-alarm', 'speed', 'rot-left', 'rot-right', 'shout', 'shout-text', 'note',
     'volts', 'sonar', 'picture', 'wire', 'look', 'look-knob', 'walk-toggle', 'walk-note', 'legend'];
   const nodes = Object.fromEntries(names.map(name => [name, element()]));
@@ -126,6 +127,10 @@ function setup(script, preview = false, opts = {}) {
   if (opts.ttl) { nodes.drive.dataset.ttl = opts.ttl; }
   // Both start `hidden` in drive.html; drive.js only ever reveals them.
   nodes.legend.hidden = true; nodes.note.hidden = true;
+  // As camera.html renders them: the photo panel and the full-view toast
+  // start hidden, and the hint carries its resting words.
+  nodes.still.hidden = true; nodes['cam-toast'].hidden = true;
+  nodes['capture-hint'].textContent = 'Capture a still \u00b7 pinch to zoom';
   const body = tree({tag: 'div', id: 'activity-body', kids: (opts.body || ACTIVITY)()});
   nodes['activity-body'] = body;
   const freshness = body.querySelector('.freshness'), note = body.querySelector('p.note');
@@ -157,6 +162,13 @@ function setup(script, preview = false, opts = {}) {
   if (opts.seen) { storage.set('kona-drive-seen', '1'); }
   const window = {...element(), localStorage,
     location: {href: '', protocol: 'http:', host: 'pi.local', search: opts.search || ''}};
+  // One page's worth of history: enough for full view's pushed entry, and
+  // a back() that fires popstate as the browser would (later, there).
+  window.history = {
+    state: null, length: 1,
+    pushState(state) { this.state = state; this.length += 1; },
+    back() { this.state = null; this.length -= 1; if (window.events.popstate) { window.events.popstate({}); } }
+  };
   let nextTimer = 0, files = 0;
   const env = {
     document, window, AbortController, URLSearchParams, Date: StoppedDate, console,
@@ -178,7 +190,7 @@ function setup(script, preview = false, opts = {}) {
     },
     File: class { constructor() { files++; } },
     Blob: class { constructor(parts) { this.parts = parts; } },
-    navigator: {sendBeacon: (url) => { beacons.push(url); return true; }},
+    navigator: {sendBeacon: (url) => { beacons.push(url); return true; }, ...(opts.navigator || {})},
     DOMParser: class { parseFromString() {
       return {getElementById: id => id === 'activity-body' ? tree({tag: 'div', kids: render()}) : null, querySelector: () => null};
     } }
@@ -408,19 +420,63 @@ test('a hung poll is abandoned at the deadline and retried with backoff', async 
   assert.equal(x.requests.length, 2);
 });
 
-test('capture finds its own request among the polls and shares only a live frame', async () => {
+const shots = x => x.requests.filter(q => q.url.indexOf('/snapshot.jpg?t=') === 0);
+
+test('capture finds its own request among the polls and keeps only a live frame', async () => {
   const x = setup('camera.js');
-  const shots = () => x.requests.filter(q => q.url.indexOf('/snapshot.jpg?t=') === 0);
   x.nodes.capture.events.click();
-  assert.equal(shots().length, 1);
-  shots()[0].resolve(frame('disconnected', 1, {error: 'black_frame'})); await settle();
+  assert.equal(shots(x).length, 1);
+  shots(x)[0].resolve(frame('disconnected', 1, {error: 'black_frame'})); await settle();
   assert.equal(x.files(), 0);
+  assert.equal(x.nodes.still.hidden, true, 'no photo panel for a frame that was not live');
   assert.equal(x.nodes.capture.disabled, false);
   assert.match(x.nodes['capture-hint'].textContent, /Could not capture/);
   x.nodes.capture.events.click();
-  shots()[1].resolve(frame('live', 2)); await settle();
+  shots(x)[1].resolve(frame('live', 2)); await settle();
   assert.equal(x.files(), 1);
-  assert.equal(x.nodes['capture-hint'].textContent, 'Photo saved');
+});
+
+test('over plain http the photo is held up to be pressed and saved, never downloaded', async () => {
+  // Chris, 2026-10-11: the shutter opened "JPEG open in preview" and filed
+  // the photo under Files. iPhone Safari refuses to share a file from an
+  // http:// page, and the fallback was a download link. Now the photo is
+  // shown, because a real <img> can be pressed and held for Save to Photos.
+  const x = setup('camera.js');
+  x.nodes.capture.events.click();
+  shots(x)[0].resolve(frame('live', 2)); await settle();
+  assert.equal(x.nodes.still.hidden, false);
+  const url = x.nodes['still-img'].src;
+  assert.match(url, /^blob:/);
+  assert.match(x.nodes['capture-hint'].textContent, /Press and hold/);
+  x.nodes['still-done'].events.click();
+  assert.equal(x.nodes.still.hidden, true);
+  assert.equal(x.nodes['still-img'].getAttribute('src'), null);
+  assert.ok(x.revoked.includes(url), 'the photo URL is released with the panel');
+  assert.equal(x.nodes['capture-hint'].textContent, 'Capture a still \u00b7 pinch to zoom');
+});
+
+test('where the phone can share a file, the share sheet gets the file alone', async () => {
+  const shared = [];
+  const x = setup('camera.js', false, {navigator: {
+    canShare: () => true, share: data => { shared.push(data); return Promise.resolve(); }
+  }});
+  x.nodes.capture.events.click();
+  shots(x)[0].resolve(frame('live', 2)); await settle();
+  assert.equal(shared.length, 1);
+  // No title: a title travels as a second, text item, and with mixed items
+  // iOS stops offering Save Image.
+  assert.deepEqual(Object.keys(shared[0]), ['files']);
+  assert.equal(x.nodes.still.hidden, true);
+  assert.equal(x.nodes['capture-hint'].textContent, 'Photo shared');
+});
+
+test('closing the share sheet without choosing is not reported as a failure', async () => {
+  const x = setup('camera.js', false, {navigator: {
+    canShare: () => true, share: () => Promise.reject(Object.assign(new Error('cancelled'), {name: 'AbortError'}))
+  }});
+  x.nodes.capture.events.click();
+  shots(x)[0].resolve(frame('live', 2)); await settle();
+  assert.equal(x.nodes['capture-hint'].textContent, 'Capture a still \u00b7 pinch to zoom');
 });
 
 test('sample preview never installs automatic or pull refresh', () => {
@@ -892,6 +948,89 @@ test('a touch on the shutter is a button press, not a zoom gesture', () => {
   };
   tap(); tap();
   assert.equal(x.window.KonaZoom.get().s, 1);
+});
+
+// Full view: the picture fills the screen and comes back the way a video
+// player's does -- the same button, a swipe down, or the phone's Back.
+test('full view opens and minimizes with the same button, and Back minimizes too', () => {
+  const x = setup('camera.js');
+  x.nodes.expand.events.click();
+  assert.equal(x.camFrame.classList.contains('full'), true);
+  assert.equal(x.nodes.expand.getAttribute('aria-label'), 'Minimize');
+  assert.equal(x.window.history.state.konaFull, true, 'an entry for Back to take away');
+  x.nodes.expand.events.click();
+  assert.equal(x.camFrame.classList.contains('full'), false);
+  assert.equal(x.nodes.expand.getAttribute('aria-label'), 'Full screen');
+  assert.equal(x.window.history.length, 1, 'minimizing consumed its own entry, nothing more');
+  x.nodes.expand.events.click();
+  x.window.history.back();
+  assert.equal(x.camFrame.classList.contains('full'), false, 'the Back gesture minimizes');
+});
+
+test('the picture starts full view at 1x, so no zoom offset outlives the old frame size', () => {
+  const x = setup('camera.js');
+  pinchFrom(x, 100, 200);
+  assert.equal(x.window.KonaZoom.get().s, 2);
+  x.nodes.expand.events.click();
+  assert.deepEqual({...x.window.KonaZoom.get()}, {s: 1, x: 0, y: 0});
+  assert.equal(x.nodes.cam.style.transform, '');
+});
+
+test('a swipe down at 1x minimizes; zoomed in, the same swipe pans instead', () => {
+  const x = setup('camera.js');
+  const swipeDown = () => {
+    x.camFrame.events.touchstart({touches: [touch(200, 40)], target: element(), preventDefault() {}});
+    x.camFrame.events.touchmove({touches: [touch(210, 160)], target: element(), preventDefault() {}});
+    x.camFrame.events.touchend({touches: []});
+  };
+  x.nodes.expand.events.click();
+  swipeDown();
+  assert.equal(x.camFrame.classList.contains('full'), false);
+  x.nodes.expand.events.click();
+  pinchFrom(x, 100, 200);
+  swipeDown();
+  assert.equal(x.camFrame.classList.contains('full'), true, 'a zoomed picture pans');
+  assert.equal(x.window.KonaZoom.get().y, 0, 'panned down as far as the top edge');
+  // And a mostly sideways drag at 1x is not a minimize.
+  x.window.KonaZoom.reset();
+  x.camFrame.events.touchstart({touches: [touch(100, 40)], target: element(), preventDefault() {}});
+  x.camFrame.events.touchmove({touches: [touch(300, 140)], target: element(), preventDefault() {}});
+  x.camFrame.events.touchend({touches: []});
+  assert.equal(x.camFrame.classList.contains('full'), true);
+});
+
+test('controls fade in full view, a touch brings them back, and that touch presses nothing', () => {
+  const x = setup('camera.js');
+  x.nodes.expand.events.click();
+  x.fire(3000);
+  assert.equal(x.camFrame.classList.contains('quiet'), true);
+  // The finger lands where the hidden button is: it wakes the controls...
+  x.camFrame.events.touchstart({touches: [touch(380, 210)], target: element(), preventDefault() {}});
+  assert.equal(x.camFrame.classList.contains('quiet'), false);
+  // ...and the click that follows the same touch is not a press.
+  x.nodes.expand.events.click();
+  x.nodes.capture.events.click();
+  assert.equal(x.camFrame.classList.contains('full'), true);
+  assert.equal(shots(x).length, 0);
+  x.advance(500);
+  x.nodes.expand.events.click();
+  assert.equal(x.camFrame.classList.contains('full'), false, 'a deliberate press still works');
+});
+
+test('in full view the shutter speaks over the picture, and Escape closes the photo first', async () => {
+  const x = setup('camera.js');
+  x.nodes.expand.events.click();
+  x.nodes.capture.events.click();
+  assert.equal(x.nodes['cam-toast'].hidden, false);
+  assert.equal(x.nodes['cam-toast'].textContent, 'Capturing\u2026');
+  shots(x)[0].resolve(frame('live', 2)); await settle();
+  assert.equal(x.nodes.still.hidden, false);
+  x.document.events.keydown({key: 'Escape'});
+  assert.equal(x.nodes.still.hidden, true);
+  assert.equal(x.camFrame.classList.contains('full'), true);
+  x.document.events.keydown({key: 'Escape'});
+  assert.equal(x.camFrame.classList.contains('full'), false);
+  assert.equal(x.nodes['cam-toast'].hidden, true, 'no full-view words left over the small picture');
 });
 
 // ---------------------------------------------------------------------------

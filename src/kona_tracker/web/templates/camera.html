@@ -14,15 +14,39 @@
     <span class="zoom-level" id="zoom-level" hidden aria-live="polite"></span>
     <span class="live"><span class="dot" id="dot"></span><span id="livetxt">CONNECTING</span></span>
   </div>
+  {# Full view only, and only upright: a web page cannot turn an iPhone's
+     screen, so it says how to get the bigger picture instead. #}
+  <div class="cam-turn" aria-hidden="true"><span>Turn your phone sideways for a bigger picture</span></div>
+  <div class="cam-toast" id="cam-toast" role="status" hidden></div>
   <div class="frame-actions">
+    {# One button, both directions, as on a video player: it reads Full
+       screen on the page and Minimize in full view (camera.js swaps the
+       label; the icon is chosen in CSS from .cam.full). #}
+    <button class="frame-btn" id="expand" type="button" aria-label="Full screen" aria-pressed="false">
+      <svg class="icon-grow" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+      <svg class="icon-shrink" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>
+    </button>
     <button class="shutter" id="capture" type="button" aria-label="Capture and share a current snapshot">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h3l1.5-2h5L16 7h3a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2Z"/><circle cx="12" cy="13" r="3.5"/></svg>
     </button>
   </div>
 </figure>
+{# The captured still, for a phone that cannot share a file. iPhone Safari
+   only offers the share sheet ("Save Image") on an https:// page; over the
+   plain http:// Tailscale address it used to fall back to a download, which
+   iOS opens as a preview and files under Files, not Photos. A real <img>
+   can be pressed and held for "Save to Photos" over http too. Outside the
+   figure so it sits above the full view as well as the page. #}
+<div class="still-sheet" id="still" role="dialog" aria-modal="true" aria-labelledby="still-title" hidden>
+  <div class="still-card">
+    <img id="still-img" alt="The photo you just took of Kona">
+    <p class="still-say" id="still-title">Press and hold the photo, then tap <strong>Save to Photos</strong>.</p>
+    <button class="still-done" id="still-done" type="button">Done</button>
+  </div>
+</div>
 <div class="cam-meta">
   <div><div class="d">Home</div><div class="s" id="cap">Opening the camera…</div></div>
-  <span class="cam-hint" id="capture-hint">Capture and share a still · pinch to zoom</span>
+  <span class="cam-hint" id="capture-hint">Capture a still · pinch to zoom</span>
 </div>
 {% if caps.ptz %}
 {# Only rendered when the camera actually has motors. A fixed camera such as

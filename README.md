@@ -17,8 +17,9 @@ rooms, all from a phone. Built for two people and one Labrador.
 
 - **Activity** from a Fi collar: steps against the daily goal, sleep and naps,
   today by the hour, where she is on a map, and a walk log with each route.
-- **Camera**: live video from a Tapo C120 over RTSP, with pinch-to-zoom and the
-  camera's own night vision, privacy mode and status light.
+- **Camera**: live video from a Tapo C120 over RTSP, with pinch-to-zoom, a
+  full-screen view, stills you can save to Photos, and the camera's own night
+  vision, privacy mode and status light.
 - **Robot**: live view from a Hiwonder TurboPi and a landscape drive mode with
   two joysticks, driven through a safety gateway on the Pi.
 - One shared passcode. No accounts and no per-person setup.
@@ -86,7 +87,7 @@ tunnel or Tailscale, and the one setting that breaks login if it is wrong.
 | `/steps`, `/rest` | Today's steps by the hour. Sleep and naps by the hour, then one bar per day since the collar came online. Drag across a chart to read it. |
 | `/walks/<id>` | One walk: distance, pace, and the route on a map. |
 | `/map` | The map full screen, polling on its own clock, for following a walk. |
-| `/camera` | The picture. Pinch or double-tap to zoom. Night vision, privacy and the status light when the camera answers. |
+| `/camera` | The picture. Pinch or double-tap to zoom; full screen and back. The shutter saves a still. Night vision, privacy and the status light when the camera answers. |
 | `/robot` | The robot's camera and its front lights. |
 | `/drive` | Landscape drive mode: two joysticks, rotate buttons, and a stop button. |
 | `/settings` | Profile, appearance, sign out, build. |
