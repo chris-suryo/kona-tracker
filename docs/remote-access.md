@@ -59,7 +59,8 @@ KONA_KEEP_AWAKE=true
 `http://100.x.y.z:8000`, and a browser will not send a Secure cookie over
 http. Leave it `true` and the symptom is a correct passcode bouncing straight
 back to the login screen, with nothing in the log and nothing on screen to
-tell you why.
+tell you why. (Step 6 gives Tailscale an `https://` address; with that, it
+goes back to `true`.)
 
 The second goes blank because there is no Cloudflare in front of you any
 more. The third keeps the PC awake while you are out; without it the machine
@@ -101,7 +102,64 @@ Administrator:**
 New-NetFirewallRule -DisplayName "kona-tracker 8000" -Direction Inbound -LocalPort 8000 -Protocol TCP -Action Allow
 ```
 
-### 6. Switching back to Cloudflare
+### 6. Optional: an `https://` address on Tailscale
+
+Plain `http://100.x.y.z:8000` works for everything except what a phone only
+allows on a secure page. On an iPhone that is two things the Camera tab uses:
+
+- **Sharing a photo.** Over https the shutter opens the share sheet, and
+  **Save Image** puts the photo in Photos in one tap. Over http, iPhone
+  Safari refuses to share a file. The tab then shows the photo instead,
+  to be pressed and held for **Save to Photos**: one more step.
+- **Keeping the screen on** while you watch in full view.
+
+`tailscale serve` gives the PC an https address with a real certificate,
+reachable only from your own tailnet. It is not `tailscale funnel`, which
+would put the app on the public internet; do not run that.
+
+**Not yet tried on the PC.** The steps are Tailscale's documented ones, but
+nobody has run them on this machine, so check each result.
+
+1. **Turn on HTTPS for the tailnet**, once, in a browser: the Tailscale admin
+   console, **DNS** page. Turn **MagicDNS** on, then **HTTPS Certificates**
+   ("Enable HTTPS").
+2. **On the PC**, in PowerShell (if it says access is denied, use PowerShell
+   as Administrator):
+
+   ```powershell
+   tailscale serve --bg 8000
+   tailscale serve status        # prints the https://<pc>.<tailnet>.ts.net address
+   ```
+
+   `--bg` keeps it running after the window closes, and across reboots.
+   `tailscale serve reset` undoes it.
+3. **In `.env`**, set `KONA_SECURE_COOKIES=true`. Leave
+   `KONA_TRUSTED_PROXY_HEADER` blank (see below). Restart the task:
+   `Stop-ScheduledTask -TaskName kona-tracker; Start-ScheduledTask -TaskName kona-tracker`.
+4. **On each phone**, open the `https://...ts.net` address, sign in again, and
+   add it to the Home Screen. Then delete the old `http://` icon: with the
+   cookie now Secure, the old address shows the page but bounces every
+   sign-in.
+
+What it costs, so it is a choice and not a surprise:
+
+- **The PC's name and your tailnet's name become public.** Every HTTPS
+  certificate is written to public Certificate Transparency logs, and these
+  are issued for `<pc>.<tailnet>.ts.net`. Nothing is reachable from those
+  logs, but if the PC's name is personal, rename the machine in the admin
+  console first.
+- **Everyone on your tailnet shares one login lockout.** `tailscale serve`
+  connects to the app from the PC itself, so every visitor arrives as
+  `127.0.0.1`. Too many wrong passcodes from one phone locks the other out
+  too, for the lockout window. The fix would be to trust a forwarded-address
+  header. That stays off until it has been checked exactly which header
+  `tailscale serve` sends and in what form; trusting the wrong one would
+  let anyone choose their own lockout bucket. On a tailnet of two people's
+  phones, a shared bucket is the safe default.
+- **The first visit can take a few seconds** while Tailscale fetches the
+  certificate.
+
+### 7. Switching back to Cloudflare
 
 **Set `KONA_SECURE_COOKIES=true` again before you use a tunnel**, and restart.
 Forget, and the session cookie travels a public HTTPS URL without the Secure

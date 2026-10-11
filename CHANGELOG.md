@@ -10,6 +10,21 @@ Mostly the story of getting the one machine that serves this app running again,
 and making it stay that way. `docs/history/2026-09-30-application-control-blocks-python.md`
 has the day in full.
 
+### The Camera tab, after a week and a half of use
+
+- **Full screen.** A button next to the shutter fills the screen with the
+  picture, letterboxed rather than cropped. Pinch, double-tap and the shutter
+  all still work there. Minimize with the same button, a swipe down, or the
+  phone's Back. A web page cannot turn an iPhone's screen, so upright it says
+  to turn the phone. The controls fade after three seconds and come back on
+  a touch.
+- **The shutter saves to Photos.** Over the plain `http://` Tailscale
+  address, iPhone Safari will not share a file, and the old fallback was a
+  download: "open in preview", filed under Files. Now the photo is shown, to
+  be pressed and held for Save to Photos. On an `https://` address the share
+  sheet's Save Image does it in one tap; `docs/remote-access.md` step 6 has
+  the `tailscale serve` setup, which also keeps the screen on in full view.
+
 ### Running under Smart App Control
 
 - Windows' Smart App Control, now enforcing on the home PC, refused the
