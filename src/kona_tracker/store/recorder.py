@@ -25,6 +25,7 @@ threads, and `_refresh` runs on whichever thread asked for the page.
 from __future__ import annotations
 
 import logging
+import os
 import sqlite3
 from datetime import date, datetime
 from typing import Any
@@ -70,6 +71,20 @@ class Recorder:
         self._broken = False
         #: A transient failure is in progress; logged once, not per refresh.
         self._paused = False
+
+    def status(self) -> dict[str, Any]:
+        """What the Settings page shows. Never a query: the page must not
+        be able to lock the file, and a stat is all this needs.
+
+        Only the file's name, never its full path: the path names a folder
+        on the PC, and this page is one tap from anyone signed in.
+        """
+        try:
+            size: int | None = os.path.getsize(self._path)
+        except OSError:
+            size = None
+        state = "stopped" if self._broken else "paused" if self._paused else "recording"
+        return {"state": state, "file": os.path.basename(self._path), "size_bytes": size}
 
     def record(self, snapshot: Any) -> bool:
         """Write everything in `snapshot`. True if it landed.

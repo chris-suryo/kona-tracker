@@ -17,10 +17,26 @@
 </section>
 {% if from_preview %}<p class="note">Preview ended. These are this server's actual settings.</p>{% endif %}
 
-{# No status here. Collar battery and connection are on the Activity page,
-   the cameras' state is the badge and caption on their own tabs, in the
-   words poll.js chooses -- one vocabulary, one place. This page holds what
-   a person can change or do, and nothing they can only read. #}
+{# Until 2026-10-12 this page held only what a person can change, and no
+   status. That left "is everything working?" with no page to answer it,
+   and half this screen empty. The two lists below answer it in words, from
+   state the server already holds: opening Settings asks Fi, the camera and
+   the database for nothing. The live status of each camera stays the badge
+   on its own tab; this is the summary, not a second vocabulary. #}
+{% if collar_rows %}
+<section class="settings-group" aria-labelledby="collar-title">
+  <h2 id="collar-title">Collar</h2>
+  <dl class="status-list">
+    {% for r in collar_rows %}<div><dt>{{ r.label }}</dt><dd{% if r.warn %} class="warn"{% endif %}>{{ r.value }}</dd></div>{% endfor %}
+  </dl>
+</section>
+{% endif %}
+<section class="settings-group" aria-labelledby="system-title">
+  <h2 id="system-title">This server</h2>
+  <dl class="status-list">
+    {% for r in system_rows %}<div><dt>{{ r.label }}</dt><dd{% if r.warn %} class="warn"{% endif %}>{{ r.value }}</dd></div>{% endfor %}
+  </dl>
+</section>
 <section class="settings-group" aria-labelledby="appearance-title">
   <h2 id="appearance-title">Appearance</h2>
   {# Three choices, not a switch: "follow the phone" is the default and has

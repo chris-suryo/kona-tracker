@@ -509,6 +509,10 @@ class FiService:
             return self._live_ttl
         return self._ttl
 
+    def recorder_status(self) -> dict[str, Any] | None:
+        """The recorder's own report, or None when recording is off."""
+        return self._recorder.status() if self._recorder is not None else None
+
     def peek(self) -> FiSnapshot | None:
         """What the cache holds, without asking Fi for anything.
 
