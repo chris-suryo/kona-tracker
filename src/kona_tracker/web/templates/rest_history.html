@@ -57,6 +57,14 @@
   <div class="chart-axis"><span>12 am</span><span>6 am</span><span>noon</span><span>6 pm</span><span>12 am</span></div>
   {{ readings_list('hour-readings', hours, rest_hour_reading) }}
   <p class="chart-selection" aria-live="polite">{% if hour_chosen %}<strong>{{ hour_chosen.label }}</strong> · {{ rest_hour_reading(hour_chosen) }}{% else %}Drag across the chart, or tap an hour, to see its reading. So far today: {% if hours_total is not none %}{{ minutes(hours_total) }}{% else %}&ndash;{% endif %} of rest.{% endif %}</p>
+  {# The same table Steps and Rest by day have: every hour as text, for a
+     reader who would rather not scrub, and for a screen reader. #}
+  <details class="history-readings"><summary>View readings</summary>
+    <p class="chart-footnote">The values plotted above, as Fi reported them. Dots mean zero; dashed marks mean no reading; faint marks are hours still to come.</p>
+    <table><thead><tr><th>Hour</th><th>Sleep</th><th>Naps</th><th>Rest</th></tr></thead><tbody>
+    {% for b in hours %}<tr><th>{{ b.label }}</th>{% if b.future %}<td colspan="3">Not yet</td>{% else %}<td>{% if b.sleep is none %}&ndash;{% else %}{{ minutes(b.sleep) }}{% endif %}</td><td>{% if b.nap is none %}&ndash;{% else %}{{ minutes(b.nap) }}{% endif %}</td><td>{% if b.value is none %}No reading{% else %}{{ minutes(b.value) }}{% endif %}</td>{% endif %}</tr>{% endfor %}
+    </tbody></table>
+  </details>
 </section>
 {% endif %}
 

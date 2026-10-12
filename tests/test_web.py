@@ -1168,3 +1168,34 @@ def test_no_page_still_tells_the_reader_to_look_for_a_K_on_the_map():
     web = Path(__file__).resolve().parent.parent / "src" / "kona_tracker" / "web"
     for path in sorted((web / "templates").glob("*.html")):
         assert "end with K" not in path.read_text(), f"{path.name} still describes the old marker"
+
+
+def test_the_login_page_asks_for_no_photo_that_does_not_exist(client):
+    """It loaded /static/kona.jpg, which never existed: a 404 on every visit."""
+    page = client.get("/login").text
+    assert "kona.jpg" not in page
+    assert client.get("/static/kona.jpg").status_code == 404
+
+
+def test_small_controls_get_a_44px_touch_target_and_the_robot_tab_its_margins():
+    """Review findings from 2026-10-11, held in the stylesheet.
+
+    - Tabs, switches, swatches and the walk button were drawn 32-36px tall,
+      under the 44px a finger needs; each gets an invisible ::after instead
+      of a bigger drawing, so no layout moves.
+    - The Robot tab's drive card and its link sat flush against the screen
+      edges: `.cam-page` has no padding, and those two never put it back.
+    - Drive mode's `.pad` rule was unscoped and flattened the camera's
+      pan/tilt grid into one column.
+    """
+    from kona_tracker.web.app import HERE
+
+    css = (HERE / "static" / "app.css").read_text(encoding="utf-8")
+    for control in (".seg a", ".switch", ".seg.small .opt", ".swatch", ".walk-toggle", ".back"):
+        assert f"{control}::after" in css, control
+    assert ".robot-page .drive-link {" in css and "margin: 18px 20px 0" in css
+    assert (
+        ".robot-page .drive-again { display: inline-block; min-height: 44px; margin: 0 20px;" in css
+    )
+    assert "\n.pad { display: flex" not in css, "drive's pad rule must stay scoped"
+    assert ".drive-pads .pad { display: flex" in css

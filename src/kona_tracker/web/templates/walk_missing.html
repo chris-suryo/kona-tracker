@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Kona · walk{% endblock %}
+{% block pageclass %}history-page walk-page{% endblock %}
+{% block body %}
+{# A walk link outlives the walk: Fi's feed keeps the newest dozen, and a
+   link from a page opened yesterday can point past the end of it. This was
+   a bare JSON error, {"detail": ...}, on a phone. #}
+<nav class="subnav" aria-label="Back"><a class="back" href="/activity">{% include "_chevron.svg" %}<span>Activity</span></a></nav>
+<header class="history-heading">
+  <span class="eyebrow">Walk</span>
+  <h1>Not available</h1>
+</header>
+<p class="history-next"><span>This walk is no longer in Fi's feed, which keeps only the newest dozen. Today's walks are on Activity.</span></p>
+{% endblock %}

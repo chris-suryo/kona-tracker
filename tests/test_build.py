@@ -171,3 +171,15 @@ def test_the_label_uses_no_platform_specific_strftime_directives():
 def test_a_single_digit_day_is_not_zero_padded():
     build = Build(known=True, sha="abc1234", committed_at=dt.datetime(2026, 9, 3, 9, 5))
     assert build.label.startswith("3 Sep 09:05"), build.label
+
+
+def test_the_label_reads_in_this_machines_clock_whatever_offset_git_recorded():
+    """git's %cI keeps the committer's offset: a merge on GitHub is UTC, a
+    commit on the PC is Eastern. The Settings page should say when in the
+    reader's own time, so two builds always print in the right order."""
+    utc = dt.datetime(2026, 10, 11, 23, 36, tzinfo=dt.UTC)
+    local = utc.astimezone()
+    build = Build(known=True, sha="f4ecf08", committed_at=utc)
+    assert build.label == f"{local.day} {local:%b} {local:%H:%M} · f4ecf08"
+    eastern = utc.astimezone(dt.timezone(dt.timedelta(hours=-4)))
+    assert Build(known=True, sha="f4ecf08", committed_at=eastern).label == build.label

@@ -64,9 +64,11 @@
   /* The light ramp was darkened on 2026-09-13 after the first audit anyone
      had ever run against it. Every value below carries its measured
      contrast against --bg; the originals are in the comment beside them.
-     The dark theme was already comfortably above AA and is unchanged. */
+     --ink3 was lifted again on 2026-10-11, in both themes: the dark one had
+     been called "comfortably above AA" here while it measured 3.07:1.
+     tests/test_contrast.py now holds every --ink3 at 4.5:1 or better. */
   --bg:#F3F1EA; --bg2:#E7E4D8; --ink:#171A15; --ink2:#5C6356;
-  --ink3:#6E7568;   /* was #9AA094, 2.37:1 -- every small label in the app */
+  --ink3:#646B5E;   /* 4.88:1; was #6E7568 (4.22), and #9AA094 (2.37) before that */
   --line:rgba(23,26,21,.13);
   --t1:#C9D7B7;     /* was #DCE5D0, 1.15:1 -- the goal ring had no track */
   --t2:#A3BA86;     /* was #B4C79B, 1.60:1 -- nap bars vanished */
@@ -102,7 +104,7 @@
    `:root` above, which the `:not([data-theme="light"])` guard restores. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg:#121611; --bg2:#1B211A; --ink:#EEF0E6; --ink2:#9BA394; --ink3:#5E665A;
+    --bg:#121611; --bg2:#1B211A; --ink:#EEF0E6; --ink2:#9BA394; --ink3:#828A7C;
     --line:rgba(238,240,230,.12);
     --t1:#1F3320; --t2:#35562E; --t3:#5F8A48; --t4:#8FBF6A; --t5:#CDE9B4; --on:#0B1208;
     --warn:#E0A33A; --bad:#FF6B57;
@@ -113,7 +115,7 @@
   }
 }
 :root[data-theme="dark"] {
-    --bg:#121611; --bg2:#1B211A; --ink:#EEF0E6; --ink2:#9BA394; --ink3:#5E665A;
+    --bg:#121611; --bg2:#1B211A; --ink:#EEF0E6; --ink2:#9BA394; --ink3:#828A7C;
     --line:rgba(238,240,230,.12);
     --t1:#1F3320; --t2:#35562E; --t3:#5F8A48; --t4:#8FBF6A; --t5:#CDE9B4; --on:#0B1208;
     --warn:#E0A33A; --bad:#FF6B57;
@@ -147,6 +149,16 @@ body { min-height: 100dvh; display: flex; flex-direction: column; -webkit-font-s
    because press-and-hold must not scroll. */
 .seg a, .avatar, .shutter, .frame-btn, .still-done, .pill, .settings-link, .login button, .logout,
 .drive-exit, .drive-link { touch-action: manipulation; }
+/* A 44px touch target without drawing anything bigger. These controls are
+   small on purpose -- the tabs, the switches, the colour swatches -- and
+   making them 44px tall would move every layout they sit in. An invisible
+   ::after stretches each one's hit area instead: a tap a few pixels outside
+   the drawn edge still lands on the control. `.drive-speed` is already
+   positioned, so it takes only the ::after. */
+.seg a, .switch, .seg.small .opt, .swatch, .walk-toggle, .live-back, .back, .drive-exit { position: relative; }
+.seg a::after, .switch::after, .seg.small .opt::after, .walk-toggle::after, .back::after,
+.drive-exit::after, .drive-speed::after { content: ''; position: absolute; inset: -6px 0; }
+.swatch::after, .live-back::after { content: ''; position: absolute; inset: -5px; border-radius: 50%; }
 
 /* Pull to refresh (app.js). The body, not main, owns the viewport scroll,
    so `overscroll-behavior` goes there: it keeps Safari's own
@@ -536,7 +548,7 @@ html.cam-full, html.cam-full body { overflow: hidden; }
    charting library. SVG geometry is data; presentation stays in this file. */
 .detail-link { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; color: var(--t4); font-size: 12px; font-weight: 600; text-decoration: none; }
 .rest-detail-link { display: flex; justify-content: space-between; border-bottom: 1px solid var(--line); }
-.history-heading { padding: 26px 0 20px; }
+.history-heading { padding: 18px 0 14px; }
 .history-heading h1 { margin: 4px 0 0; font-size: 42px; letter-spacing: -.05em; }
 .history-tabs { display: flex; gap: 6px; padding: 4px; border-radius: 999px; background: var(--bg2); }
 .history-tabs a { flex: 1; text-align: center; padding: 12px; border-radius: 999px; color: var(--ink2); text-decoration: none; font-size: 14px; }
@@ -570,6 +582,9 @@ html.cam-full, html.cam-full body { overflow: hidden; }
    than beside the number so it never competes for the first glance. */
 .history-total .total-explain { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line);
                                 color: var(--ink2); line-height: 1.45; max-width: 46ch; }
+/* Two charts in a row (Rest) read as one without a gap and a rule between
+   them; the space used to come only from the browser's default h2 margin. */
+.history-chart + .history-chart { margin-top: 28px; padding-top: 24px; border-top: 1px solid var(--line); }
 .chart-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .chart-heading h2 { font-size: 15px; font-weight: 600; }
 .chart-heading > span { font-size: 11px; color: var(--ink2); }
@@ -623,7 +638,10 @@ html.cam-full, html.cam-full body { overflow: hidden; }
 .history-readings table { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
 .history-readings th, .history-readings td { padding: 8px 0; text-align: left; font-weight: 400; }
 .history-readings td { text-align: right; color: var(--ink2); }
-.history-next { margin-top: 24px; padding: 18px; border-radius: 14px; background: var(--bg2); }
+/* Number columns are right-aligned; their headings follow, or "Naps" sits
+   over the Sleep figures. */
+.history-readings thead th + th { text-align: right; }
+.history-next { margin-top: 12px; padding: 4px 0; border-radius: 14px; }
 .history-next p { font-size: 12px; line-height: 1.5; color: var(--ink2); margin: 8px 0; }
 .history-next a { display: inline-flex; gap: 12px; align-items: center; min-height: 44px; color: var(--t4); font-size: 13px; font-weight: 600; text-decoration: none; }
 .detail-link:focus-visible, .history-page a:focus-visible { outline: 2px solid var(--t4); outline-offset: 3px; }
@@ -632,8 +650,6 @@ html.cam-full, html.cam-full body { overflow: hidden; }
 .history-total > .d small { font-size: .38em; font-weight: 500; color: var(--ink2); margin-left: .12em; }
 .history-total > .d .duration-minutes small { font-size: .55em; }
 .rest-key strong small { font-size: .85em; margin-left: .1em; }
-.history-heading { padding: 18px 0 14px; }
-.history-next { padding: 4px 0; background: none; margin-top: 12px; }
 .pull { opacity: 0; transition: transform .22s cubic-bezier(.2,.8,.2,1), opacity .18s ease; }
 .pull.dragging { transition: none; }
 .pull.busy, .pull.finished { opacity: 1; transform: translateY(16px); }
@@ -900,10 +916,14 @@ html.cam-full, html.cam-full body { overflow: hidden; }
    the floor directly in front of the wheels, the one part you cannot drive
    without. The Tapo is genuinely 16:9 and keeps its rule. */
 .robot-page .cam img { aspect-ratio: 4 / 3; }
+/* `.cam-page` has no padding so the picture can run edge to edge, and every
+   other section puts its own 20px back. These two did not, and sat flush
+   against the screen edges. */
 .robot-page .drive-link { display: flex; align-items: center; justify-content: space-between;
-  gap: 12px; margin: 18px 0 0; padding: 16px; border: 1px solid var(--line); border-radius: 18px;
+  gap: 12px; margin: 18px 20px 0; padding: 16px; border: 1px solid var(--line); border-radius: 18px;
   background: var(--bg2); color: var(--ink); text-decoration: none; font-weight: 600; }
-.robot-page .drive-again { display: inline-block; min-height: 44px; padding: 12px 0 0; font-size: 13px; color: var(--ink2); }
+.robot-page .drive-again { display: inline-block; min-height: 44px; margin: 0 20px; padding: 12px 0 0;
+  font-size: 13px; font-weight: 600; color: var(--t4); text-decoration: none; }
 .robot-page .drive-link small { display: block; margin-top: 3px; color: var(--ink2);
   font-size: 12px; font-weight: 400; }
 
@@ -975,7 +995,9 @@ html.cam-full, html.cam-full body { overflow: hidden; }
                    text-transform: uppercase; letter-spacing: .08em; }
 /* A word under each control, so a second driver does not have to guess
    which stick moves and which one looks. Quiet: the sticks are the point. */
-.pad { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+/* Scoped: an unscoped `.pad` here came after the camera's pan/tilt grid and
+   turned it into one column, on any camera that can move. */
+.drive-pads .pad { display: flex; flex-direction: column; align-items: center; gap: 6px; }
 .pad-label { font-size: 10px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase;
              color: rgba(255,255,255,.7); }
 .drive-spins .pad-label { text-align: center; }
