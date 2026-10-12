@@ -140,12 +140,15 @@ def make_activity_router(deps: AppDeps) -> APIRouter:
         dozen, and older walks fall off it. Anything that does not look like
         a Fi id is the same 404 before it reaches the snapshot.
         """
-        if not WALK_ID.fullmatch(walk_id):
-            raise HTTPException(status_code=404, detail="That walk is no longer in Fi's feed.")
-        snapshot = fi.snapshot() if fi else None
-        context = walk_context(snapshot, walk_id, configured=fi is not None)
+        context = None
+        if WALK_ID.fullmatch(walk_id):
+            snapshot = fi.snapshot() if fi else None
+            context = walk_context(snapshot, walk_id, configured=fi is not None)
         if context is None:
-            raise HTTPException(status_code=404, detail="That walk is no longer in Fi's feed.")
+            # A page, not a JSON error: this is a link someone tapped.
+            return templates.TemplateResponse(
+                request, "walk_missing.html", {"tab": None}, status_code=404
+            )
         context["map_tiles"] = tile_config
         return templates.TemplateResponse(request, "walk.html", context)
 

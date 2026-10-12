@@ -163,8 +163,13 @@ def test_walk_page_draws_the_route_and_reports_fi_s_figures():
         assert '<script type="application/json" id="map-points">' in page
         assert page.count('"lat"') == 8, "every fix of the route, none invented"
         assert "pace" in page
-        # An id the feed no longer holds is a 404, not an empty page.
-        assert c.get("/walks/not-a-walk").status_code == 404
+        # An id the feed no longer holds is a 404 -- a page saying so, with
+        # the way back, not the bare JSON error it used to be on a phone.
+        gone = c.get("/walks/not-a-walk")
+        assert gone.status_code == 404
+        assert gone.headers["content-type"].startswith("text/html")
+        assert "no longer in Fi's feed" in gone.text and 'href="/activity"' in gone.text
+        assert c.get("/walks/bad%20id").status_code == 404
         assert c.get("/walks/../etc").status_code in (404, 422)
 
 

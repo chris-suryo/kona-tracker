@@ -133,3 +133,15 @@ def test_activity_json_carries_the_hour_buckets():
     assert data["hours"][23] == {"sleep_s": None, "nap_s": None, "steps": None}
     assert hourly_json(None) is None
     assert rest_history_context(None, configured=False)["hours"] == []
+
+
+def test_rest_by_hour_has_its_own_readings_table_like_steps_and_rest_by_day():
+    """Steps and Rest by day each had a "View readings" table; Rest's hourly
+    chart did not, so its hours could only be read by scrubbing."""
+    with _client(_service()) as c:
+        body = c.get("/rest").text
+    hourly = body[body.index("Today by hour") : body.index("Rest by day")]
+    assert "<summary>View readings</summary>" in hourly
+    assert "<th>Hour</th><th>Sleep</th><th>Naps</th><th>Rest</th>" in hourly
+    assert hourly.count("</td></tr>") == 24, "one row per hour of the day"
+    assert "Not yet" in hourly, "hours still to come say so"
