@@ -10,6 +10,34 @@ Mostly the story of getting the one machine that serves this app running again,
 and making it stay that way. `docs/history/2026-09-30-application-control-blocks-python.md`
 has the day in full.
 
+### Using the empty space for what the app already knew
+
+Everything here was already fetched or computed, then dropped before any
+page. Nothing adds a request to Fi; two of these remove one.
+
+- **Camera: Kona in one line under the picture.** For example, "Resting
+  since 7:00 am · 4,210 steps · collar 57% · Home", or "On a walk ·
+  0.5 mi · started 12:05 pm". Tap it to go to Activity. Escapes and Lost
+  Dog Mode lead in red. It uses the reading the server already holds, so
+  the camera page never waits on Fi.
+- **Robot tab: the battery,** every 30 s while the page is visible. Until
+  now the only way to learn it needed charging was to try to drive it.
+- **Settings answers "is everything working?"**
+  - *Collar:* charger, light, when Fi expects the next report, and
+    "Overdue" when it is late.
+  - *This server:* camera, Fi, recording (with file size), heartbeat, and
+    when the server started.
+  - Opening Settings no longer makes the server ask Fi.
+- **The place each walk was,** under its time in the walk list.
+- **The times she woke last night,** on Rest. The Activity tile has room
+  only for "woke twice".
+- **Fi's weekly total** (steps and outdoor distance) on Steps. It stays off
+  Activity, where weekly totals were deliberately kept out.
+- **No "Start walk" under "On a walk."** Once Fi has spotted the walk, the
+  server is already asking faster, so the button hides and a note says so.
+  It comes back when the walk ends. After "Stop walk", the old "Stops on its
+  own in … min" note no longer lingers.
+
 ### A polish pass from a review of every page
 
 - **Robot tab margins.** The drive card and "Show me the controls again"
