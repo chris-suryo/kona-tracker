@@ -594,6 +594,9 @@ html.cam-full, html.cam-full body { overflow: hidden; }
                                 color: var(--ink2); line-height: 1.45; max-width: 46ch; }
 /* Two charts in a row (Rest) read as one without a gap and a rule between
    them; the space used to come only from the browser's default h2 margin. */
+.last-night { margin: 18px 0 0; font-size: 13px; line-height: 1.5; color: var(--ink2); }
+.last-night strong { color: var(--ink); font-weight: 600; margin-right: 4px; }
+.walk-when .walk-area-name { display: block; color: var(--ink2); font-size: 12px; margin-top: 2px; }
 .history-chart + .history-chart { margin-top: 28px; padding-top: 24px; border-top: 1px solid var(--line); }
 .chart-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .chart-heading h2 { font-size: 15px; font-weight: 600; }

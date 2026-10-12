@@ -252,6 +252,13 @@ def hourly_context(
     }
 
 
+def _week_line(snapshot: FiSnapshot | None) -> dict[str, Any]:
+    week = snapshot.week if snapshot else None
+    if week is None or snapshot is None or snapshot.historical_totals_hidden:
+        return {"week_steps": None, "week_distance": None}
+    return {"week_steps": _count(week.steps), "week_distance": outdoor_distance(week.distance)}
+
+
 def steps_context(
     snapshot: FiSnapshot | None, configured: bool, hour: int | None = None
 ) -> dict[str, Any]:
@@ -275,6 +282,11 @@ def steps_context(
             ),
             "distance": outdoor_distance(activity.distance if activity else None),
             "distance_note": DISTANCE_NOTE,
+            # Fi's weekly total, which was fetched, computed and dropped. Not
+            # on Activity (weekly totals belong in a detail view), and not
+            # while it could still include the previous collar: the same
+            # rule the Activity note explains.
+            **_week_line(snapshot),
             "fetched_label": _hhmm(fetched_local) if fetched_local else None,
             "clock_zone": fetched_local.strftime("%Z") if zone and fetched_local else None,
         }

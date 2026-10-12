@@ -146,6 +146,20 @@ def last_night(snapshot: FiSnapshot | None, zone: tzinfo | None) -> dict[str, An
     }
 
 
+def last_night_labels(snapshot: FiSnapshot | None) -> dict[str, Any] | None:
+    """Last night's span and the times she woke, in Kona's clock, for /rest.
+
+    The Activity tile has room for "woke twice" and no more; the times were
+    computed for it and thrown away. None unless Fi sent the overnight
+    summary itself, since only that has a start, an end and interruptions.
+    """
+    if snapshot is None:
+        return None
+    profile = snapshot.profile
+    night = last_night(snapshot, kona_zone(profile.timezone if profile else None))
+    return night["labels"] if night and night["source"] == "overnight" else None
+
+
 def activity_context(snapshot: FiSnapshot | None, configured: bool) -> dict[str, Any]:
     """Everything `activity.html` needs, with no data invented on the way."""
     window = snapshot.window if snapshot else None

@@ -39,6 +39,11 @@
   </div>
   <p class="total-explain">{{ rest_note }}</p>
 </section>
+{% if last_night %}
+{# Fi's own record of the night, with the wakes the Activity tile can only
+   count. Under the average, because it is one night, not part of it. #}
+<p class="last-night"><strong>Last night</strong> {{ last_night.span }} · {% if last_night.interruptions %}woke {{ last_night.interruptions|join(', ') }}{% else %}slept through{% endif %}</p>
+{% endif %}
 {% if hours %}
 <section class="history-chart" aria-labelledby="hours-title">
   <div class="chart-heading"><h2 id="hours-title">Today by hour</h2><span>{{ hours_maximum_label }}{% if hours_through %} · {{ hours_through }}{% endif %}</span></div>

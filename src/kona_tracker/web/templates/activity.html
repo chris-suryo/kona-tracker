@@ -159,6 +159,7 @@
       <div class="walk-when">
         <strong>{{ w.label }}</strong>
         <span>{{ w.span or 'time unknown' }}{% if w.duration %} · {{ duration(w.duration) }}{% endif %}</span>
+        {% if w.area %}<span class="walk-area-name">{{ w.area }}</span>{% endif %}
       </div>
       <div class="walk-stats">
         {% if w.steps %}<span><strong>{{ w.steps }}</strong> steps</span>{% endif %}
