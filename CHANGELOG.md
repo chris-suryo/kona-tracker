@@ -10,6 +10,30 @@ Mostly the story of getting the one machine that serves this app running again,
 and making it stay that way. `docs/history/2026-09-30-application-control-blocks-python.md`
 has the day in full.
 
+### A polish pass from a review of every page
+
+- **Robot tab margins.** The drive card and "Show me the controls again"
+  ran to the screen edges, and the link was grey and underlined. Both now
+  have the page's margin, and the link is in the app's green link style.
+- **Small controls are easier to hit.** The tabs, switches, colour swatches,
+  segmented buttons and the walk button were drawn 32–36px tall, under the
+  44px a fingertip needs. Each now has a larger invisible touch area, so
+  nothing on screen moved.
+- **The faint text is readable.** The small grey labels ("Checked Fi", the
+  camera hint, the build line) measured 3.1:1 in dark and 4.2:1 in light,
+  both under the 4.5:1 floor. They are now 5.1:1 and 4.9:1, still quieter
+  than the secondary text. A test holds that.
+- **Rest by hour** gets the "View readings" table the other two charts
+  already had, and a rule now separates the two Rest charts. The tables'
+  column headings sit over their numbers.
+- **A walk that has dropped out of Fi's feed** shows a page saying so, with
+  the way back. It used to show a bare JSON error.
+- **The build line on Settings** is in the PC's own time. It used to show
+  whatever timezone the commit carried, UTC for a merge made on GitHub.
+- The login page no longer asks for a photo that never existed.
+- A drive-mode style no longer flattens the pan/tilt pad of a camera that
+  can move. None can yet, which is why it was never seen.
+
 ### The Camera tab, after a week and a half of use
 
 - **Full screen.** A button next to the shutter fills the screen with the
