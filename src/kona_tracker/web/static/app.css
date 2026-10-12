@@ -148,7 +148,7 @@ body { min-height: 100dvh; display: flex; flex-direction: column; -webkit-font-s
    inside the map, where pinch is how you zoom it. .nub keeps `none`
    because press-and-hold must not scroll. */
 .seg a, .avatar, .shutter, .frame-btn, .still-done, .pill, .settings-link, .login button, .logout,
-.drive-exit, .drive-link { touch-action: manipulation; }
+.drive-exit, .drive-link, .kona-now { touch-action: manipulation; }
 /* A 44px touch target without drawing anything bigger. These controls are
    small on purpose -- the tabs, the switches, the colour swatches -- and
    making them 44px tall would move every layout they sit in. An invisible
@@ -423,6 +423,16 @@ html.cam-full, html.cam-full body { overflow: hidden; }
 .still-done { min-width: 140px; min-height: 44px; padding: 0 22px; border: 0; border-radius: 999px;
               background: #fff; color: #171A15; font: inherit; font-size: 15px; font-weight: 700; }
 
+/* Kona in one line under the picture (camera.html). A card, so it reads as
+   a way to Activity rather than as a caption of the camera. */
+.kona-now { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 2px 12px;
+            margin: 16px 20px 0; padding: 14px 16px; border: 1px solid var(--line); border-radius: 14px;
+            background: var(--bg2); color: var(--ink); font-size: 14px; line-height: 1.4; text-decoration: none; }
+.kona-now > :not(.go) { grid-column: 1; }
+.kona-now .go { grid-column: 2; grid-row: 1 / span 3; display: grid; place-items: center; color: var(--ink3); }
+.kona-now .go svg { width: 18px; height: 18px; transform: rotate(180deg); }
+.kona-now small { color: var(--ink2); font-size: 12px; }
+.kona-now-alert { color: var(--bad); font-weight: 700; }
 .cam-meta { padding: 18px 20px 0; display: flex; justify-content: space-between; align-items: end; gap: 20px; }
 .cam-meta .d { font-size: 30px; letter-spacing: -.04em; }
 .cam-meta .s { font-size: 12px; color: var(--ink2); margin-top: 4px; min-height: 1.2em; }

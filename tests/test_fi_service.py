@@ -6,6 +6,7 @@ data are each a distinct visible state, and each is pinned below.
 """
 
 import json
+from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 
 import httpx
@@ -1165,3 +1166,40 @@ def test_overnight_is_only_asked_for_when_a_completed_night_exists():
         snap = fetch_snapshot(client, EMAIL, PASSWORD, now=NOW, data_start=date(2026, 9, 10))
     assert snap.window is None and snap.overnight is None
     assert snap.walks, "the walk log does not depend on the night"
+
+
+def test_the_camera_page_says_how_kona_is_from_the_reading_already_held():
+    """Watching the camera, the question is "is she all right?", and the
+    answer was a tab away. The strip comes from `peek()`: the camera page
+    must never wait on Fi, so before any reading exists there is no strip."""
+    settings = Settings(passcode="4242", secret="test-secret")
+    app = create_app(settings, source_factory=lambda: FakeSource(fps=100), fi_service=service())
+    with TestClient(app) as c:
+        # Not followed: the login redirect lands on /activity, which asks Fi.
+        c.post("/login", data={"passcode": "4242"}, follow_redirects=False)
+        first = c.get("/camera").text
+        assert 'class="kona-now' not in first, "no reading held yet: nothing, not a spinner"
+        assert app.state.fi.peek() is None, "and the camera page did not go and fetch one"
+        c.get("/activity")  # a real page asked Fi; now there is a reading
+        page = c.get("/camera").text
+        assert '<a class="kona-now" href="/activity">' in page
+        assert "4,210 steps" in page and "collar" in page
+        assert page.index('class="cam-meta"') < page.index('class="kona-now')
+
+
+def test_the_camera_strip_leads_with_an_escape_and_dims_when_stale():
+    from kona_tracker.web.views.activity import kona_now
+
+    svc = service()
+    snap = svc.snapshot()
+    now = kona_now(snap)
+    assert now is not None and now["alert"] is None and not now["stale"]
+    escaped = replace(snap, status=replace(snap.status, escaped=True), stale=True)
+    now = kona_now(escaped)
+    assert now["alert"] == "Left the safe zone" and now["stale"] and now["as_of"]
+    assert kona_now(None) is None
+
+
+def test_the_camera_page_without_a_collar_shows_no_strip():
+    with web_client() as c:
+        assert 'class="kona-now' not in c.get("/camera").text

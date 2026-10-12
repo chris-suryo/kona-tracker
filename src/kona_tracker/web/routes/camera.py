@@ -11,17 +11,19 @@ from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from kona_tracker.camera.control import ControlUnsupported
 from kona_tracker.camera.hub import BOUNDARY, MAX_STREAMS, CameraHub
 from kona_tracker.web.deps import AppDeps
+from kona_tracker.web.views.activity import kona_now
 
 
 def make_camera_router(deps: AppDeps) -> APIRouter:
     router = APIRouter()
-    settings, templates, hub, robot_hub, control, capabilities = (
+    settings, templates, hub, robot_hub, control, capabilities, fi = (
         deps.settings,
         deps.templates,
         deps.hub,
         deps.robot_hub,
         deps.control,
         deps.capabilities,
+        deps.fi,
     )
 
     def hub_for(cam: str) -> CameraHub:
@@ -43,7 +45,14 @@ def make_camera_router(deps: AppDeps) -> APIRouter:
             # `source` lets poll.js pick advice for the kind of camera it
             # is: "unplug it" is right for a webcam and nonsense for one on
             # the Wi-Fi.
-            {"tab": "camera", "caps": capabilities, "source": settings.camera_source},
+            {
+                "tab": "camera",
+                "caps": capabilities,
+                "source": settings.camera_source,
+                # `peek`, never `snapshot`: the camera page must not wait on
+                # a Fi round trip, so it shows what is already held or nothing.
+                "now": kona_now(fi.peek()) if fi else None,
+            },
         )
 
     @router.get("/stream.mjpg")
