@@ -23,6 +23,7 @@ from kona_tracker.web.views import (
     rest_history_context,
     steps_context,
     walk_context,
+    walk_spotted,
 )
 
 #: Fi ids as seen on Kona's account: 22 URL-safe characters. Generous on
@@ -58,7 +59,9 @@ def make_activity_router(deps: AppDeps) -> APIRouter:
             else activity_context(snapshot, configured=fi is not None)
         )
         context["map_tiles"] = tile_config
-        context["live"] = live_button(fi.live_state() if fi and not preview else None)
+        context["live"] = live_button(
+            fi.live_state() if fi and not preview else None, walk_spotted(snapshot)
+        )
         return templates.TemplateResponse(request, "activity.html", context)
 
     @router.post("/live")
@@ -94,7 +97,7 @@ def make_activity_router(deps: AppDeps) -> APIRouter:
         snapshot = fi.snapshot(force=fresh) if fi else None
         context = live_map_context(snapshot, configured=fi is not None)
         context["map_tiles"] = tile_config
-        context["live"] = live_button(fi.live_state() if fi else None)
+        context["live"] = live_button(fi.live_state() if fi else None, walk_spotted(snapshot))
         return templates.TemplateResponse(request, "map_live.html", context)
 
     @router.get("/map.json")
@@ -102,7 +105,7 @@ def make_activity_router(deps: AppDeps) -> APIRouter:
         """Just the map's own facts, small enough to ask for every 10 s."""
         snapshot = fi.snapshot() if fi else None
         payload = live_map_json(snapshot, configured=fi is not None)
-        payload["button"] = live_button(fi.live_state() if fi else None)
+        payload["button"] = live_button(fi.live_state() if fi else None, walk_spotted(snapshot))
         return payload
 
     @router.get("/rest", response_class=HTMLResponse)

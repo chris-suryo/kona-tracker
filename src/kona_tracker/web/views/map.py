@@ -126,20 +126,57 @@ def live_map_context(snapshot: FiSnapshot | None, configured: bool) -> dict[str,
     return context
 
 
-def live_button(state: dict[str, Any] | None) -> dict[str, Any]:
+SPOTTED_NOTE = "Fi spotted the walk · updating faster until it ends"
+
+
+def walk_spotted(snapshot: FiSnapshot | None) -> bool:
+    """Fi itself says she is out, so the server is already asking fast.
+
+    The same test `FiService._effective_ttl` uses to pick the walking
+    cadence: a fresh snapshot, a walk, and positions that are this walk's
+    own rather than carried over from the last one.
+    """
+    status = snapshot.status if snapshot else None
+    return bool(
+        snapshot
+        and not snapshot.stale
+        and status
+        and status.activity == "walk"
+        and not status.positions_carried
+    )
+
+
+def live_button(state: dict[str, Any] | None, spotted: bool = False) -> dict[str, Any]:
     """What the "Start walk" control should say right now.
 
     `state` is `FiService.live_state()`, or None when no collar is
     configured, in which case there is nothing to start and the button is
     not offered at all rather than offered and dead.
+
+    `spotted` is `walk_spotted(snapshot)`. Fi detecting the walk already
+    puts the server on the walking cadence, so a "Start walk" button under
+    the title "On a walk" was offering what was already happening. The
+    button is then hidden, not removed: the map redraws it from /map.json,
+    and it has to come back when the walk ends.
+
+    `walk_mode.js` redraws these same words after a press and must match.
     """
     if not state:
-        return {"offered": False, "on": False, "label": None, "note": None}
+        return {"offered": False, "on": False, "spotted": False, "label": None, "note": None}
     on = bool(state.get("live"))
     left = int(state.get("seconds_left") or 0)
+    if spotted and not on:
+        return {
+            "offered": True,
+            "on": False,
+            "spotted": True,
+            "label": "Start walk",
+            "note": SPOTTED_NOTE,
+        }
     return {
         "offered": True,
         "on": on,
+        "spotted": False,
         "label": "Stop walk" if on else "Start walk",
         # Off, the button says what it does and needs no caption. On, the
         # one thing worth saying is that it turns itself off -- so nobody

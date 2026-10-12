@@ -676,6 +676,24 @@ test('the walk button still works after a refresh has replaced it', async () => 
   assert.equal(x.requests[1].options.body.get('on'), 'false');
 });
 
+test('a walk Fi spotted hides the button, and an empty note clears the old one', () => {
+  const x = setup('walk_mode.js');
+  const b = x.nodes['walk-toggle'], n = x.nodes['walk-note'];
+  x.window.KonaWalkMode.draw({offered: true, on: true, label: 'Stop walk', note: 'Stops on its own in 118 min'});
+  assert.equal(n.textContent, 'Stops on its own in 118 min');
+  // Stopped: the server says nothing, and nothing is what must show. The
+  // countdown used to stay on screen after the walk mode had ended.
+  x.window.KonaWalkMode.draw({offered: true, on: false, label: 'Start walk', note: ''});
+  assert.equal(n.textContent, '');
+  assert.equal(b.hidden, false);
+  x.window.KonaWalkMode.draw({offered: true, on: false, spotted: true, label: 'Start walk',
+    note: 'Fi spotted the walk \u00b7 updating faster until it ends'});
+  assert.equal(b.hidden, true, 'hidden, not removed: the walk will end');
+  assert.match(n.textContent, /Fi spotted the walk/);
+  x.window.KonaWalkMode.draw({offered: true, on: false, spotted: false, label: 'Start walk', note: ''});
+  assert.equal(b.hidden, false, 'back once Fi says the walk is over');
+});
+
 test('a tap somewhere else on the page is not a walk press', () => {
   const x = setup('walk_mode.js');
   x.document.events.click({target: {closest: () => null}});

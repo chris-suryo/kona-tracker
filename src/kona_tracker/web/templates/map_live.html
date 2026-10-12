@@ -54,7 +54,7 @@
   {% if live.offered %}
   <div class="live-walk">
     <button type="button" class="walk-toggle{{ ' on' if live.on else '' }}" id="walk-toggle"
-            data-on="{{ 'true' if live.on else 'false' }}">{{ live.label }}</button>
+            data-on="{{ 'true' if live.on else 'false' }}"{% if live.spotted %} hidden{% endif %}>{{ live.label }}</button>
     <span class="walk-note" id="walk-note">{{ live.note }}</span>
   </div>
   {% endif %}

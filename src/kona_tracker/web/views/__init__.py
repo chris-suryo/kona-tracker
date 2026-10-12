@@ -73,6 +73,7 @@ from kona_tracker.web.views.map import (
     live_map_context,
     live_map_json,
     map_tile_config,
+    walk_spotted,
 )
 from kona_tracker.web.views.robot import (
     _ROBOT_REFUSALS,
@@ -128,6 +129,7 @@ __all__ = [
     "last_night",
     "last_night_labels",
     "live_button",
+    "walk_spotted",
     "live_map_context",
     "live_map_json",
     "map_tile_config",
