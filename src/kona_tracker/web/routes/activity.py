@@ -15,6 +15,7 @@ from kona_tracker.web.history_preview import history_preview
 from kona_tracker.web.views import (
     activity_context,
     activity_json,
+    last_night_labels,
     live_button,
     live_map_context,
     live_map_json,
@@ -22,6 +23,7 @@ from kona_tracker.web.views import (
     rest_history_context,
     steps_context,
     walk_context,
+    walk_spotted,
 )
 
 #: Fi ids as seen on Kona's account: 22 URL-safe characters. Generous on
@@ -57,7 +59,9 @@ def make_activity_router(deps: AppDeps) -> APIRouter:
             else activity_context(snapshot, configured=fi is not None)
         )
         context["map_tiles"] = tile_config
-        context["live"] = live_button(fi.live_state() if fi and not preview else None)
+        context["live"] = live_button(
+            fi.live_state() if fi and not preview else None, walk_spotted(snapshot)
+        )
         return templates.TemplateResponse(request, "activity.html", context)
 
     @router.post("/live")
@@ -93,7 +97,7 @@ def make_activity_router(deps: AppDeps) -> APIRouter:
         snapshot = fi.snapshot(force=fresh) if fi else None
         context = live_map_context(snapshot, configured=fi is not None)
         context["map_tiles"] = tile_config
-        context["live"] = live_button(fi.live_state() if fi else None)
+        context["live"] = live_button(fi.live_state() if fi else None, walk_spotted(snapshot))
         return templates.TemplateResponse(request, "map_live.html", context)
 
     @router.get("/map.json")
@@ -101,7 +105,7 @@ def make_activity_router(deps: AppDeps) -> APIRouter:
         """Just the map's own facts, small enough to ask for every 10 s."""
         snapshot = fi.snapshot() if fi else None
         payload = live_map_json(snapshot, configured=fi is not None)
-        payload["button"] = live_button(fi.live_state() if fi else None)
+        payload["button"] = live_button(fi.live_state() if fi else None, walk_spotted(snapshot))
         return payload
 
     @router.get("/rest", response_class=HTMLResponse)
@@ -110,17 +114,13 @@ def make_activity_router(deps: AppDeps) -> APIRouter:
         selected: int | None = Query(default=None, ge=0, le=60),
         hour: int | None = Query(default=None, ge=0, le=23),
     ):
-        """Kona's real daily rest, one bar per day the collar has existed.
-
-        Days, not hours: Fi reports a daily total of sleep and of naps and
-        nothing finer, so that is what this draws. The sample page at
-        /preview/rest keeps its hourly and interval sketches; this page has
-        neither, on purpose.
-        """
+        """Kona's rest: today by the hour (restFeed), one bar per day the
+        collar has existed, and last night with the times she woke."""
         snapshot = fi.snapshot() if fi else None
         context = rest_history_context(
             snapshot, configured=fi is not None, selected=selected, hour=hour
         )
+        context["last_night"] = last_night_labels(snapshot)
         return templates.TemplateResponse(request, "rest_history.html", context)
 
     @router.get("/steps", response_class=HTMLResponse)

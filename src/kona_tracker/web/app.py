@@ -230,6 +230,7 @@ def create_app(
         # the point: stopping the app gives the machine its power plan back.
         holding = keep_awake() if settings.keep_awake else False
         app.state.keeping_awake = holding
+        app.state.started_at = datetime.now(UTC)
         beat = (
             Heartbeat(
                 settings.heartbeat_url,

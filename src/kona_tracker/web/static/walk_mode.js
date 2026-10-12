@@ -33,7 +33,13 @@
     b.dataset.on = state.on ? 'true' : 'false';
     b.classList.toggle('on', !!state.on);
     b.textContent = state.label;
-    if (n && state.note) { n.textContent = state.note; }
+    // Fi has spotted the walk and the server is already asking fast: the
+    // button would offer what is already happening. Hidden, not removed,
+    // so it is back the moment the walk ends.
+    b.hidden = !!state.spotted;
+    // An empty note is an instruction too: after "Stop walk", the old
+    // "Stops on its own in 118 min" used to stay on screen.
+    if (n) { n.textContent = state.note || ''; }
   }
 
   function fail(message) {

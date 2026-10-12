@@ -141,7 +141,7 @@
     {# Fi takes two to three minutes to decide a walk has started. This says
        so now, so the fast cadence covers the walk from the front door. #}
     <button type="button" class="walk-toggle{{ ' on' if live.on else '' }}" id="walk-toggle"
-            data-on="{{ 'true' if live.on else 'false' }}">{{ live.label }}</button>
+            data-on="{{ 'true' if live.on else 'false' }}"{% if live.spotted %} hidden{% endif %}>{{ live.label }}</button>
     {% endif %}
   </div>
   {% if live.offered %}<p class="location-note walk-note" id="walk-note">{{ live.note }}</p>{% endif %}
@@ -159,6 +159,7 @@
       <div class="walk-when">
         <strong>{{ w.label }}</strong>
         <span>{{ w.span or 'time unknown' }}{% if w.duration %} · {{ duration(w.duration) }}{% endif %}</span>
+        {% if w.area %}<span class="walk-area-name">{{ w.area }}</span>{% endif %}
       </div>
       <div class="walk-stats">
         {% if w.steps %}<span><strong>{{ w.steps }}</strong> steps</span>{% endif %}

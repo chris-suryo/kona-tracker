@@ -168,6 +168,40 @@ def test_the_button_says_what_pressing_it_does(state, on, label):
         assert button["note"] == ""
 
 
+def test_a_walk_fi_already_spotted_hides_the_start_button_and_says_why():
+    """The full map read "On a walk" with "Start walk" under it: Fi had
+    already detected the walk, the server was already asking fast, and the
+    button offered what was happening. It is hidden, not removed, so the map
+    can bring it back when the walk ends, and a note says what is going on."""
+    from kona_tracker.web.views import walk_spotted
+
+    walking = FiSnapshot(
+        fetched_at=NOW,
+        status=CollarStatus(
+            activity="walk", positions=(LocationPoint(42.37, -71.11, recorded_at=NOW),)
+        ),
+    )
+    assert walk_spotted(walking) is True
+    off = {"live": False, "seconds_left": 0}
+    button = live_button(off, spotted=True)
+    assert button["spotted"] is True and button["offered"] is True
+    assert button["note"] == "Fi spotted the walk · updating faster until it ends"
+    assert "20 s" not in button["note"], "still no cadence on screen"
+    # Pressed before Fi noticed, the person's own walk mode is what shows.
+    pressed = live_button({"live": True, "seconds_left": 600}, spotted=True)
+    assert pressed["spotted"] is False and pressed["label"] == "Stop walk"
+    # Not spotted: stale, carried-over positions, resting, or nothing at all.
+    from dataclasses import replace
+
+    assert walk_spotted(replace(walking, stale=True)) is False
+    assert (
+        walk_spotted(replace(walking, status=replace(walking.status, positions_carried=True)))
+        is False
+    )
+    assert walk_spotted(replace(walking, status=replace(walking.status, activity="rest"))) is False
+    assert walk_spotted(None) is False
+
+
 def test_no_collar_means_no_button_rather_than_a_dead_one():
     button = live_button(None)
     assert button["offered"] is False

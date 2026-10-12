@@ -101,6 +101,7 @@ def test_a_watchable_robot_is_not_a_drivable_one(watch_only):
     assert app.state.robot is None
     page = client.get("/robot")
     assert page.status_code == 200 and "drive-link" not in page.text
+    assert 'id="robot-battery"' not in page.text, "no gateway: nothing to read a battery from"
     assert client.get("/drive").status_code == 404
     for path in ("/robot/drive", "/robot/stop", "/robot/look"):
         assert client.post(path).status_code == 404
@@ -486,3 +487,12 @@ def test_the_drive_page_says_what_each_control_is_and_offers_the_legend(drivable
     assert 'data-ttl="500"' in page
     robot = client.get("/robot").text
     assert 'href="/drive?legend=1"' in robot and "Show me the controls again" in robot
+
+
+def test_a_drivable_robot_shows_its_battery_line_hidden_until_read(drivable):
+    """Until now only drive mode showed the battery, so the way to learn the
+    robot needed charging was to try to drive it. robot.js fills the line
+    from /robot/telemetry; it starts hidden so it never shows an unread value."""
+    client, _ = drivable
+    page = client.get("/robot").text
+    assert '<p class="robot-battery" id="robot-battery" aria-live="polite" hidden></p>' in page

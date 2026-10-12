@@ -22,6 +22,7 @@
      first, and the housekeeping last and quiet. #}
   <p class="total-lead">{% if step_goal %}{{ ring.percent }}% of today's {{ step_goal }} goal{% else %}No goal available{% endif %}</p>
   {% if distance %}<p class="total-aside">{{ distance }}</p>{% endif %}
+  {% if week_steps %}<p class="total-aside">Fi's weekly total: {{ week_steps }} steps{% if week_distance %} · {{ week_distance }}{% endif %}</p>{% endif %}
   <p class="total-checked">{% if stale %}Last good reading{% elif fetched_label %}Checked Fi {{ fetched_label }}{% if clock_zone %} {{ clock_zone }}{% endif %}{% endif %}</p>
   {% if distance %}<p class="total-explain">{{ distance_note }}</p>{% endif %}
 </section>

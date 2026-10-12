@@ -48,6 +48,17 @@
   <div><div class="d">Home</div><div class="s" id="cap">Opening the camera…</div></div>
   <span class="cam-hint" id="capture-hint">Capture a still · pinch to zoom</span>
 </div>
+{% if now %}
+{# Kona, in one line, while you watch the room: the question the camera is
+   opened to answer, without switching tabs. From the reading the server
+   already holds; never a Fi call of its own. #}
+<a class="kona-now{{ ' dimmed' if now.stale else '' }}" href="/activity">
+  {% if now.alert %}<strong class="kona-now-alert">{{ now.alert }}</strong>{% endif %}
+  <span>{{ now.parts | join(' · ') }}</span>
+  {% if now.stale and now.as_of %}<small>As of {{ now.as_of }}</small>{% endif %}
+  <span class="go" aria-hidden="true">{% include "_chevron.svg" %}</span>
+</a>
+{% endif %}
 {% if caps.ptz %}
 {# Only rendered when the camera actually has motors. A fixed camera such as
    the C120 must never grow a pad that does nothing. #}

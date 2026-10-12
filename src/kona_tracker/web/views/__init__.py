@@ -19,6 +19,7 @@ from kona_tracker.web.views.activity import (
     activity_json,
     connection_label,
     last_night,
+    last_night_labels,
     overnight_json,
     overnight_labels,
     preview_activity_context,
@@ -72,6 +73,7 @@ from kona_tracker.web.views.map import (
     live_map_context,
     live_map_json,
     map_tile_config,
+    walk_spotted,
 )
 from kona_tracker.web.views.robot import (
     _ROBOT_REFUSALS,
@@ -125,7 +127,9 @@ __all__ = [
     "hourly_json",
     "kona_zone",
     "last_night",
+    "last_night_labels",
     "live_button",
+    "walk_spotted",
     "live_map_context",
     "live_map_json",
     "map_tile_config",

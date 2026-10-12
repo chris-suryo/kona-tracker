@@ -214,3 +214,33 @@ def test_unconfigured_activity_json_has_null_walks():
     assert activity_json(None, configured=False)["overnight"] is None
     ctx = activity_context(None, configured=False)
     assert ctx["walks_today"] == [] and ctx["overnight"] is None
+
+
+def test_already_computed_figures_now_reach_a_page():
+    """Three things the app fetched, computed and then dropped before any
+    page: where each walk was, the times she woke, and Fi's weekly total."""
+    with _client(_service()) as c:
+        c.get("/activity")
+        activity = c.get("/activity").text
+        assert '<span class="walk-area-name">Home</span>' in activity
+        assert activity.count('class="walk-area-name"') == 1, "only walks Fi named a place for"
+
+        rest = c.get("/rest").text
+        assert "<strong>Last night</strong> 11:20 pm – 7:04 am · woke" in rest
+        assert "12:00 am – 12:04 am, 2:10 am – 2:25 am" in rest
+
+        steps = c.get("/steps").text
+        assert "Fi's weekly total: 31,000 steps · 13.7 mi outdoors" in steps
+        # Weekly totals stay off Activity: they belong in a detail view.
+        assert "31,000" not in activity
+
+
+def test_the_weekly_total_waits_while_it_could_include_the_previous_collar():
+    from dataclasses import replace
+
+    from kona_tracker.web.views.history import steps_context
+
+    snapshot = _service().snapshot()
+    hidden = replace(snapshot, historical_totals_hidden=True)
+    assert steps_context(hidden, True)["week_steps"] is None
+    assert steps_context(snapshot, True)["week_steps"] == "31,000"

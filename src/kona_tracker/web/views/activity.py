@@ -146,6 +146,20 @@ def last_night(snapshot: FiSnapshot | None, zone: tzinfo | None) -> dict[str, An
     }
 
 
+def last_night_labels(snapshot: FiSnapshot | None) -> dict[str, Any] | None:
+    """Last night's span and the times she woke, in Kona's clock, for /rest.
+
+    The Activity tile has room for "woke twice" and no more; the times were
+    computed for it and thrown away. None unless Fi sent the overnight
+    summary itself, since only that has a start, an end and interruptions.
+    """
+    if snapshot is None:
+        return None
+    profile = snapshot.profile
+    night = last_night(snapshot, kona_zone(profile.timezone if profile else None))
+    return night["labels"] if night and night["source"] == "overnight" else None
+
+
 def activity_context(snapshot: FiSnapshot | None, configured: bool) -> dict[str, Any]:
     """Everything `activity.html` needs, with no data invented on the way."""
     window = snapshot.window if snapshot else None
@@ -302,6 +316,47 @@ def activity_context(snapshot: FiSnapshot | None, configured: bool) -> dict[str,
         "clock_zone": fetched_local.strftime("%Z") if zone and fetched_local else None,
         "problem": snapshot.problem if snapshot else None,
     }
+
+
+def kona_now(snapshot: FiSnapshot | None) -> dict[str, Any] | None:
+    """One line about Kona for the Camera tab, from the snapshot already held.
+
+    Watching the camera, the question is "is she all right?", and the
+    answer used to be a tab away. Every piece comes from `activity_context`,
+    so the strip and the Activity page can never word the same fact
+    differently. None when there is nothing to say yet, and the strip is
+    then simply absent: no "loading", because nothing is being fetched.
+    """
+    if snapshot is None or not snapshot.has_data:
+        return None
+    ctx = activity_context(snapshot, configured=True)
+    parts: list[str] = []
+    if ctx["lost"]:
+        alert = "Lost Dog Mode is on"
+    elif ctx["escaped"]:
+        alert = "Left the safe zone"
+    else:
+        alert = None
+    if ctx["activity"] == "walk":
+        lead = "On a walk"
+        if ctx["walk_distance"]:
+            lead += f" · {ctx['walk_distance']}"
+        if ctx["activity_since"]:
+            lead += f" · started {ctx['activity_since']}"
+        parts.append(lead)
+    elif ctx["activity"] == "rest":
+        parts.append(
+            f"Resting since {ctx['activity_since']}" if ctx["activity_since"] else "Resting"
+        )
+    if ctx["steps"] is not None:
+        parts.append(f"{ctx['steps']} steps")
+    if ctx["battery"] is not None:
+        parts.append(f"collar {ctx['battery']}%")
+    if ctx["activity"] != "walk" and ctx["area_name"]:
+        parts.append(ctx["area_name"])
+    if not parts and alert is None:
+        return None
+    return {"alert": alert, "parts": parts, "stale": ctx["stale"], "as_of": ctx["as_of"]}
 
 
 def preview_activity_context() -> dict[str, Any]:
