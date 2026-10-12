@@ -56,7 +56,13 @@ class Build:
             # flag is "%#d" -- and this app's home is a Windows PC. Ubuntu CI
             # was green and Windows CI was not; without that matrix the
             # Settings page would simply have 500'd on the machine it runs on.
+            # In this machine's clock. git's %cI keeps the committer's own
+            # offset, so a merge made on GitHub read in UTC and one made on
+            # the PC in Eastern time, and two builds an hour apart could
+            # print in the wrong order.
             stamp = self.committed_at
+            if stamp.tzinfo is not None:
+                stamp = stamp.astimezone()
             when = f"{stamp.day} {stamp:%b} {stamp:%H:%M}"
         return f"{when} · {self.sha}{' · edited' if self.dirty else ''}"
 
