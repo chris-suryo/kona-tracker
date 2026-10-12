@@ -926,6 +926,9 @@ html.cam-full, html.cam-full body { overflow: hidden; }
    the floor directly in front of the wheels, the one part you cannot drive
    without. The Tapo is genuinely 16:9 and keeps its rule. */
 .robot-page .cam img { aspect-ratio: 4 / 3; }
+.robot-battery { margin: 10px 20px 0; font-size: 13px; font-weight: 600; color: var(--ink); }
+.robot-battery.quiet { color: var(--ink2); font-weight: 400; }
+.robot-battery.bad { color: var(--bad); }
 /* `.cam-page` has no padding so the picture can run edge to edge, and every
    other section puts its own 20px back. These two did not, and sat flush
    against the screen edges. */

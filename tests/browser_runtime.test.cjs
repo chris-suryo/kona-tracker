@@ -116,6 +116,9 @@ function setup(script, preview = false, opts = {}) {
     'drive', 'stick', 'knob', 'estop', 'estop-alarm', 'speed', 'rot-left', 'rot-right', 'shout', 'shout-text', 'note',
     'volts', 'sonar', 'picture', 'wire', 'look', 'look-knob', 'walk-toggle', 'walk-note', 'legend'];
   const nodes = Object.fromEntries(names.map(name => [name, element()]));
+  // Only a Robot tab with a gateway renders the battery line; without one,
+  // robot.js must not ask the Pi anything.
+  if (opts.robotBattery) { nodes['robot-battery'] = element(); nodes['robot-battery'].hidden = true; }
   const page = element(), label = element(), camFrame = element();
   // A 400x225 frame at the page origin, so the zoom maths can be checked in px.
   camFrame.clientWidth = 400; camFrame.clientHeight = 225;
@@ -307,6 +310,41 @@ test('the robot page runs the same loop against its own camera and its own words
   assert.equal(x.nodes.cam.classList.contains('unavailable'), true);
   // Nothing on this page can move the robot yet.
   assert.equal(x.requests.filter(q => q.options.method === 'POST').length, 0);
+});
+
+const batteryReads = x => x.requests.filter(q => q.url === '/robot/telemetry');
+
+test('the Robot tab says what the battery reads, every 30 s, only while visible', async () => {
+  const x = setup('robot.js', false, {robotBattery: true});
+  const line = x.nodes['robot-battery'];
+  assert.equal(batteryReads(x).length, 1, 'read once on load');
+  batteryReads(x)[0].resolve(response({battery_v: 7.6234, low_battery: false})); await settle();
+  assert.equal(line.hidden, false);
+  assert.equal(line.textContent, 'Battery 7.62 V');
+  x.tickEvery(30000);
+  batteryReads(x)[1].resolve(response({battery_v: 6.81, low_battery: true})); await settle();
+  assert.match(line.textContent, /^Battery low · 6\.81 V · charge before driving$/);
+  assert.equal(line.className, 'robot-battery bad');
+  // A hidden page stops asking the Pi, and asks once on the way back.
+  x.document.hidden = true; x.document.events.visibilitychange();
+  assert.equal(x.intervals.size, 0);
+  x.document.hidden = false; x.document.events.visibilitychange();
+  assert.equal(batteryReads(x).length, 3);
+});
+
+test('an unknown battery is not a flat one, and a silent robot is said quietly', async () => {
+  const x = setup('robot.js', false, {robotBattery: true});
+  batteryReads(x)[0].resolve(response({battery_v: null})); await settle();
+  assert.equal(x.nodes['robot-battery'].textContent, 'Battery: no reading yet');
+  x.tickEvery(30000);
+  batteryReads(x)[1].resolve(response({}, {ok: false, status: 502})); await settle();
+  assert.equal(x.nodes['robot-battery'].textContent, 'Robot not answering');
+  assert.equal(x.nodes['robot-battery'].className, 'robot-battery quiet');
+});
+
+test('with no gateway the Robot tab never asks the Pi for telemetry', () => {
+  const x = setup('robot.js');
+  assert.equal(batteryReads(x).length, 0);
 });
 
 // The Settings page used to carry camera-doctor's verdicts for the same hub

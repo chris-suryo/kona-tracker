@@ -17,6 +17,11 @@
   <div><div class="d">{{ robot_name }}</div><div class="s" id="cap">Reaching the robot…</div></div>
   <span class="cam-hint">Off when the robot is off · back on its own when it returns</span>
 </div>
+{% if drive %}
+{# Filled in by robot.js from the gateway's telemetry. Hidden until the
+   first answer, so it never shows a reading nobody has taken. #}
+<p class="robot-battery" id="robot-battery" aria-live="polite" hidden></p>
+{% endif %}
 {# Driving appears only once the Pi-side safety gateway is configured --
    until then `drive` is false and nothing that could move the robot is
    drawn at all, rather than a button that would 404 on every press. #}
