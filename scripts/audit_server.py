@@ -238,6 +238,10 @@ class StubFi:
     def peek(self):
         return snap
 
+    def recorder_status(self):
+        # Settings' "This server" list: recording on, a plausible size.
+        return {"state": "recording", "file": "kona.db", "size_bytes": 3_400_000}
+
     def start_live(self):
         StubFi._live = True
         return self.live_state()
